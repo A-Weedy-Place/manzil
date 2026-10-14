@@ -1,5 +1,7 @@
 # Google Cloud AI Builder Cup 2026 Research and Project Scope
 
+The current implementation decision is recorded in [MANZIL_ARCHITECTURE.md](MANZIL_ARCHITECTURE.md): simple 2D Leaflet/MapTiler/ORS with Google Cloud Gemini/event services. Earlier technology comparisons remain research context.
+
 Verified on 14 October 2026. The participant confirmed that this is the event they registered for. Their project and team are **Manzil (منزل)**, an Islamabad closure-aware commute planner using Champ Alerts notices, Gemini, and a web map. Rerouting is a required core feature. The team has two developers and wants to finish by 17 October, preferably earlier for UI polish. Available working hours and billing/credits remain unconfirmed. The detailed developer brief is [Manzil Project Plan](ISLAMABAD_COMMUTE_PROJECT_PLAN.md); it currently recommends a hosted ORS/OSM mapping stack with independent temporal validation, and documents Google via routing as an alternative.
 
 The target is a focused, deployed AI prototype that completes a useful workflow, backed by a clear demonstration and evidence that it works. With submission listed for 18 October, build depth in the core workflow and reserve time for the submission package. The scope recommendations below are planning judgments, not extra competition rules.

@@ -2,18 +2,20 @@
 
 Research and architecture comparison for the two-person Manzil team. Updated 14 October 2026, Asia/Karachi. Prototype target: 17 October. This supplements the [implementation plan](ISLAMABAD_COMMUTE_PROJECT_PLAN.md).
 
+**Implementation decision after this research:** the founder chose simple, efficient 2D. Follow [the final architecture](MANZIL_ARCHITECTURE.md): Leaflet + MapTiler Dataviz Light raster + hosted ORS and the Google Cloud/Gemini backend. The 3D comparisons below are retained research, not the current build choice.
+
 ## 1 Quick conclusions
 
 1. **Similar ideas already exist.** Waze handles planned closures and advance event alerts. CommuteScout combines road feeds, planning, an AI assistant, and route watches. BoardSpy provides predeparture commute alerts. Manzil should compete on Islamabad notice interpretation, reviewed scheduled events, precise commute-time impact, and understandable recommendations.
 2. **Safar's web appearance comes from Leaflet + CARTO Voyager + OpenStreetMap.** Its journey backend is separate. Its public catalog has an OTP-labelled interface, but the current journey engine and a reusable data/API license are not established.
 3. **DeFlock and FlockHopper are related but have multiple implementations.** The current web map is MapLibre/Protomaps; DeFlock mobile uses Flutter/flutter_map and requests avoidance routes. An older public FlockHopper router uses GraphHopper. These are not proof that every current branded component is open source.
-4. **3D does not force Mapbox.** MapLibre supports pitched maps, building extrusion, and terrain. MapLibre + OpenFreeMap + ORS is a practical open-renderer candidate; Leaflet remains the simpler familiar option.
+4. **The selected interface is 2D.** Use Leaflet and MapTiler raster tiles. MapLibre/Mapbox/Cesium capabilities remain useful research for a future visual requirement.
 5. **Current Mapbox GL JS has a commercial license.** Public source is not the same as unrestricted open source. Mapbox offers polished 3D and hosted navigation, with separate billing for maps, search, and routing.
 6. **A red road overlay does not change a routing engine.** The router must receive exclusions or generate candidates that our backend rejects when they conflict with a reviewed closure.
 7. **Borrow architecture and carefully selected licensed components.** Several inspected apps accept warnings or reduced exposure instead of a fully clear route. Manzil must enforce its hard-closure promise.
 8. **Google services fit the core workflow even with an open map.** Gemini, Cloud Run, Firestore, Firebase Auth, FCM and one Scheduler job have useful roles. Section 11 distinguishes recurring free allowances from trial credits and lists optional additions.
 
-The recommended routing backend remains hosted ORS for the deadline, with Gemini, Cloud Run, and Firestore for our original notice/event/commute workflow. Given the founder's 3D preference, evaluate MapLibre/OpenFreeMap as a frontend alternative before committing to Leaflet. No renderer choice removes the need to validate road coverage, route geometry, and traversal times in Islamabad.
+The selected stack is Leaflet + MapTiler Dataviz Light raster + hosted ORS, with Gemini, Cloud Run and Firestore for our original notice/event/commute workflow. The founder has chosen simple 2D; the final architecture fixes the implementation sequence. Road coverage, route geometry and traversal times in Islamabad still require actual tests.
 
 ## 2 The layers we are comparing
 
@@ -247,7 +249,7 @@ Checked against official product documentation on 14 October 2026. A small proto
 
 ### 11.1 Recommended meaningful integrations
 
-Use Google services for the notice-to-commute workflow while retaining MapLibre/OpenFreeMap or Leaflet/ORS for the map and detours:
+Use Google services for the notice-to-commute workflow with the selected Leaflet/MapTiler/ORS map and detours:
 
 1. **Gemini:** propose structured road events from authorized notices, optionally read screenshots, and explain already validated travel choices.
 2. **Cloud Run:** host our extraction, review, route-validation and commute-evaluation API.

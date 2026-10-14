@@ -4,8 +4,11 @@ Manzil is an Islamabad closure-aware commute planner proposed for the Google Clo
 
 The current repository contains research, the implementation plan, and branding assets. **Application code has not been built yet.**
 
+The current implementation decision is the [final architecture](MANZIL_ARCHITECTURE.md): a simple 2D Leaflet app with MapTiler raster tiles, hosted ORS, and a Google Cloud/Gemini event and commute backend.
+
 ## Project documents
 
+- [Final architecture and implementation sequence](MANZIL_ARCHITECTURE.md): start here for the selected stack, Champ-source access plan, agent/manual closures, scheduled rerouting, personal trip analytics and learned-road roadmap.
 - [Developer brief and implementation plan](ISLAMABAD_COMMUTE_PROJECT_PLAN.md): start with the quick summary; later sections contain detailed feasibility research, routing comparisons, source-code findings, architecture, and the two-person build plan.
 - [Safar map findings](ISLAMABAD_COMMUTE_PROJECT_PLAN.md#19-safar-mapping-reference): verified Leaflet/CARTO Voyager web stack, its relevance to Manzil, and current basemap service conditions.
 - [Mapping projects and similar-product comparison](MAPPING_PROJECT_COMPARISON.md): application and tool licenses, actual stacks, closest precedents, 3D alternatives, and recommendations for Manzil.
@@ -21,7 +24,7 @@ The current repository contains research, the implementation plan, and branding 
 4. Generate and validate a closure-avoiding detour, then compare permitted earlier/later departures.
 5. Show a source-linked explanation and deliver advance notifications on a tested browser.
 
-The current recommended deadline stack is React/TypeScript, Leaflet with permitted OpenStreetMap tiles, hosted openrouteservice, Gemini, Cloud Run, and Firestore. The plan also evaluates Google via-waypoint routing and self-hosted GraphHopper. Provider access and actual Islamabad routing remain subject to the documented acceptance tests.
+The selected deadline stack is React/TypeScript/Vite, Leaflet with MapTiler Dataviz Light raster tiles, hosted openrouteservice, Gemini on Google Cloud, Cloud Run, Firestore, Firebase Auth/FCM, Scheduler and Tasks. Provider/source access and actual Islamabad routing remain subject to the documented acceptance tests. Earlier mapping comparisons are research references rather than competing implementation decisions.
 
 ## Branding
 

@@ -2,17 +2,19 @@
 
 Developer brief, feasibility research, and proposed implementation plan. Updated 14 October 2026, Asia/Karachi.
 
+**Current decision:** the founder selected a fast, simple Safar-inspired 2D interface. [MANZIL_ARCHITECTURE.md](MANZIL_ARCHITECTURE.md) is now the canonical implementation plan: Leaflet + MapTiler Dataviz Light raster + hosted ORS, Google Cloud Gemini/event services, explicit Champ connector access/coverage, manual/agent scheduling, opt-in personal trip data and a reviewed learned-road roadmap. Retain the older comparisons below as research context.
+
 Project and team name: **Manzil (منزل)**, destination. Team: two developers. Target: finish the usable prototype by 17 October, preferably earlier to leave time for UI polish. Google Cloud billing and hackathon credit availability are not yet confirmed; available working hours are not yet quantified. The circular Urdu calligraphy logo is saved in assets/brand/manzil-logo-v1.png, with its generation prompt and usage notes in assets/brand/README.md. This is a planning document; API calls, routing quality in Islamabad, and alert extraction have not yet been tested in an implementation.
 
 ## 1 Quick summary for the team
 
 Build a web app that turns local traffic notices into advance advice for a person's scheduled commute. Start in Islamabad and use Champ Alerts as the first intended information source. A commuter should learn that an announced closure affects the time they will reach a road, see the supporting notice, and compare a detour with leaving earlier or later.
 
-The recommended deadline stack is **Leaflet + OpenStreetMap tiles + hosted openrouteservice (ORS)**, with **Gemini, Cloud Run, and Firestore** for our original AI/event/planning backend. ORS accepts avoidance polygons directly, reducing the work needed to generate detours. It has no live traffic feed, so label its travel times as ordinary estimates. Google Maps with road-aware via waypoints remains a viable alternative when traffic estimates justify the extra candidate-search work. Our application owns event schedules, review, and validation in either stack. [ORS routing options](https://giscience.github.io/openrouteservice/api-reference/endpoints/directions/routing-options) · [ORS traffic guidance](https://ask.openrouteservice.org/t/isochrone-trafic-data/7875)
+The selected deadline stack is **Leaflet + MapTiler Dataviz Light raster + hosted openrouteservice (ORS)**, with **Gemini, Cloud Run, and Firestore** for our original AI/event/planning backend. The OSM-derived basemap, Manzil event layer and provider routing graph are separate. ORS accepts avoidance polygons directly; it has no live traffic feed, so label its travel times as ordinary estimates. Google traffic is deferred. [ORS routing options](https://giscience.github.io/openrouteservice/api-reference/endpoints/directions/routing-options) · [ORS traffic guidance](https://ask.openrouteservice.org/t/isochrone-trafic-data/7875)
 
 **Safar's web map uses Leaflet with CARTO Voyager raster tiles derived from OpenStreetMap.** We can obtain that basemap style independently and put our original closure and detour layers above it. Section 19 records the evidence, current service conditions, and the distinction between map appearance and routing. [Safar Islamabad map](https://www.safar.fyi/islamabad)
 
-The [mapping and similar-product comparison](MAPPING_PROJECT_COMPARISON.md) adds CommuteScout, Waze's advance-event workflow, Ghostway, and other close precedents. Given the founder's interest in 3D, **MapLibre + OpenFreeMap** is now a candidate frontend alternative to Leaflet; the ORS/event/planning backend remains the same. Inspect local visual data and setup effort before choosing one renderer.
+The [mapping and similar-product comparison](MAPPING_PROJECT_COMPARISON.md) adds CommuteScout, Waze's advance-event workflow, Ghostway, and other close precedents. Its earlier 3D alternatives remain research; the founder has selected 2D and the final architecture fixes one renderer and router.
 
 **Rerouting is a required core feature.** The prototype must demonstrate a valid connected detour around a reviewed test closure when such a detour is available. Warnings and earlier departure are additional choices; they do not replace that acceptance check. When no route can be validated, the correct result is an explicit unavailable/inconclusive state.
 
@@ -557,7 +559,7 @@ The next concrete milestone is a thin deployed source-to-trip flow. Once that wo
 
 ### 13.1 Recommendation and tradeoffs
 
-For Manzil's two-person deadline, use **Leaflet + permitted OSM raster tiles + hosted ORS**, with our own TypeScript backend calling ORS and Gemini. Leaflet minimizes renderer setup; MapLibre is a reasonable substitution if the teammate already knows it and has a permitted tile/style source. Keep the renderer choice separate from the routing choice.
+For Manzil's two-person deadline, use **Leaflet + MapTiler Dataviz Light raster + hosted ORS**, with our own TypeScript backend calling ORS and Gemini. The founder selected simple 2D; use the canonical final architecture rather than reopening the earlier renderer comparison.
 
 The reason to prefer ORS is its direct avoidance-polygon input. Google via routing is legitimate, but automatically discovering enough good anchor sequences for arbitrary closures is extra software/data work. Self-hosted GraphHopper gives more graph control, but imports and deployment are extra operations work. This ranking is our engineering judgment, conditional on a working ORS key and Islamabad smoke tests.
 
