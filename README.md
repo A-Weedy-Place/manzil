@@ -1,14 +1,33 @@
 # Manzil منزل
 
-Manzil is an Islamabad closure-aware commute planner proposed for the Google Cloud AI Builder Cup 2026. It turns local traffic notices into reviewed road segments and closure schedules, then evaluates their effect on planned journeys and generates useful detours or departure-time recommendations.
+Manzil is an Islamabad closure-aware commute planner proposed for the Google Cloud AI Builder Cup 2026. It evaluates scheduled road restrictions against planned journeys and offers detours or departure-time recommendations. The future Gemini agent will turn source notices into reviewable closure proposals; the current app provides manual editing and the notice queue.
 
-The current repository contains research, the implementation plan, and branding assets. **Application code has not been built yet.**
+The repository now contains a working **localhost application**, a real Islamabad OSM road graph, tests, research and branding. No deployment or Google account is required for this local edition.
 
-The current implementation decision is the [final architecture](MANZIL_ARCHITECTURE.md): a simple 2D Leaflet app with MapTiler raster tiles, hosted ORS, and a Google Cloud/Gemini event and commute backend.
+## Run locally
+
+Requires Node.js **22.13+**; verified with 22.20.0. From this repository:
+
+```sh
+npm ci
+npm run dev
+```
+
+Open **http://127.0.0.1:5173/**. The API runs at http://127.0.0.1:3001. Keep the local server running for source and commute checks. The bundled road graph needs no API key; ordinary basemap tiles need internet. Optional settings are listed in `.env.example`.
+
+Try **Find my route**, then **Try a demo restriction** to see a connected detour. Demo restrictions are explicitly synthetic and can be cancelled from Closures. Use the editor to draw your own point, road corridor or area and schedule its start/end in Pakistan time.
+
+**X collection:** the requested accountless public-page collector checks every 15 minutes and queues captured notices for a future agent. Actual checks on this network launched the browser but X navigation failed. The app reports that error and partial coverage; successful automatic retrieval is not claimed. Manual import uses the same durable queue. The user's Gemini reasoning agent is intentionally not implemented yet.
 
 ## Project documents
 
-- [Final architecture and implementation sequence](MANZIL_ARCHITECTURE.md): start here for the selected stack, Champ-source access plan, agent/manual closures, scheduled rerouting, personal trip analytics and learned-road roadmap.
+- [Retained product context and entire feature backlog](PROJECT_CONTEXT.md): original requirements, current priorities and future transit/crowd/traffic/learned-road features.
+- [Implementation status and verification](docs/IMPLEMENTATION_STATUS.md): actual build state, decisions and remaining limitations.
+- [Local development guide](docs/LOCAL_DEVELOPMENT.md): startup, configuration, local data, tests and troubleshooting.
+- [Map editor guide](docs/MAP_EDITOR.md): drawing, scheduling, editing, import/export and journey workflows.
+- [Local routing](docs/ROUTING.md): real graph, temporal validation, OSM provenance and routing limits.
+- [API reference](docs/API.md) and [source/agent handoff](docs/INGESTION_IMPLEMENTATION.md).
+- [Future deployment and agent architecture](MANZIL_ARCHITECTURE.md): Google Cloud integration targets, agent workflow and the broader roadmap. For the implemented local stack, start with the local development and implementation guides above.
 - [Champ Alerts without a paid subscription](CHAMP_ALERTS_INGESTION.md): tested X preview and APP RSS, unofficial WhatsApp Channel clients, official-site candidates, conditional X credit, notification experiments and actual coverage limits.
 - [Developer brief and implementation plan](ISLAMABAD_COMMUTE_PROJECT_PLAN.md): start with the quick summary; later sections contain detailed feasibility research, routing comparisons, source-code findings, architecture, and the two-person build plan.
 - [Safar map findings](ISLAMABAD_COMMUTE_PROJECT_PLAN.md#19-safar-mapping-reference): verified Leaflet/CARTO Voyager web stack, its relevance to Manzil, and current basemap service conditions.
@@ -17,15 +36,25 @@ The current implementation decision is the [final architecture](MANZIL_ARCHITECT
 - [Hackathon research](AI_BUILDER_CUP_RESEARCH.md): event requirements, judging, related winners, and scope guidance.
 - [Logo prompt and usage notes](assets/brand/README.md).
 
-## Proposed first version
+## Implemented local features
 
-1. Accept an authorized local traffic notice and extract its proposed road event with Gemini.
-2. Review the affected segment, direction, dates, and source evidence.
-3. Evaluate the event against a saved commute's estimated traversal time.
-4. Generate and validate a closure-avoiding detour, then compare permitted earlier/later departures.
-5. Show a source-linked explanation and deliver advance notifications on a tested browser.
+1. Fast 2D Leaflet map with local place/road search, map-selected endpoints and draggable pins.
+2. Point, road-corridor and polygon restrictions; exact geometry preview, coordinate editing, scheduled start/end, drafts, revisions, cancellation and GeoJSON import/export.
+3. Actual car-road routing over a bundled OSM graph; closure traversal-time checks, connected detours, bounded earlier/later departures and explicit unavailable results.
+4. Weekly saved commutes, next-occurrence checks and deduplicated in-app impact alerts while the backend runs.
+5. Fifteen-minute public X collection attempt, honest status/freshness, manual notices and a durable pending-agent queue.
+6. Explicit foreground GPS recording, local trip summaries/history/export/deletion and separate future road-discovery contribution consent.
 
-The selected deadline stack is React/TypeScript/Vite, Leaflet with MapTiler Dataviz Light raster tiles, hosted openrouteservice, Gemini on Google Cloud, Cloud Run, Firestore, Firebase Auth/FCM, Scheduler and Tasks. Provider/source access and actual Islamabad routing remain subject to the documented acceptance tests. Earlier mapping comparisons are research references rather than competing implementation decisions.
+The implemented stack is React/TypeScript/Vite, Leaflet, a local OSM routing engine, Express and SQLite. Optional MapTiler raster tiles are supported; the default is ordinary OSM tiles with attribution. Google Cloud/Gemini, Firestore, ORS and FCM remain the documented deployment/integration targets, rather than services silently required by the local app. Live traffic, transit routing, crowd verification, automatic learned-road publication and camera avoidance remain on the explicit roadmap.
+
+## Validation
+
+```sh
+npm test
+npm run build
+```
+
+The current suite has **31 passing tests**, including actual bundled-road detouring, topology/access/direction, closure timing, unavailable routes, persistence, revisions, source deduplication/outbox, commute occurrences and GPS retention. Type checking and the production build pass. Desktop and 375×812 browser workflows were inspected. Real-device GPS and successful live X retrieval remain unverified; see the implementation status for practical limits.
 
 ## Branding
 
@@ -35,7 +64,7 @@ The project and team name is **Manzil (منزل)**, meaning destination. The pri
 
 ## Milestone
 
-Two developers aim to finish the usable prototype by **17 October 2026**, with the core working earlier to allow UI polish and submission preparation. See the developer plan for scope, priorities, and acceptance checks.
+Two developers aim to finish and polish the prototype by **17 October 2026**. The local core was implemented on October 14. The owner will handle deployment and build the Gemini agent later.
 
 ## Credentials and dependencies
 

@@ -1,0 +1,159 @@
+import { afterEach, describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { request as httpRequest, type Server } from 'node:http';
+import type { ClosureDraft, Commute, GraphStatus, PlanResponse, Trip } from '../shared/types';
+import { Store } from '../server/store';
+import { createApp, applyRetention } from '../server/app';
+import { SourceService } from '../server/source';
+import { nextOccurrence, checkCommute } from '../server/commutes';
+
+const cleanup: (() => void | Promise<void>)[] = [];
+afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); });
+const graph: GraphStatus = { ready: true, source: 'test', version: 'fixture', nodeCount: 2, edgeCount: 2,
+  importedAt: null, bounds: [72, 33, 74, 35], limitations: [] };
+const emptyPlan: PlanResponse = { options: [], baseline: null, conflicts: [], warnings: [],
+  evaluatedAt: '2026-10-14T12:00:00.000Z', graphVersion: 'fixture', eventRevision: 0, source: 'local-osm' };
+const closure: ClosureDraft = { title: 'Test closure', description: 'Verified test fixture', reason: 'construction',
+  startsAt: '2026-10-14T11:00:00Z', endsAt: '2026-10-14T13:00:00Z', status: 'published',
+  geometry: { type: 'Polygon', coordinates: [[[73, 33], [73.01, 33], [73.01, 33.01], [73, 33]]] } };
+
+async function setup() {
+  const store = new Store(':memory:'); cleanup.push(() => store.close());
+  const source = new SourceService(store, async () => ({ state: 'blocked', posts: [], observedCount: 0, message: 'Signed-out fixture unavailable.' }));
+  const { app } = createApp(store, { source, graph: () => graph, planner: () => emptyPlan,
+    places: query => [{ name: query || 'Local landmark', coordinate: [73, 33] }] });
+  const server = await new Promise<Server>(resolve => { const instance = app.listen(0, '127.0.0.1', () => resolve(instance)); });
+  cleanup.push(() => new Promise<void>(resolve => { server.closeAllConnections(); server.close(() => resolve()); }));
+  const address = server.address(); if (!address || typeof address === 'string') throw new Error('No test port');
+  const request = (path: string, method = 'GET', body?: unknown, extraHeaders: Record<string, string> = {}) => fetch(`http://127.0.0.1:${address.port}/api${path}`, {
+    method, headers: { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...extraHeaders },
+    ...(body !== undefined ? { body: typeof body === 'string' ? body : JSON.stringify(body) } : {}),
+  });
+  return { store, request, port: address.port };
+}
+
+describe('local API', () => {
+  it('persists versioned closures, refuses stale edits, and soft-cancels', async () => {
+    const { store, request } = await setup();
+    const created = await request('/closures', 'POST', closure);
+    expect(created.status).toBe(201); const first = await created.json(); expect(first.revision).toBe(1);
+    const saved = await request(`/closures/${first.id}`, 'PUT', { ...closure, title: 'Updated', revision: 1 });
+    expect(saved.status).toBe(200); expect((await saved.json()).revision).toBe(2);
+    expect((await request(`/closures/${first.id}`, 'PUT', { ...closure, revision: 1 })).status).toBe(409);
+    const cancelled = await request(`/closures/${first.id}`, 'DELETE');
+    expect((await cancelled.json()).status).toBe('cancelled'); expect(store.eventRevision).toBe(3);
+    expect((await (await request('/state')).json()).closures).toHaveLength(1);
+  });
+  it('validates malformed JSON, invalid time ranges, body type, and hostile origins', async () => {
+    const { request, port } = await setup();
+    expect((await request('/closures', 'POST', '{')).status).toBe(400);
+    expect((await request('/closures', 'POST', { ...closure, endsAt: closure.startsAt })).status).toBe(400);
+    expect((await request('/source/check', 'POST')).status).toBe(415);
+    expect((await request('/source/check', 'POST', {}, { Origin: 'https://attacker.example' })).status).toBe(403);
+    const hostileHostStatus = await new Promise<number | undefined>((resolve, reject) => {
+      const req = httpRequest({ hostname: '127.0.0.1', port, path: '/api/health', headers: { Host: 'attacker.example' } }, response => {
+        response.resume(); response.on('end', () => resolve(response.statusCode));
+      }); req.on('error', reject); req.end();
+    });
+    expect(hostileHostStatus).toBe(403);
+    expect((await request('/health', 'GET', undefined, { Origin: 'http://localhost:5173' })).status).toBe(200);
+    expect((await request('/places?q=Faisal')).status).toBe(200);
+  });
+  it('buffers a line and closes polygon rings before routing', async () => {
+    const { request } = await setup();
+    const line = await request('/geometry', 'POST', { kind: 'line', coordinates: [[73, 33], [73.01, 33.01]], widthMeters: 40 });
+    const polygon = await line.json(); expect(polygon.type).toBe('Polygon');
+    expect(polygon.coordinates[0][0]).toEqual(polygon.coordinates[0].at(-1));
+    expect((await request('/geometry', 'POST', { kind: 'polygon', coordinates: [[73, 33], [73, 33], [73, 33]], widthMeters: 40 })).status).toBe(400);
+    expect((await request('/geometry', 'POST', { kind: 'polygon', coordinates: [[73, 33], [73.02, 33.02], [73, 33.02], [73.01, 33]], widthMeters: 40 })).status).toBe(400);
+    expect((await request('/closures', 'POST', { ...closure, geometry: { ...closure.geometry, coordinates: [...closure.geometry.coordinates, closure.geometry.coordinates[0]] } })).status).toBe(400);
+  });
+  it('queues manual notices durably and exposes a pending-agent handoff', async () => {
+    const { request } = await setup();
+    const first = await (await request('/notices', 'POST', { text: 'A public closure advisory', url: 'https://example.test/notices/1' })).json();
+    const repeat = await (await request('/notices', 'POST', { text: 'A public closure advisory', url: 'https://example.test/notices/1' })).json();
+    expect(repeat.id).toBe(first.id); expect(repeat.revision).toBe(1);
+    expect(await (await request('/agent/outbox')).json()).toHaveLength(1);
+    expect((await request(`/notices/${first.id}`, 'PATCH', { status: 'reviewed' })).status).toBe(200);
+    expect(await (await request('/agent/outbox')).json()).toHaveLength(0);
+    expect((await (await request('/source/check', 'POST', {})).json()).state).toBe('blocked');
+    expect((await request('/source/settings', 'PATCH', { enabled: true, intervalMinutes: 1 })).status).toBe(400);
+  });
+  it('records real points, excludes GPS jumps from distance, and deletes a trip', async () => {
+    const { request } = await setup();
+    const start = Date.now() - 60_000;
+    const points = [
+      { coordinate: [73, 33], timestamp: new Date(start).toISOString(), accuracy: 5 },
+      { coordinate: [73.001, 33], timestamp: new Date(start + 10_000).toISOString(), accuracy: 5 },
+      { coordinate: [74, 34], timestamp: new Date(start + 20_000).toISOString(), accuracy: 5 },
+    ];
+    const created = await request('/trips', 'POST', { name: 'Recorded journey', startedAt: points[0].timestamp,
+      endedAt: points[2].timestamp, points, contributeToRoadDiscovery: false });
+    expect(created.status).toBe(201); const trip = await created.json();
+    expect(trip.gaps).toBe(1); expect(trip.distanceMeters).toBeGreaterThan(80); expect(trip.distanceMeters).toBeLessThan(110);
+    const summary = (await (await request('/state')).json()).trips[0];
+    expect(summary.points).toEqual([]); expect(summary.pointCount).toBe(3);
+    expect((await (await request(`/trips/${trip.id}`)).json()).points).toHaveLength(3);
+    expect((await request(`/trips/${trip.id}`, 'PATCH', { contributeToRoadDiscovery: true })).status).toBe(200);
+    expect((await request(`/trips/${trip.id}`, 'DELETE')).status).toBe(200);
+    expect(await (await request('/trips')).json()).toHaveLength(0);
+  });
+});
+
+describe('durability, commute time, and privacy retention', () => {
+  it('retains data and revisions after reopening the SQLite database', () => {
+    const folder = mkdtempSync(join(tmpdir(), 'manzil-test-')); cleanup.push(() => rmSync(folder, { recursive: true, force: true }));
+    const path = join(folder, 'state.sqlite'); let store = new Store(path);
+    const first = store.saveClosure(closure);
+    const notice = store.upsertNotice({ source: 'manual', sourceId: 'durable-notice', url: '', text: 'A public notice',
+      publishedAt: null, mediaUrls: [], contentHash: 'fixture-hash' }).notice;
+    store.updateSourceStatus({ nextCheckAt: '2026-10-14T12:15:00Z', state: 'partial' });
+    store.close(); store = new Store(path); cleanup.push(() => store.close());
+    expect(store.get('closure', first.id)).toMatchObject({ title: closure.title, revision: 1 }); expect(store.eventRevision).toBe(1);
+    expect(store.pendingAgentNotices()[0].id).toBe(notice.id); expect(store.pendingAgentCount()).toBe(1);
+    expect(store.sourceStatus().nextCheckAt).toBe('2026-10-14T12:15:00Z');
+  });
+  it('calculates weekdays and midnight in Islamabad time, not server timezone', () => {
+    const commute: Commute = { id: 'commute', name: 'Office', origin: { name: 'A', coordinate: [73, 33] },
+      destination: { name: 'B', coordinate: [73.1, 33.1] }, days: [4], departureTime: '00:30', enabled: true,
+      createdAt: '', updatedAt: '' };
+    expect(nextOccurrence(commute, Date.parse('2026-10-14T19:00:00Z'))).toBe('2026-10-14T19:30:00.000Z');
+    expect(nextOccurrence(commute, Date.parse('2026-10-14T19:31:00Z'))).toBe('2026-10-21T19:30:00.000Z');
+  });
+  it('deduplicates commute impact alerts and emits a new alert for an edited closure', () => {
+    const store = new Store(':memory:'); cleanup.push(() => store.close()); const saved = store.saveClosure(closure);
+    const commute: Commute = { id: 'commute', name: 'Office', origin: { name: 'A', coordinate: [73, 33] },
+      destination: { name: 'B', coordinate: [73.1, 33.1] }, days: [3], departureTime: '17:00', enabled: true,
+      createdAt: '', updatedAt: '' };
+    const planner = () => ({ ...emptyPlan, conflicts: [{ closureId: saved.id, title: saved.title, entryAt: closure.startsAt, exitAt: closure.endsAt! }] });
+    const now = Date.parse('2026-10-14T10:00:00Z'); checkCommute(store, commute, planner, now); checkCommute(store, commute, planner, now);
+    expect(store.list('alert')).toHaveLength(1);
+    store.saveClosure({ ...closure, title: 'Edited advice' }, saved.id, 1); checkCommute(store, commute, planner, now);
+    expect(store.list('alert')).toHaveLength(2);
+  });
+  it('purges raw points after day30 and deletes the summary after day90', () => {
+    const store = new Store(':memory:'); cleanup.push(() => store.close()); const now = Date.parse('2026-10-14T12:00:00Z');
+    const trip: Trip = { id: 'private-trip', name: 'Personal', startedAt: '2026-09-01T12:00:00Z', endedAt: '2026-09-01T12:01:00Z',
+      points: [{ coordinate: [73, 33], timestamp: '2026-09-01T12:00:00Z', accuracy: 5 }],
+      contributeToRoadDiscovery: false, distanceMeters: 120, durationSeconds: 60, gaps: 0, createdAt: '2026-09-01T12:01:00Z' };
+    store.put('trip', trip); applyRetention(store, now);
+    expect(store.get<Trip>('trip', trip.id)?.points).toEqual([]); expect(store.get<Trip>('trip', trip.id)?.distanceMeters).toBe(120);
+    applyRetention(store, now + 100 * 86400_000); expect(store.get('trip', trip.id)).toBeUndefined();
+  });
+  it('retains every authoritative published closure and expires old GPS beyond display bounds', () => {
+    const store = new Store(':memory:'); cleanup.push(() => store.close());
+    const now = Date.parse('2026-10-14T12:00:00Z');
+    store.put('closure', { ...closure, id: 'older-active', revision: 1, createdAt: '2025-01-01T00:00:00Z', updatedAt: '2025-01-01T00:00:00Z' }, '2025-01-01T00:00:00Z');
+    store.put('trip', { id: 'old-private', endedAt: '2025-01-01T00:00:00Z', points: [[73, 33]] }, '2025-01-01T00:00:00Z');
+    store.transaction(() => {
+      for (let i = 0; i < 5001; i++) {
+        store.put('trip', { id: `new-${i}`, endedAt: '2026-10-14T11:00:00Z', points: [] });
+        if (i < 2001) store.put('closure', { ...closure, id: `cancelled-${i}`, status: 'cancelled' });
+      }
+    });
+    expect(store.routingClosures().map(item => item.id)).toEqual(['older-active']);
+    applyRetention(store, now); expect(store.get('trip', 'old-private')).toBeUndefined();
+  });
+});

@@ -13,3 +13,9 @@ Thumbs.db
 .wwebjs_auth/
 .wwebjs_cache/
 .baileys_auth/
+data/
+.playwright/
+test-results/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm

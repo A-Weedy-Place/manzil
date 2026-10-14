@@ -1,0 +1,98 @@
+{
+  "dataset": "Bounded central Islamabad OpenStreetMap highways and turn restrictions",
+  "downloaded_at": "2026-10-14T18:19:56.512Z",
+  "bounds": [
+    72.97,
+    33.6,
+    73.16,
+    33.75
+  ],
+  "source": {
+    "endpoint": "https://overpass-api.de/api/interpreter",
+    "query": "[out:json][timeout:40][maxsize:134217728];way[\"highway\"](33.60,72.97,33.75,73.16)->.roads;rel(bw.roads)[\"type\"=\"restriction\"]->.restrictions;(.roads;.restrictions;);(._;>>;);out body;",
+    "generator": "Overpass API 0.7.62.11 87bfad18",
+    "osm_base_timestamp": "2026-10-14T18:17:34Z",
+    "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+  },
+  "license": {
+    "name": "Open Database License (ODbL) 1.0",
+    "url": "https://opendatacommons.org/licenses/odbl/1-0/",
+    "attribution": "© OpenStreetMap contributors",
+    "attribution_url": "https://www.openstreetmap.org/copyright"
+  },
+  "counts": {
+    "nodes": 129266,
+    "ways": 25910,
+    "relations": 1
+  },
+  "integrity": {
+    "missing_way_nodes": 0,
+    "missing_relation_members": 0,
+    "sha256_gzip": "a325a79532d60c586d84ed6762f955c5e749a29de67fe11e22a8c4e44b73b724",
+    "uncompressed_bytes": 17089749,
+    "compressed_bytes": 2181839
+  },
+  "scope_notes": [
+    "Central Islamabad bounding box chosen to keep the prototype extract small and reproducible.",
+    "All highway-tagged ways selected by the Overpass bounding-box filter, with complete referenced nodes.",
+    "Restriction relations attached to selected highway ways and their complete recursive members are included.",
+    "Geometry can extend outside the bounding box to preserve complete ways and restriction relations.",
+    "No synthetic roads or synthetic map fallback is included.",
+    "The local routing builder must filter highway types, access, motor vehicle permissions, directionality and supported restriction semantics."
+  ],
+  "bounds_order": "west,south,east,north",
+  "highway_classes": {
+    "residential": 12044,
+    "service": 5029,
+    "footway": 2216,
+    "living_street": 2178,
+    "tertiary": 883,
+    "unclassified": 605,
+    "secondary": 540,
+    "path": 504,
+    "primary": 300,
+    "primary_link": 254,
+    "track": 231,
+    "trunk_link": 202,
+    "tertiary_link": 161,
+    "steps": 140,
+    "pedestrian": 134,
+    "trunk": 133,
+    "secondary_link": 128,
+    "busway": 115,
+    "cycleway": 64,
+    "construction": 27,
+    "rest_area": 9,
+    "corridor": 6,
+    "road": 4,
+    "raceway": 1,
+    "elevator": 1,
+    "bus_guideway": 1
+  },
+  "restrictions": [
+    {
+      "id": 17584739,
+      "tags": {
+        "restriction": "no_u_turn",
+        "type": "restriction"
+      },
+      "members": [
+        {
+          "type": "way",
+          "ref": 701407538,
+          "role": "from"
+        },
+        {
+          "type": "node",
+          "ref": 244000996,
+          "role": "via"
+        },
+        {
+          "type": "way",
+          "ref": 701407538,
+          "role": "to"
+        }
+      ]
+    }
+  ]
+}
