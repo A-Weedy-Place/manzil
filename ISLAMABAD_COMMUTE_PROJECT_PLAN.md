@@ -12,6 +12,8 @@ The recommended deadline stack is **Leaflet + OpenStreetMap tiles + hosted openr
 
 **Safar's web map uses Leaflet with CARTO Voyager raster tiles derived from OpenStreetMap.** We can obtain that basemap style independently and put our original closure and detour layers above it. Section 19 records the evidence, current service conditions, and the distinction between map appearance and routing. [Safar Islamabad map](https://www.safar.fyi/islamabad)
 
+The [mapping and similar-product comparison](MAPPING_PROJECT_COMPARISON.md) adds CommuteScout, Waze's advance-event workflow, Ghostway, and other close precedents. Given the founder's interest in 3D, **MapLibre + OpenFreeMap** is now a candidate frontend alternative to Leaflet; the ORS/event/planning backend remains the same. Inspect local visual data and setup effort before choosing one renderer.
+
 **Rerouting is a required core feature.** The prototype must demonstrate a valid connected detour around a reviewed test closure when such a detour is available. Warnings and earlier departure are additional choices; they do not replace that acceptance check. When no route can be validated, the correct result is an explicit unavailable/inconclusive state.
 
 ### 1.1 Features to build first
