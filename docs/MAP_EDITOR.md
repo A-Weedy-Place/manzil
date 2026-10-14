@@ -4,7 +4,7 @@ This describes the implemented localhost interface. The full product inventory r
 
 ## Map display and preferences
 
-The map uses **MapLibre GL JS 6** and OpenFreeMap's public vector styles: **Positron** for light mode and **Dark** for dark mode. Default **Clean** detail removes venue/POI labels, building details and road shields, and delays smaller street names until closer zoom. **Standard** restores the provider's ordinary two-dimensional detail. Both modes retain a flat, north-up map with pitch and rotation disabled; there is no terrain or 3D building rendering.
+The map uses **MapLibre GL JS 6** and OpenFreeMap. **Streets** is the colourful default; **Outdoors, High contrast, Minimal and Night** are available from Style on the map or Profile. Map styles are independent of the app's light/dark/system theme. Default **Clean** detail removes venue/POI labels, building details and road shields, and delays smaller street names until closer zoom. **Standard** restores ordinary two-dimensional detail. All choices remain flat and north-up, with pitch/rotation disabled. See [MAP_STYLES.md](MAP_STYLES.md).
 
 Style, tile, font and sprite requests need internet. This configuration has no paid basemap key and does not use the old `VITE_MAPTILER_KEY` raster option. OpenFreeMap/OpenMapTiles/OpenStreetMap attribution remains available in the map's attribution control; preserve it. Provider setup follows the [official OpenFreeMap guide](https://openfreemap.org/quick_start/).
 

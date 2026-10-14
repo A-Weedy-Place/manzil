@@ -79,6 +79,6 @@ export const tripSchema = z.object({
 export const noticeSchema = z.object({ text: z.string().trim().min(1).max(20_000), url: webUrl.optional(), publishedAt: instantSchema.nullable().optional() });
 export const profilePatchSchema = z.object({
   displayName: z.string().trim().min(1).max(60), theme: z.enum(['light', 'dark', 'system']),
-  mapDetail: z.enum(['clean', 'standard']), browserNotifications: z.boolean(),
+  mapDetail: z.enum(['clean', 'standard']), mapStyle: z.enum(['streets', 'outdoors', 'contrast', 'minimal', 'night']), browserNotifications: z.boolean(),
   inferFrequentRoutes: z.boolean(), transport: z.literal('car'),
 }).partial().strict().refine(value => Object.keys(value).length > 0, 'Provide at least one profile preference.');

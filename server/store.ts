@@ -40,11 +40,17 @@ export class Store {
       );
     `);
     if (this.meta<number>('eventRevision') === undefined) this.setMeta('eventRevision', 0);
-    if (!this.meta<LocalProfile>('profile')) {
-      const now = new Date().toISOString();
-      this.setMeta('profile', { id: 'local', displayName: 'Traveller', theme: 'system', mapDetail: 'clean',
-        browserNotifications: false, inferFrequentRoutes: false, transport: 'car', createdAt: now, updatedAt: now } satisfies LocalProfile);
-    }
+    this.transaction(() => {
+      const profile = this.meta<LocalProfile>('profile');
+      if (!profile) {
+        const now = new Date().toISOString();
+        this.setMeta('profile', { id: 'local', displayName: 'Traveller', theme: 'system', mapDetail: 'clean', mapStyle: 'streets',
+          browserNotifications: false, inferFrequentRoutes: false, transport: 'car', createdAt: now, updatedAt: now } satisfies LocalProfile);
+      } else if (profile.mapStyle === undefined) {
+        // Add the independent basemap preference without resetting older preferences or timestamps.
+        this.setMeta('profile', { ...profile, mapStyle: 'streets' });
+      }
+    });
     if (!this.meta<SourceStatus>('sourceStatus')) this.setMeta('sourceStatus', {
       enabled: process.env.X_SCRAPER_ENABLED !== 'false', intervalMinutes: 15, profileUrl: PROFILE_URL,
       lastAttemptAt: null, lastSuccessAt: null, nextCheckAt: null,

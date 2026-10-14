@@ -38,7 +38,7 @@ Try **Find my route**, then **Try a demo restriction** to see a connected detour
 
 ## Implemented local features
 
-1. Clean 2D MapLibre/OpenFreeMap vector map with local place/road search, draggable pins, light/dark/system themes and a map-detail preference.
+1. Clean 2D MapLibre/OpenFreeMap vector map with local place/road search, draggable pins, light/dark/system app themes, five separate map styles and a map-detail preference. Colourful Streets is the default; use the Style button on the map to switch.
 2. Point, road-corridor and polygon restrictions; exact geometry preview, coordinate editing, scheduled start/end, drafts, revisions, cancellation and GeoJSON import/export.
 3. Up to three genuinely different driving routes for the same departure over a bundled OSM graph; clear blue route lines/time labels, distance/ETA cards, closure traversal-time checks and separate earlier/later departure comparisons.
 4. Weekly saved commutes, next-occurrence checks and deduplicated in-app impact alerts while the backend runs.
@@ -56,7 +56,7 @@ npm test
 npm run build
 ```
 
-The current suite has **67 passing tests**, including diverse real-road alternatives, topology/access/direction, closure timing, unavailable routes, persistence, revisions, source deduplication/outbox, consented journey inference/alerts, notification delivery guards and navigation failure/progression logic. Type checking and the production build pass. Browser evidence and verification boundaries are in the implementation status. Real-device GPS, OS notification delivery and successful live X retrieval remain unverified.
+The current suite has **69 passing tests**, including diverse real-road alternatives, topology/access/direction, closure timing, unavailable routes, persistence, revisions, source deduplication/outbox, consented journey inference/alerts, notification delivery guards and navigation failure/progression logic. Type checking and the production build pass. Browser evidence and verification boundaries are in the implementation status. Real-device GPS, OS notification delivery and successful live X retrieval remain unverified.
 
 ## Branding
 

@@ -4,6 +4,8 @@ Owner's instructions, updated 14 October 2026. Team of two; usable prototype tar
 
 ## Current build request
 
+**Colour correction:** keep the low-clutter map, but avoid a grey/dull default. Offer independent basemap styles with green parks, blue water and warm main roads. Streets is the new default; Outdoors, High contrast, Minimal and Night remain selectable and persisted separately from app theme. See [Map styles](docs/MAP_STYLES.md).
+
 **15 October refinement:** the owner found the original raster map cluttered. The supplied Safar Android attribution identifies MapLibre, OpenFreeMap, OpenMapTiles and OSM. The implemented replacement uses MapLibre GL JS in flat 2D, clean OpenFreeMap styles, larger blue route lines and bright red closures. Offer up to three genuinely different driving paths at the same departure, with ETA/distance; departure-time changes remain separate. Add a persisted local personal profile, light/dark/system theme, map detail, explicit browser notification preference and separate opt-in for learning/alerting on usual recorded journeys. Provide route preview and foreground GPS/voice guidance. This remains a localhost prototype: no account authentication, background GPS, live traffic or closed-app push claim.
 
 Build the whole fast 2D map/editor/router experience first. Gemini agent implementation is owned by the user later. The selected source approach is a public, accountless X profile collector checking every **15 minutes**, persisting new notices into an agent-ready queue. Do not silently replace the requested source with WhatsApp, RSS or a paid API. Public access may be partial or blocked; disclose actual coverage and retain deliberate import. Do not bypass access controls.

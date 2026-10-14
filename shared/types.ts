@@ -63,9 +63,10 @@ export interface TripDraft {
   contributeToRoadDiscovery: boolean;
 }
 export interface Trip extends TripDraft { id: string; distanceMeters: number; durationSeconds: number; createdAt: string; gaps: number; pointCount?: number }
+export type MapStyleId = 'streets' | 'outdoors' | 'contrast' | 'minimal' | 'night';
 export interface LocalProfile {
   id: 'local'; displayName: string; theme: 'light' | 'dark' | 'system';
-  mapDetail: 'clean' | 'standard'; browserNotifications: boolean;
+  mapDetail: 'clean' | 'standard'; mapStyle: MapStyleId; browserNotifications: boolean;
   inferFrequentRoutes: boolean; transport: 'car'; createdAt: string; updatedAt: string;
 }
 export interface FrequentRouteProposal {

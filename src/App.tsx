@@ -1,4 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { Palette } from 'lucide-react';
+import type { LocalProfile, MapStyleId } from '../shared/types';
 import { Activity, ArrowDownUp, ArrowRight, ArrowUpRight, Bell, Bookmark, CalendarClock, Check, ChevronRight, Clock3, Download, ExternalLink, Eye, EyeOff, Flag, Inbox, Layers2, LocateFixed, MapPinned, Navigation, Pencil, Plus, RefreshCw, Repeat2, Route, Search, ShieldCheck, SlidersHorizontal, Trash2, TriangleAlert, Upload, UserRound, WifiOff, X } from 'lucide-react';
 import type { Polygon } from 'geojson';
 import type { AppState, Closure, ClosureDraft, Commute, CommuteImpact, Coordinate, Drawing, FrequentRouteProposal, MapFocus, MapMode, Place, PlanResponse, RecordedPoint, RouteOption, SourceNotice, Trip } from '../shared/types';
@@ -10,6 +12,7 @@ import SourcePanel from './components/SourcePanel';
 import CommutePanel from './components/CommutePanel';
 import ActivityPanel from './components/ActivityPanel';
 import ProfilePanel from './components/ProfilePanel';
+import MapStylePicker from './components/MapStylePicker';
 import NavigationPanel from './components/NavigationPanel';
 import { useAlertNotifications } from './lib/notifications';
 import { api, send } from './lib/api';
@@ -30,6 +33,8 @@ export default function App() {
   const [state, setState] = useState<AppState | null>(null);
   const [view, setView] = useState<View>(window.location.hash === '#alerts' ? 'alerts' : 'journey');
   const [panelExpanded, setPanelExpanded] = useState(false);
+  const [mapStylesOpen, setMapStylesOpen] = useState(false);
+  const [mapStyleBusy, setMapStyleBusy] = useState(false);
   const [online, setOnline] = useState(true); const [startupError, setStartupError] = useState('');
   const [origin, setOrigin] = useState<Place | null>(EXAMPLE_ORIGIN);
   const [destination, setDestination] = useState<Place | null>(EXAMPLE_DESTINATION);
@@ -186,6 +191,16 @@ export default function App() {
     await send('/commutes', { name: `Usual journey · ${proposal.departureTime}`, origin: proposal.origin, destination: proposal.destination, departureTime: proposal.departureTime, days: proposal.days, enabled: true });
     await reload(); navigate('commutes'); notify('Usual journey saved. You can check its next departure here.');
   }
+  async function changeMapStyle(mapStyle: MapStyleId) {
+    if (mapStyleBusy || !state || state.profile.mapStyle === mapStyle) return;
+    setMapStyleBusy(true);
+    try {
+      const profile = await send<LocalProfile>('/profile', { mapStyle }, 'PATCH');
+      setState(current => current ? { ...current, profile } : current);
+      await reload();
+    } catch (error) { notify(error instanceof Error ? error.message : 'Could not change the map style.'); }
+    finally { setMapStyleBusy(false); }
+  }
   async function replanFromGPS(coordinate: Coordinate) {
     if (!destination) throw new Error('Choose a destination before starting guidance.');
     const sequence = ++planSequence.current, now = new Date().toISOString();
@@ -202,6 +217,7 @@ export default function App() {
   return <div className="app-shell">
     <a className="skip-link" href="#workspace-panel">Skip to controls</a>
     <header className="app-header"><button className="brand" onClick={() => navigate('journey')} aria-label="Manzil journey planner"><img src="/manzil-logo.png" width="42" height="42" alt="Manzil Urdu calligraphy" /><span className="brand-name">manzil<span className="brand-dot">.</span></span><span className="brand-divider" /><span className="brand-tagline">Your way, planned ahead.</span></button><div className="header-actions"><span className="local-badge"><span className={online ? 'status-dot' : 'status-dot offline'} />Islamabad</span><button className={`icon-button notification-button ${view === 'alerts' ? 'selected' : ''}`} aria-label={`Alerts${unread ? `, ${unread} unread` : ''}`} onClick={() => navigate('alerts')}><Bell size={22} />{unread > 0 && <span className="notification-count">{unread}</span>}</button><button className="workspace-avatar" aria-label="Open profile and settings" onClick={() => navigate('profile')}>{(state?.profile?.displayName ?? 'M').slice(0, 1).toUpperCase()}</button></div></header>
+    {mapStylesOpen && state && <MapStylePicker value={state.profile.mapStyle ?? 'streets'} disabled={mapStyleBusy} onChange={changeMapStyle} onClose={() => setMapStylesOpen(false)} />}
     <div className="workspace">
       <nav className="nav-rail" aria-label="Main navigation">{NAV.map(({ id, icon: Icon, label }) => <button className={`nav-item ${view === id || id === 'journey' && view === 'navigation' || id === 'profile' && view === 'sources' ? 'active' : ''}`} key={id} aria-current={view === id ? 'page' : undefined} onClick={() => navigate(id)}><Icon size={23} strokeWidth={1.9} aria-hidden="true" /><span>{label}</span></button>)}<div className="rail-bottom"><span>منزل</span><small>ISB</small></div></nav>
       <aside ref={panelRef} className={`side-panel ${panelExpanded ? 'is-expanded' : ''}`} id="workspace-panel" aria-label={`${view} controls`}>
@@ -247,8 +263,8 @@ export default function App() {
         </>}
       </aside>
       <main className="map-workspace" aria-label="Journey map"><Suspense fallback={<div className="map-status" role="status">Loading the map…</div>}>
-        <MapView theme={theme} mapDetail={state?.profile?.mapDetail ?? 'clean'} navigationPosition={navigationPosition} followPosition={view === 'navigation'} routeOptions={view === 'navigation' ? (selectedRoute ? [selectedRoute] : []) : stale ? [] : plan?.options ?? []} onRouteSelect={id => setSelectedRouteId(id)} mode={mode} origin={origin} destination={destination} closures={state?.closures ?? []} selectedClosureId={selectedClosure} selectedRoute={selectedRoute} baseline={stale ? null : plan?.baseline ?? null} drawing={editorOpen && view === 'closures' ? drawing : null} departureAt={mapDepartureAt} focus={focus} showClosures={showClosures} showBaseline={showBaseline} recordedPoints={recordedPoints.length ? recordedPoints : historyTrace} onPick={pick} onDraw={setDrawing} onEndpointMove={changeEndpoint} onClosureSelect={id => { if (editorOpen) { notify('Finish or cancel the current edit before selecting another restriction.'); return; } setSelectedClosure(id); navigate('closures'); }} />
-        <div className="map-topline"><div className="city-chip"><MapPinned size={17} /><span>Islamabad<span className="city-chip-country">, Pakistan</span></span><span className="city-chip-dot" /></div><div className="map-layer-controls"><button aria-label="Show restrictions layer" aria-pressed={showClosures} className={showClosures ? 'active' : ''} onClick={() => setShowClosures(!showClosures)}><Flag size={15} /><span>Restrictions</span>{activeCount + upcomingCount > 0 && <b>{activeCount + upcomingCount}</b>}</button>{plan?.baseline && <button aria-label="Show original route layer" aria-pressed={showBaseline} className={showBaseline ? 'active' : ''} onClick={() => setShowBaseline(!showBaseline)}>{showBaseline ? <Eye size={15} /> : <EyeOff size={15} />}<span>Original route</span></button>}</div></div>
+        <MapView theme={theme} mapStyle={state?.profile?.mapStyle ?? 'streets'} mapDetail={state?.profile?.mapDetail ?? 'clean'} navigationPosition={navigationPosition} followPosition={view === 'navigation'} routeOptions={view === 'navigation' ? (selectedRoute ? [selectedRoute] : []) : stale ? [] : plan?.options ?? []} onRouteSelect={id => setSelectedRouteId(id)} mode={mode} origin={origin} destination={destination} closures={state?.closures ?? []} selectedClosureId={selectedClosure} selectedRoute={selectedRoute} baseline={stale ? null : plan?.baseline ?? null} drawing={editorOpen && view === 'closures' ? drawing : null} departureAt={mapDepartureAt} focus={focus} showClosures={showClosures} showBaseline={showBaseline} recordedPoints={recordedPoints.length ? recordedPoints : historyTrace} onPick={pick} onDraw={setDrawing} onEndpointMove={changeEndpoint} onClosureSelect={id => { if (editorOpen) { notify('Finish or cancel the current edit before selecting another restriction.'); return; } setSelectedClosure(id); navigate('closures'); }} />
+        <div className="map-topline"><div className="city-chip"><MapPinned size={17} /><span>Islamabad<span className="city-chip-country">, Pakistan</span></span><span className="city-chip-dot" /></div><div className="map-layer-controls"><button type="button" className="map-style-trigger" aria-label="Choose map style" aria-expanded={mapStylesOpen} aria-controls="map-style-picker" onClick={() => setMapStylesOpen(!mapStylesOpen)}><Palette size={17} /><span>Style</span></button><button aria-label="Show restrictions layer" aria-pressed={showClosures} className={showClosures ? 'active' : ''} onClick={() => setShowClosures(!showClosures)}><Flag size={15} /><span>Restrictions</span>{activeCount + upcomingCount > 0 && <b>{activeCount + upcomingCount}</b>}</button>{plan?.baseline && <button aria-label="Show original route layer" aria-pressed={showBaseline} className={showBaseline ? 'active' : ''} onClick={() => setShowBaseline(!showBaseline)}>{showBaseline ? <Eye size={15} /> : <EyeOff size={15} />}<span>Original route</span></button>}</div></div>
         {mapInstructions && <div className="map-instructions" role="status"><span className="status-dot" />{mapInstructions}<button className="icon-button small" aria-label="Stop map selection" onClick={() => setMode('browse')}><X size={16} /></button></div>}
         <div className="map-actions"><button className="map-action" aria-label="Use my location as start" title="Use my location as start" onClick={locate}><LocateFixed size={20} /></button><button className={`map-action ${editorOpen ? 'active' : ''}`} aria-label="Add restriction on map" title="Add restriction" onClick={() => beginClosure()}><Plus size={21} /></button><button className="map-action" aria-label="Fit journey on map" title="Fit journey" onClick={() => { if (selectedRoute) focusPoints(selectedRoute.geometry.coordinates as Coordinate[]); else if (origin && destination) focusPoints([origin.coordinate, destination.coordinate]); else focusPoints([[72.97, 33.60], [73.16, 33.75]]); }}><MapPinned size={20} /></button></div>
         <div className="map-bottom-info"><div className="map-legend"><span><i className="legend-line" />Your route</span><span><i className="legend-block" />Restriction</span><span><i className="legend-upcoming" />Scheduled</span></div><div className="map-context">{historyTrace.length && !recordedPoints.length ? <><Activity size={14} />{historyName}<button className="icon-button small" aria-label="Hide recorded trip" onClick={() => setHistoryTrace([])}><X size={13} /></button></> : <><Clock3 size={14} />{dayDate(mapDepartureAt)} · {time(mapDepartureAt)} PKT</>}</div></div>

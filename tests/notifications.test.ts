@@ -3,7 +3,7 @@ import type { Alert, AppState, LocalProfile } from '../shared/types';
 import { AlertNotificationTracker, canNotifyAlert, readNotifiedIds, showJourneyNotification } from '../src/lib/notifications';
 
 const NOW = Date.parse('2026-10-15T12:00:00Z');
-const profile: LocalProfile = { id: 'local', displayName: 'Traveller', theme: 'system', mapDetail: 'clean',
+const profile: LocalProfile = { id: 'local', displayName: 'Traveller', theme: 'system', mapDetail: 'clean', mapStyle: 'streets',
   browserNotifications: true, inferFrequentRoutes: false, transport: 'car', createdAt: '', updatedAt: '' };
 const alert = (id: string, changes: Partial<Alert> = {}): Alert => ({ id, title: 'Journey disruption', message: 'Review your next trip.',
   createdAt: new Date(NOW).toISOString(), read: false, ...changes });

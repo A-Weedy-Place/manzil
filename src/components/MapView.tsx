@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AttributionControl, Map as LibreMap, Marker, NavigationControl, ScaleControl, setWorkerCount, setWorkerUrl, type GeoJSONSource } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import type { Feature, FeatureCollection, Geometry, Polygon } from 'geojson';
-import type { Closure, Coordinate, Drawing, MapFocus, MapMode, Place, RecordedPoint, RouteOption, RoutePath } from '../../shared/types';
+import type { Closure, Coordinate, Drawing, MapFocus, MapMode, MapStyleId, Place, RecordedPoint, RouteOption, RoutePath } from '../../shared/types';
 import { closureState } from '../lib/format';
 import { api } from '../lib/api';
 import { emptyMapStyle, loadMapStyle, MAP_ATTRIBUTION, type MapDetail, type MapTheme } from '../lib/mapStyle';
@@ -17,7 +17,7 @@ export interface MapViewProps {
   routeOptions?: RouteOption[]; onRouteSelect?: (id: string) => void;
   drawing: Drawing | null; departureAt: string; focus: MapFocus | null;
   showClosures: boolean; showBaseline: boolean; recordedPoints: RecordedPoint[];
-  theme?: MapTheme; mapDetail?: MapDetail;
+  theme?: MapTheme; mapDetail?: MapDetail; mapStyle?: MapStyleId;
   navigationPosition?: Coordinate | null; followPosition?: boolean;
   onPick: (coordinate: Coordinate) => void; onDraw: (drawing: Drawing) => void;
   onEndpointMove: (letter: 'A' | 'B', coordinate: Coordinate) => void;
@@ -132,13 +132,13 @@ export default function MapView(props: MapViewProps) {
   const [styleLoading, setStyleLoading] = useState(true);
   const [preview, setPreview] = useState<{ drawing: Drawing; geometry: Polygon } | null>(null);
   const [previewError, setPreviewError] = useState(false);
-  const theme = props.theme ?? 'light', detail = props.mapDetail ?? 'clean';
+  const mapStyle = props.mapStyle ?? 'streets', theme = mapStyle === 'night' ? 'dark' : 'light', detail = props.mapDetail ?? 'clean';
 
   useEffect(() => {
     if (!container.current) return;
     let map: LibreMap;
     try {
-      map = new LibreMap({ container: container.current, style: emptyMapStyle(current.current.theme ?? 'light'), center: [73.052, 33.715], zoom: 11.9, minZoom: 6, maxZoom: 19,
+      map = new LibreMap({ container: container.current, style: emptyMapStyle(current.current.mapStyle === 'night' ? 'dark' : 'light'), center: [73.052, 33.715], zoom: 11.9, minZoom: 6, maxZoom: 19,
         pitch: 0, minPitch: 0, maxPitch: 0, bearing: 0, dragRotate: false, pitchWithRotate: false, touchPitch: false,
         renderWorldCopies: false, pixelRatio: Math.min(window.devicePixelRatio || 1, 1.75), reduceMotion: reducedMotion(), fadeDuration: 0, maxTileCacheZoomLevels: 2, attributionControl: false });
     } catch {
@@ -184,13 +184,13 @@ export default function MapView(props: MapViewProps) {
     const controller = new AbortController(); let cancelled = false;
     setStyleLoading(true); setTileError('');
     const timer = setTimeout(() => controller.abort(), 15000);
-    loadMapStyle(theme, detail, controller.signal).then(style => {
+    loadMapStyle(mapStyle, detail, controller.signal).then(style => {
       if (!cancelled && mapRef.current === map) { map.setStyle(style, { diff: false }); setStyleLoading(false); }
     }).catch(() => {
       if (!cancelled && mapRef.current === map) { setTileError('The basemap could not update. Local routes and editing remain available over the existing map or a plain background. Check your connection.'); setStyleLoading(false); }
     });
     return () => { cancelled = true; clearTimeout(timer); controller.abort(); };
-  }, [theme, detail, retry]);
+  }, [mapStyle, detail, retry]);
 
   useEffect(() => {
     setPreview(null); setPreviewError(false);

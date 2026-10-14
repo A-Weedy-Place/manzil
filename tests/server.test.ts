@@ -38,7 +38,7 @@ describe('local API', () => {
   it('keeps one local profile, validates partial preferences, and exposes consent-gated proposals', async () => {
     const { request } = await setup();
     const initial = await (await request('/profile')).json();
-    expect(initial).toMatchObject({ id: 'local', displayName: 'Traveller', theme: 'system', mapDetail: 'clean',
+    expect(initial).toMatchObject({ id: 'local', displayName: 'Traveller', theme: 'system', mapDetail: 'clean', mapStyle: 'streets',
       browserNotifications: false, inferFrequentRoutes: false, transport: 'car' });
     const changed = await request('/profile', 'PATCH', { displayName: 'Ali', theme: 'dark', browserNotifications: true });
     expect(changed.status).toBe(200); expect(await changed.json()).toMatchObject({ displayName: 'Ali', theme: 'dark', browserNotifications: true, inferFrequentRoutes: false });
@@ -49,6 +49,17 @@ describe('local API', () => {
     expect((await request('/profile', 'PATCH', { transport: 'bus' })).status).toBe(400);
     expect((await request('/profile', 'PATCH', { inferFrequentRoutes: 'yes' })).status).toBe(400);
     expect((await request('/profile', 'PATCH', {})).status).toBe(400);
+  });
+  it('saves independent map styles and rejects unsupported styles without changing preferences', async () => {
+    const { request } = await setup();
+    for (const mapStyle of ['streets', 'outdoors', 'contrast', 'minimal', 'night']) {
+      const response = await request('/profile', 'PATCH', { mapStyle }); expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ mapStyle, theme: 'system', mapDetail: 'clean' });
+    }
+    await request('/profile', 'PATCH', { theme: 'dark', mapStyle: 'streets' });
+    expect((await (await request('/state')).json()).profile).toMatchObject({ theme: 'dark', mapStyle: 'streets' });
+    for (const mapStyle of ['satellite', '', null, 1]) expect((await request('/profile', 'PATCH', { mapStyle })).status).toBe(400);
+    expect(await (await request('/profile')).json()).toMatchObject({ theme: 'dark', mapStyle: 'streets', displayName: 'Traveller' });
   });
   it('persists versioned closures, refuses stale edits, and soft-cancels', async () => {
     const { store, request } = await setup();
@@ -125,12 +136,25 @@ describe('durability, commute time, and privacy retention', () => {
     const notice = store.upsertNotice({ source: 'manual', sourceId: 'durable-notice', url: '', text: 'A public notice',
       publishedAt: null, mediaUrls: [], contentHash: 'fixture-hash' }).notice;
     store.updateSourceStatus({ nextCheckAt: '2026-10-14T12:15:00Z', state: 'partial' });
-    store.updateProfile({ displayName: 'A local traveller', theme: 'dark', mapDetail: 'clean', inferFrequentRoutes: true });
+    store.updateProfile({ displayName: 'A local traveller', theme: 'dark', mapDetail: 'clean', mapStyle: 'outdoors', inferFrequentRoutes: true });
     store.close(); store = new Store(path); cleanup.push(() => store.close());
     expect(store.get('closure', first.id)).toMatchObject({ title: closure.title, revision: 1 }); expect(store.eventRevision).toBe(1);
     expect(store.pendingAgentNotices()[0].id).toBe(notice.id); expect(store.pendingAgentCount()).toBe(1);
     expect(store.sourceStatus().nextCheckAt).toBe('2026-10-14T12:15:00Z');
-    expect(store.profile()).toMatchObject({ id: 'local', displayName: 'A local traveller', theme: 'dark', inferFrequentRoutes: true });
+    expect(store.profile()).toMatchObject({ id: 'local', displayName: 'A local traveller', theme: 'dark', mapStyle: 'outdoors', inferFrequentRoutes: true });
+  });
+  it('backfills a legacy profile map style once without resetting preferences or timestamps', () => {
+    const folder = mkdtempSync(join(tmpdir(), 'manzil-profile-migration-'));
+    cleanup.push(() => rmSync(folder, { recursive: true, force: true }));
+    const path = join(folder, 'state.sqlite'); let store = new Store(path);
+    const { mapStyle: _oldStyle, ...legacy } = { ...store.profile(), displayName: 'Existing traveller', theme: 'dark' as const,
+      mapDetail: 'standard' as const, browserNotifications: true, inferFrequentRoutes: true,
+      createdAt: '2026-10-01T12:00:00.000Z', updatedAt: '2026-10-02T12:00:00.000Z' };
+    store.setMeta('profile', legacy); store.close(); store = new Store(path);
+    expect(store.profile()).toEqual({ ...legacy, mapStyle: 'streets' });
+    const chosen = store.updateProfile({ mapStyle: 'night' }); store.close(); store = new Store(path);
+    cleanup.push(() => store.close());
+    expect(store.profile()).toEqual(chosen); expect(store.profile().createdAt).toBe(legacy.createdAt);
   });
   it('calculates weekdays and midnight in Islamabad time, not server timezone', () => {
     const commute: Commute = { id: 'commute', name: 'Office', origin: { name: 'A', coordinate: [73, 33] },

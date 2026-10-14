@@ -20,12 +20,12 @@ Local core delivered 14 October 2026; map/routing/profile/navigation redesign im
 | Repository research, brand and full feature context | Present |
 | Shared types / npm scaffolding | Implemented and installed; Node 22.20.0 |
 | Local graph and routing | Real bounded OSM graph; up to three distinct same-time routes; 22 routing tests pass |
-| Local API/storage/source/profile | Persistent SQLite; 24 backend/source/profile tests pass |
+| Local API/storage/source/profile | Persistent SQLite; 26 backend/source/profile tests pass |
 | Map/editor/interface | Clean MapLibre/OpenFreeMap 2D map, red closures, larger blue routes, preferences and expandable mobile controls |
 | Personal notifications | Saved + consented inferred journeys; opt-in browser delivery; six notification guard tests pass |
 | Navigation | Route preview and approximate foreground GPS/voice guidance; 15 navigation tests pass |
 | Browser verification | New renderer inspected at 1280×800 and small-phone size; workflow evidence below |
-| Build and tests | Type/build passes; 67/67 tests pass; npm audit reports zero vulnerabilities |
+| Build and tests | Type/build passes; 69/69 tests pass; npm audit reports zero vulnerabilities |
 | Live X collection | Scheduler and collector implemented; this network rejected navigation, so live retrieval is unverified |
 | Gemini, Cloud deployment and external push | Deferred to the owner as requested |
 
@@ -69,6 +69,10 @@ Local synthetic restrictions and the commute are labelled **Demo** and stored on
 - GPS/voice/OS delivery rely on mocked fixtures in automated checks. No real outdoor navigation, browser location permission or OS notification permission was exercised. New initial alerts are seeded quietly, and disabled/old/read alerts cannot be replayed by enabling preferences.
 
 ## Practical boundaries and remaining work
+
+### Colour refinement
+
+The owner found Positron too grey. Added five persisted, independently selectable basemap palettes and a direct **Style** button with illustrated choices. **Streets** now uses colourful Liberty; Outdoors uses Bright; High contrast strengthens road/label colours; Minimal and Night remain options. The local profile migration preserves previous settings/timestamps. Actual browser checks confirmed the colourful default, style selection and route-option preservation. A light app with a Night map was verified independently. **69 tests pass** and production type/build passes. Current bundle is approximately 332 kB shell JS / 103 kB gzip, 1,066 kB map JS / 292 kB gzip and 139 kB CSS / 22 kB gzip. See [MAP_STYLES.md](MAP_STYLES.md).
 
 - **X access:** an enabled local server attempts the fixed public profile every 15 minutes. Network/browser restrictions, login walls, incomplete timelines and missing media text can prevent or limit capture. Do not interpret a failed/partial check as an absence of closures. Manual notice import remains usable. See [INGESTION_IMPLEMENTATION.md](INGESTION_IMPLEMENTATION.md).
 - **Gemini:** no extraction model or automated road publication runs yet. The future agent should consume pending notices, preserve evidence, propose geometry/timing and use review before publication. Current closure APIs and outbox contracts are documented in [API.md](API.md).

@@ -9,7 +9,7 @@ Responses are the domain objects in [`shared/types.ts`](../shared/types.ts), wit
 | `GET /api/health` | — | Storage, graph readiness, pending-agent count; no private content |
 | `GET /api/state` | — | `AppState`: closures, commutes, alerts, notices, trips, source state, graph state, event revision |
 | `GET /api/profile` | — | The single persisted `LocalProfile` |
-| `PATCH /api/profile` | Any nonempty subset of `displayName`, `theme`, `mapDetail`, `browserNotifications`, `inferFrequentRoutes`, `transport` | Updated `LocalProfile`; unknown properties and edits to ID/timestamps are rejected |
+| `PATCH /api/profile` | Any nonempty subset of `displayName`, `theme`, `mapDetail`, `mapStyle`, `browserNotifications`, `inferFrequentRoutes`, `transport` | Updated `LocalProfile`; unknown properties and edits to ID/timestamps are rejected |
 | `GET /api/frequent-routes` | — | `FrequentRouteProposal[]` learned from consented local trip analysis; empty while consent is off; no raw traces |
 | `GET /api/places?q=...` | Optional local name query, at most 160 characters | Up to 12 local landmarks or imported OSM road names; this is not a global geocoder |
 | `POST /api/geometry` | `Drawing` | GeoJSON `Polygon`; point/line width is the full corridor width in meters |
@@ -44,7 +44,9 @@ Enabled commutes are checked after relevant saves and once a minute while the se
 
 ## Local profile and usual-journey consent
 
-There is one profile per local SQLite database, shared by browsers opening this installation. It is a preferences record, **not an account, login, identity boundary, or separate person's protected storage**. Its ID is always `local`; defaults are `displayName: Traveller`, `theme: system`, `mapDetail: clean`, `browserNotifications: false`, `inferFrequentRoutes: false`, and `transport: car`. The server controls `createdAt` and `updatedAt`. Display names must be 1–60 nonblank characters; theme is `light`, `dark`, or `system`; map detail is `clean` or `standard`. Other transport modes are not implemented.
+There is one profile per local SQLite database, shared by browsers opening this installation. It is a preferences record, **not an account, login, identity boundary, or separate person's protected storage**. Its ID is always `local`; defaults are `displayName: Traveller`, `theme: system`, `mapDetail: clean`, `mapStyle: streets`, `browserNotifications: false`, `inferFrequentRoutes: false`, and `transport: car`. The server controls `createdAt` and `updatedAt`. Display names must be 1–60 nonblank characters; theme is `light`, `dark`, or `system`; map detail is `clean` or `standard`. Other transport modes are not implemented.
+
+`mapStyle` independently selects the basemap: `streets`, `outdoors`, `contrast`, `minimal`, or `night`. It is separate from both the app's light/dark theme and the label-detail preference. The default is colourful streets (the frontend's Liberty style), even when the app theme is dark. Existing profiles without this field are backfilled to `streets` when the database opens, preserving all other preferences and both profile timestamps; a previously selected style is never reset. Unsupported values return 400 without changing the saved profile. Each valid selection persists across server restarts.
 
 `browserNotifications` records the user's preference; the browser must separately grant notification permission. It does not grant permission itself, stop in-app alerts, register a push service, or deliver while the local app/backend is stopped. The UI should only display inferred-route browser notifications when `inferFrequentRoutes` is also enabled. Existing in-app warning history is retained after opting out.
 
