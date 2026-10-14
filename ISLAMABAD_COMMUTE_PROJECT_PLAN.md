@@ -10,6 +10,8 @@ Build a web app that turns local traffic notices into advance advice for a perso
 
 The recommended deadline stack is **Leaflet + OpenStreetMap tiles + hosted openrouteservice (ORS)**, with **Gemini, Cloud Run, and Firestore** for our original AI/event/planning backend. ORS accepts avoidance polygons directly, reducing the work needed to generate detours. It has no live traffic feed, so label its travel times as ordinary estimates. Google Maps with road-aware via waypoints remains a viable alternative when traffic estimates justify the extra candidate-search work. Our application owns event schedules, review, and validation in either stack. [ORS routing options](https://giscience.github.io/openrouteservice/api-reference/endpoints/directions/routing-options) · [ORS traffic guidance](https://ask.openrouteservice.org/t/isochrone-trafic-data/7875)
 
+**Safar's web map uses Leaflet with CARTO Voyager raster tiles derived from OpenStreetMap.** We can obtain that basemap style independently and put our original closure and detour layers above it. Section 19 records the evidence, current service conditions, and the distinction between map appearance and routing. [Safar Islamabad map](https://www.safar.fyi/islamabad)
+
 **Rerouting is a required core feature.** The prototype must demonstrate a valid connected detour around a reviewed test closure when such a detour is available. Warnings and earlier departure are additional choices; they do not replace that acceptance check. When no route can be validated, the correct result is an explicit unavailable/inconclusive state.
 
 ### 1.1 Features to build first
@@ -174,6 +176,8 @@ Keep the data model source-independent. Future adapters can support traffic poli
 ### 4.4 Safar and public transport
 
 Safar exposes routes, ordered stops, fares, and scheduled timings for Islamabad/Rawalpindi and other cities. Its own website distinguishes schedules from live vehicle tracking. Its store listing says it is independent of CDA/PMA. No verified public developer API, open repository, downloadable GTFS feed, or redistribution license was found; these may exist privately, but are not established integration assets. [Safar](https://www.safar.fyi/) · [App listing](https://play.google.com/store/apps/details?id=com.safar.fyi)
+
+The web frontend's map stack has now been verified separately: Leaflet with React bindings and CARTO Voyager raster tiles. Its own journey-search endpoints are visible in client code, but that does not establish a supported third-party API or permission to reuse its transit dataset. See section 19. The Android map implementation and backend route engine remain unverified.
 
 CDA publishes route/headway tables and timetable PDFs, including direction-specific schedules. Its Metro app advertises tracking/arrival features, but that does not grant access to its backend. Public real-time API/GTFS entitlement and an open timetable redistribution license were not established. [CDA transit](https://www.cda.gov.pk/cdaTransitMap) · [Metro app](https://play.google.com/store/apps/details?id=com.kentkart.cdamobile) · [CDA terms](https://www.cda.gov.pk/termsAndConditions)
 
@@ -787,3 +791,41 @@ This ordering puts the hardest product requirement—real rerouting—before a l
 ### 18.3 Brand assets
 
 Manzil is spelled **منزل** in Urdu. The primary circular calligraphy mark is assets/brand/manzil-logo-v1.png, a transparent RGBA image. Its generation prompt, file properties, and usage notes are in assets/brand/README.md. Treat it as the first raster brand asset; no vector file is claimed.
+
+## 19 Safar mapping reference
+
+### 19.1 Confirmed web stack
+
+Inspected Safar's rendered Islamabad page and public JavaScript on 14 October 2026. These observations apply to the web map; they do not establish the Android application's implementation.
+
+| Layer | Confirmed choice | Evidence |
+| --- | --- | --- |
+| Interactive map renderer | Leaflet, with React map/container and tile-layer bindings | Rendered container has Leaflet classes and controls; public map bundles contain the Leaflet implementation and React bindings. |
+| Basemap provider and style | CARTO Voyager, raster tiles | Loaded images use `basemaps.cartocdn.com/rastertiles/voyager/` with zoom/x/y PNG coordinates. |
+| Underlying basemap data | OpenStreetMap | Visible map attribution credits OpenStreetMap contributors and CARTO. |
+| Transit content | Route paths and station information displayed above the basemap | The page offers whole-network and selected-route views. Their appearance is separate from the street-map tiles. |
+| Journey-planning API boundary | Safar's own `/api/v2/journeys/search`, with a legacy `/api/routes` endpoint in the client | Public journey-planner bundle contains these calls. This does not identify the server's route algorithm or establish a supported integration API. |
+
+Primary evidence: [Islamabad map](https://www.safar.fyi/islamabad), [public map/library bundle](https://www.safar.fyi/_next/static/chunks/3b0_rd2mb_fad.js), [public map component](https://www.safar.fyi/_next/static/chunks/3wqiut0e2ggr2.js), and [public planner bundle](https://www.safar.fyi/_next/static/chunks/3055hou04tf5n.js). Bundle filenames can change when Safar deploys. We have not copied its source code or transit data into Manzil.
+
+### 19.2 What produces the appearance
+
+Voyager supplies the colored geography and street cartography. Leaflet supplies the interactive viewport and layers. Safar adds its own transit paths, stations, selection controls, and surrounding interface. Choosing Leaflet alone will not automatically reproduce that appearance; the basemap style is a separate choice. CARTO also offers light Positron and dark Dark Matter styles. [CARTO basemap documentation](https://docs.carto.com/carto-user-manual/maps/basemaps)
+
+For Manzil, use a licensed Voyager source if matching this appearance is a priority. Keep the tile source configurable. Draw original closure segments, time-dependent status, and validated detour paths in separate Leaflet layers. The ORS backend can still generate the routes; a CARTO basemap provides neither traffic measurements nor our closure-avoidance algorithm.
+
+### 19.3 Current service conditions
+
+CARTO's terms, updated 29 September 2026, require our own issued API key and visible CARTO/OpenStreetMap attribution. Free limits are five million tile requests/month for noncommercial use and one million for commercial use, aggregated across keys. Higher commercial usage requires a suitable paid service. A tile request is not a map session. [CARTO basemap terms, sections 3, 8, 12 and 13](https://www.carto.com/legal/basemap-terms/)
+
+Section 14 restricts real-time vehicle navigation and map display on moving vehicles. Treat Voyager as an option for the stationary trip-planning prototype. Before implementing in-vehicle GPS/navigation views, choose a provider whose terms permit that use or obtain an appropriate agreement. An accessible unkeyed tile URL is not a substitute for our own service entitlement. [CARTO basemap terms, section 14](https://www.carto.com/legal/basemap-terms/)
+
+### 19.4 Useful design ideas to adapt
+
+1. Offer an overview of relevant closures, then emphasize only those affecting the selected trip.
+2. Selecting a map segment opens a concise card with the road, period, source, freshness, and confidence.
+3. Use a quiet basemap so the selected route and closure symbols remain readable. Do not communicate closure status by color alone.
+4. Keep a compact summary panel beside the map: departure, arrival, detour cost, and an earlier/later option.
+5. For the future transit module, start with a line/service watch and route-selection view before building a full multimodal planner.
+
+These are design suggestions for our original implementation. Safar's code, schedules, stop database, and route-search responses have not been established as reusable licensed assets. The verified map stack strengthens the existing Leaflet recommendation without resolving our separate source-access and rerouting acceptance gates.
