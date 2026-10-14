@@ -16,10 +16,11 @@ Open http://127.0.0.1:5173/. Vite proxies `/api` to the Express API at http://12
 ## First useful workflow
 
 1. The planner starts with example public road approaches near Faisal Mosque and Centaurus. These are not private home/work coordinates or guaranteed building entrances.
-2. Choose a departure, then Find my route. The green line follows imported OSM roads.
+2. Choose a departure, then Find my route. Up to three blue driving paths follow real OSM roads; the selected route is darker/thicker.
 3. Try a demo restriction to create an explicitly synthetic event on that route and compare rerouting. Cancel that event later from Closures.
 4. Draw a real manual restriction and set its schedule. Replan or save a recurring commute and check its next occurrence.
-5. In Updates, inspect source status and import an advisory into the same pending-agent queue if automatic access fails.
+5. In Profile → Source updates & collector, inspect source status or import an advisory if automatic access fails.
+6. Use Profile for themes/map detail, browser alerts and optional learned-journey alerts. Select Preview & navigate on a route for preview or foreground GPS guidance. On phones, expand controls with the sheet handle button.
 
 ## Configuration
 
@@ -31,7 +32,7 @@ Copy `.env.example` to `.env` if overrides are needed. Never commit `.env`. Defa
 | `PORT` | API port, default 3001. Keep this default with the current Vite proxy; update the proxy too if changing it |
 | `MANZIL_DATA_DIR` | Local data folder, default `./data` |
 | `MANZIL_DB_PATH` | Optional full SQLite filename override |
-| `VITE_MAPTILER_KEY` | Optional browser key for Dataviz Light 256px raster; otherwise use ordinary OSM tiles |
+| Map appearance | No environment key. Use Profile → Theme / Map detail for the OpenFreeMap vector styles |
 | `X_SCRAPER_ENABLED` | Initial automatic-source setting for a new database. The app's setting is persisted after creation |
 | `BROWSER_EXECUTABLE_PATH` | Optional installed Chrome/Edge/Chromium executable for the isolated collector |
 
@@ -68,7 +69,7 @@ npm run source:check
 - **Page cannot connect:** run `npm run dev`, check both printed local URLs, and ensure ports 5173/3001 are free. Do not terminate unrelated processes to reclaim a port.
 - **Graph unavailable:** confirm tracked routing assets exist, run `data:import`, restart the API. No straight-line fallback is substituted.
 - **No route:** check the graph extent, road pin locations, one-way/access rules and closure geometry/time. Large polygons can disconnect all roads or conservatively cover flyovers.
-- **Tiles missing:** routing is local but tiles require internet/provider access. The app shows a tile warning. Do not bulk-download or proxy public tiles to work around restrictions.
+- **Tiles missing:** routing is local but OpenFreeMap styles/tiles/fonts require internet and the renderer needs WebGL. The app shows a failure state and retains fields/coordinate editing. Do not bulk-download or proxy public tiles to work around restrictions.
 - **X status is error/blocked:** inspect the source state, test the configured browser/network and use deliberate notice import. Actual smoke checks here launched Chromium but X navigation failed; no reliable live retrieval is claimed.
 - **GPS has no samples:** permission, device accuracy, a visible active page and location services matter. No synthetic points are generated. Location fixes older than recording start or worse than the accuracy threshold are ignored.
 - **SQLite warning:** Node 22 labels its built-in SQLite module experimental; this is a runtime warning, not a failed API health check.

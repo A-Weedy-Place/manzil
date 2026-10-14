@@ -38,14 +38,16 @@ Try **Find my route**, then **Try a demo restriction** to see a connected detour
 
 ## Implemented local features
 
-1. Fast 2D Leaflet map with local place/road search, map-selected endpoints and draggable pins.
+1. Clean 2D MapLibre/OpenFreeMap vector map with local place/road search, draggable pins, light/dark/system themes and a map-detail preference.
 2. Point, road-corridor and polygon restrictions; exact geometry preview, coordinate editing, scheduled start/end, drafts, revisions, cancellation and GeoJSON import/export.
-3. Actual car-road routing over a bundled OSM graph; closure traversal-time checks, connected detours, bounded earlier/later departures and explicit unavailable results.
+3. Up to three genuinely different driving routes for the same departure over a bundled OSM graph; clear blue route lines/time labels, distance/ETA cards, closure traversal-time checks and separate earlier/later departure comparisons.
 4. Weekly saved commutes, next-occurrence checks and deduplicated in-app impact alerts while the backend runs.
 5. Fifteen-minute public X collection attempt, honest status/freshness, manual notices and a durable pending-agent queue.
 6. Explicit foreground GPS recording, local trip summaries/history/export/deletion and separate future road-discovery contribution consent.
+7. A persistent local profile, preferences, opt-in browser notifications and separately consented learning/closure alerts for usual recorded journeys.
+8. Route-step preview, foreground GPS guidance, optional voice prompts and recalculation from a fresh position. No background/Google-equivalent navigation claim.
 
-The implemented stack is React/TypeScript/Vite, Leaflet, a local OSM routing engine, Express and SQLite. Optional MapTiler raster tiles are supported; the default is ordinary OSM tiles with attribution. Google Cloud/Gemini, Firestore, ORS and FCM remain the documented deployment/integration targets, rather than services silently required by the local app. Live traffic, transit routing, crowd verification, automatic learned-road publication and camera avoidance remain on the explicit roadmap.
+The implemented stack is React/TypeScript/Vite, MapLibre GL JS, OpenFreeMap, a local OSM routing engine, Express and SQLite. The flat vector map needs internet and WebGL but no map API key; it removes POIs/building detail in Clean mode and retains attribution. Google Cloud/Gemini, Firestore, ORS and FCM remain deployment/integration targets. Live traffic, transit routing, crowd verification, automatic learned-road publication and camera avoidance remain on the explicit roadmap. Read the [15 October redesign guide](docs/REDESIGN_2026-10-15.md) for profiles, notifications, navigation and their practical boundaries.
 
 ## Validation
 
@@ -54,7 +56,7 @@ npm test
 npm run build
 ```
 
-The current suite has **31 passing tests**, including actual bundled-road detouring, topology/access/direction, closure timing, unavailable routes, persistence, revisions, source deduplication/outbox, commute occurrences and GPS retention. Type checking and the production build pass. Desktop and 375×812 browser workflows were inspected. Real-device GPS and successful live X retrieval remain unverified; see the implementation status for practical limits.
+The current suite has **67 passing tests**, including diverse real-road alternatives, topology/access/direction, closure timing, unavailable routes, persistence, revisions, source deduplication/outbox, consented journey inference/alerts, notification delivery guards and navigation failure/progression logic. Type checking and the production build pass. Browser evidence and verification boundaries are in the implementation status. Real-device GPS, OS notification delivery and successful live X retrieval remain unverified.
 
 ## Branding
 

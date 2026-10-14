@@ -2,6 +2,16 @@
 
 This describes the implemented localhost interface. The full product inventory remains in [PROJECT_CONTEXT.md](../PROJECT_CONTEXT.md); [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) records verification and remaining work. Google Cloud deployment and Gemini interpretation are future integrations.
 
+## Map display and preferences
+
+The map uses **MapLibre GL JS 6** and OpenFreeMap's public vector styles: **Positron** for light mode and **Dark** for dark mode. Default **Clean** detail removes venue/POI labels, building details and road shields, and delays smaller street names until closer zoom. **Standard** restores the provider's ordinary two-dimensional detail. Both modes retain a flat, north-up map with pitch and rotation disabled; there is no terrain or 3D building rendering.
+
+Style, tile, font and sprite requests need internet. This configuration has no paid basemap key and does not use the old `VITE_MAPTILER_KEY` raster option. OpenFreeMap/OpenMapTiles/OpenStreetMap attribution remains available in the map's attribution control; preserve it. Provider setup follows the [official OpenFreeMap guide](https://openfreemap.org/quick_start/).
+
+The map caps its pixel ratio at 1.75 and limits tile-cache zoom levels, avoiding unbounded high-density canvas work. Focus changes are immediate, and location following respects the browser's reduced-motion preference. These are implementation measures, not a claim of measured low-end device performance.
+
+If basemap resources fail, a visible warning accompanies the existing map or a plain backdrop; local route and editor overlays still use their real coordinates. No road image is invented. WebGL startup/context failure shows an explicit message and a **Restart map** action; journey fields and coordinate editing remain usable. Graphics support is required to see the map itself.
+
 ## Journey endpoints and scheduling
 
 In **Journey**, choose a starting point and destination using local search, the map-pick buttons, or draggable A/B markers. Search covers selected landmarks and road names in the imported Islamabad graph; it is not an address or worldwide geocoder. Select a suggestion to establish an endpoint. Arrow keys move through loaded suggestions and Enter selects one. Typing another query clears the selected endpoint and invalidates its old suggestions.
@@ -24,9 +34,11 @@ Open **Closures → Add a restriction**, or use the map's plus button. A new edi
 
 For Point, **Closure diameter** is the full diameter. For Road, **Total corridor width** is the full width, half on each side. A 100 m value therefore means a 50 m radius or a 50 m buffer on each side. The UI slider offers 10–200 m in 5 m steps; the API's validated range is wider. Area geometry uses its drawn boundary rather than this width.
 
-After a valid number of points is present, the map requests the preview polygon from `POST /api/geometry` after a short debounce. Saving uses the same server geometry conversion and validation. While the preview is pending or unavailable, the map can show the point circle or drawing line/boundary instead; that temporary outline does not establish that a save succeeded. Save failures remain visible in the editor.
+After a valid number of points is present, the map requests the preview polygon from `POST /api/geometry` after a short debounce. Saving uses the same server geometry conversion and validation. While the preview is pending or unavailable, the map shows the entered point or drawing line/boundary instead; that temporary outline does not establish that a save succeeded. An unavailable preview displays a warning, and save failures remain visible in the editor.
 
 Drag numbered vertices to adjust the drawing. **Undo point** removes the last vertex. **Finish drawing** or Escape pauses point placement; **Resume drawing** continues it. Pausing does not save the event. The **Enter or adjust coordinates** section offers a keyboard alternative, including per-vertex latitude/longitude edits and removal. Numeric vertex fields use `step="any"`, so valid high-precision map coordinates do not fail a fixed decimal-step constraint.
+
+Focused endpoint and vertex markers also accept arrow-key nudges of five screen pixels, or twenty with Shift. Exact latitude/longitude fields remain the precision alternative. Keyboard nudging changes map coordinates according to the current zoom; it is not a fixed distance in metres.
 
 Supply a title, reason, start and end, with optional notes and source URL. End must follow start. **End time unknown** saves an open-ended restriction that remains applicable after its start until cancelled or revised. Reason labels are descriptive; the implemented event is a complete polygon closure, not a lane-capacity or congestion model.
 
@@ -36,7 +48,7 @@ Leave **Apply to route planning** checked to publish; clear it to save a draft. 
 
 Select a restriction card or its map area to focus it. **Edit** loads its details and drawing. Imported polygons without drawing metadata open as editable Area vertices. Saves send the loaded revision; conflicting edits are rejected rather than silently overwriting a newer revision.
 
-Drafts do not affect routing and are accessible through the list's Drafts or All filters. Published map areas are coloured by their scheduled status; ended areas are faded. Cancelled events are omitted from the normal map overlay. The list's status is evaluated at the Journey departure field, not necessarily the present time. In Journey, choosing an earlier/later route option updates the map's displayed schedule and closure colouring to that option's departure.
+Drafts do not affect routing and are accessible through the list's Drafts or All filters. Published areas use a bright red outline and red fill, with a visible closed-road marker for active and scheduled restrictions. Scheduled outlines are dashed; ended areas are faded. Marker size stays readable as the map zooms out, even when the affected polygon is small. Cancelled events are omitted from the normal map overlay. The list's status is evaluated at the Journey departure field, not necessarily the present time. In Journey, choosing an earlier/later route option updates the map's displayed schedule and closure state to that option's departure.
 
 **Cancel restriction** changes its saved status to cancelled, retaining its details. Use All restrictions to find it later. Editing a cancelled record offers **Apply to route planning** checked by default: review that checkbox and schedule before saving, because saving it checked republishes the event.
 
@@ -54,7 +66,9 @@ Features save sequentially. If a later feature fails, earlier successful imports
 
 ## Route results and comparison
 
-The solid green route is the selected validated option. The dashed original route is a comparison baseline and may cross a restriction; its presence is not a recommendation to drive it. Results show estimated duration, distance, departure/arrival times, road sequence, warnings and original-route conflicts. No valid connected option produces an explicit unavailable result.
+The thick saturated blue route, with a white casing, is the selected validated option. Other validated direct/detour/alternative routes for the **same departure instant** are drawn in muted blue. Click an alternative line or its minute label to select it; the side-panel result cards provide the same choice. Time-change options are not overlaid as if they shared the current departure. Minute labels estimate driving duration, not live traffic.
+
+The dashed original route is a comparison baseline and may cross a restriction; its presence is not a recommendation to drive it. Results show estimated duration, distance, departure/arrival times, road sequence, warnings and original-route conflicts. No valid connected option produces an explicit unavailable result. The renderer draws options returned by the routing API; it does not invent extra geometry to make multiple routes appear.
 
 With **Also compare leaving earlier or later**, the local router checks a bounded set of alternatives around the requested departure. Available options can include a direct route, detour, earlier departure or later departure. Later departure means waiting before starting; it does not model waiting at a roadside closure. Options are not guaranteed for every direction or time, and the search is not globally optimal.
 
@@ -66,9 +80,9 @@ Saved restriction changes advance an event revision. When the app receives a rev
 
 ## Saved commutes and alerts
 
-Use **Save as a regular commute** from results or open **Commutes → Save a commute**. The form uses the current Journey endpoints and asks for a name, usual PKT departure time and repeat weekdays. Its time initially defaults to 17:00; choosing a route option does not automatically copy that option's time into the commute form. Up to 100 commutes can be saved. The current UI supports creation, checking and removal; editing an existing commute or toggling its enabled state is not exposed there.
+Use **Save journey & get closure alerts** from results or open **Saved → Save a commute**. The form uses the current planner endpoints and asks for a name, usual PKT departure time and repeat weekdays. Its time initially defaults to 17:00; choosing a route option does not automatically copy that option's time into the commute form. Up to 100 commutes can be saved. The current UI supports creation, checking and removal; editing an existing commute or toggling its enabled state is not exposed there.
 
-**Check next departure** checks the next matching occurrence and opens its plan if the user is still in Commutes when the request finishes. Automatic checks also run after relevant saves and once a minute while the local API is running. New conflicts and cleared disruptions can produce local in-app alerts; duplicate impacts for the same occurrence and closure revisions are suppressed. The bell opens the alert inbox, where alerts can be marked read. There is no external push or closed-server delivery.
+**Check next departure** checks the next matching occurrence and opens its plan if the user is still in Saved when the request finishes. Automatic checks run after relevant saves and once a minute while the local API runs. New conflicts and cleared disruptions can produce in-app alerts; duplicate impacts for the same occurrence and closure revisions are suppressed. The bell opens the inbox. Profile can separately enable usual-journey learning/alerts and opt-in browser notifications while the page is open. There is no closed-server or closed-app push delivery. See [the redesign guide](REDESIGN_2026-10-15.md).
 
 ## Optional personal activity
 
@@ -76,10 +90,10 @@ In **Activity**, give the trip a name, explicitly opt into precise local history
 
 Recording requests fresh, high-accuracy fixes; samples older than the start or with reported accuracy above 100 m are ignored. Accepted samples are at least four seconds apart, with a 20,000-point cap. **Pause** and **Resume** retain the same trip; **Finish and save** requires at least two accepted samples. Pending samples are in memory until saved and are lost on page reload. Permission or location failures remain visible. Saving pauses recording, and Resume/Discard are disabled while that save is pending.
 
-Keep the browser page visible. Switching Manzil panels keeps the recording component mounted, but background tabs, device sleep or browser limits can interrupt GPS; background recording is not guaranteed. The recorded line is a GPS trace, not a verified accessible road.
+Keep the browser page visible. Switching Manzil panels keeps the recording component mounted, but background tabs, device sleep or browser limits can interrupt GPS; background recording is not guaranteed. The recorded line is a GPS trace, not a verified accessible road. The map breaks trace lines at recording gaps or implausible segments instead of drawing a continuous connection across them.
 
 Trip history offers summary distance/time, gap counts, map viewing, GeoJSON line export and confirmed deletion. Elapsed time includes pauses. Distance omits gaps over 60 seconds and implausible segments; it is not map-matched. The app displays up to 50 recent summaries. Raw points are retained for 30 days from trip end and summaries for 90 days, with cleanup while the server runs or records are read. Summary-only trips cannot be viewed or exported as a trace. See [API.md](API.md) for exact retention and validation details. Local deletion does not promise forensic erasure from disks or backups.
 
 ## Verification boundary
 
-The implementation passed 31 automated tests on 14 October 2026. Actual desktop and 375×812 browser checks confirmed routing, a synthetic detour, manual geometry and high-precision coordinates, future date persistence, a saved commute and its next-departure options, manual notice intake and reload persistence. This guide describes the reviewed code paths, not a claim that every workflow has been exercised on every browser or that a real outdoor GPS trip has been verified. Use [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) for the full handoff evidence.
+The 14 October localhost build recorded 31 passing automated tests and desktop/375×812 browser workflows, including date-field input and saving high-precision coordinates. Those checks predate the 15 October MapLibre renderer replacement. The replacement's browser checks and final type/build/test results are recorded in [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md); do not treat the older renderer's screenshots as evidence for the new one. A real outdoor GPS journey and low-end physical-device performance remain unverified.

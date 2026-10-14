@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { Alert, Closure, ClosureDraft, SourceNotice, SourceStatus, Trip } from '../shared/types.js';
+import type { Alert, Closure, ClosureDraft, LocalProfile, SourceNotice, SourceStatus, Trip } from '../shared/types.js';
 import { HttpError } from './errors.js';
 
 type Kind = 'closure' | 'commute' | 'alert' | 'trip';
@@ -40,6 +40,11 @@ export class Store {
       );
     `);
     if (this.meta<number>('eventRevision') === undefined) this.setMeta('eventRevision', 0);
+    if (!this.meta<LocalProfile>('profile')) {
+      const now = new Date().toISOString();
+      this.setMeta('profile', { id: 'local', displayName: 'Traveller', theme: 'system', mapDetail: 'clean',
+        browserNotifications: false, inferFrequentRoutes: false, transport: 'car', createdAt: now, updatedAt: now } satisfies LocalProfile);
+    }
     if (!this.meta<SourceStatus>('sourceStatus')) this.setMeta('sourceStatus', {
       enabled: process.env.X_SCRAPER_ENABLED !== 'false', intervalMinutes: 15, profileUrl: PROFILE_URL,
       lastAttemptAt: null, lastSuccessAt: null, nextCheckAt: null,
@@ -63,6 +68,22 @@ export class Store {
       .run(key, JSON.stringify(value));
   }
   get eventRevision() { return this.meta<number>('eventRevision') ?? 0; }
+  profile(): LocalProfile { return this.meta<LocalProfile>('profile')!; }
+  updateProfile(patch: Partial<Omit<LocalProfile, 'id' | 'createdAt' | 'updatedAt'>>): LocalProfile {
+    return this.transaction(() => {
+      const profile: LocalProfile = { ...this.profile(), ...patch, updatedAt: new Date().toISOString() };
+      this.setMeta('profile', profile); return profile;
+    });
+  }
+  *recentInferenceTrips(now: number): Generator<Trip> {
+    // Iterate rather than materialize hundreds of large point arrays together in memory.
+    const rows = this.db.prepare(`SELECT data FROM records WHERE kind='trip'
+      AND julianday(json_extract(data,'$.endedAt')) >= julianday(?)
+      AND julianday(json_extract(data,'$.endedAt')) <= julianday(?)
+      AND json_array_length(json_extract(data,'$.points')) >= 8
+      ORDER BY updated_at DESC LIMIT 200`).iterate(new Date(now - 30 * 86400_000).toISOString(), new Date(now).toISOString());
+    for (const row of rows) yield JSON.parse(String(row.data)) as Trip;
+  }
   list<T>(kind: Kind, limit = 500): T[] {
     return this.db.prepare('SELECT data FROM records WHERE kind=? ORDER BY updated_at DESC LIMIT ?')
       .all(kind, limit).map(row => JSON.parse(String(row.data)) as T);

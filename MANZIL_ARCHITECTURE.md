@@ -1,6 +1,6 @@
 # Manzil: Final Architecture and Implementation Plan
 
-Decision date: 14 October 2026, Asia/Karachi. Two developers; usable prototype target 17 October. **The user subsequently requested a localhost build and chose X public-page collection every 15 minutes, with Gemini work later.** The implemented local adapters are Leaflet + ordinary OSM tiles (optional MapTiler), a bundled OSM routing graph, Express and SQLite. See [current implementation status](docs/IMPLEMENTATION_STATUS.md) and [retained product context](PROJECT_CONTEXT.md). The Cloud/ORS/Firebase choices below remain the deployment target and research specification; they are not a description of services currently running.
+Original decision: 14 October 2026, Asia/Karachi; two developers aiming for 17 October. **Current implementation, updated 15 October:** localhost only; MapLibre GL JS/OpenFreeMap flat vector map, a real local OSM road graph, three-route comparisons, Express/SQLite, local profile/preferences, consented journey alerts and approximate foreground navigation. X public collection attempts run every 15 minutes; Gemini comes later. Read [the redesign guide](docs/REDESIGN_2026-10-15.md), [implementation status](docs/IMPLEMENTATION_STATUS.md) and [retained context](PROJECT_CONTEXT.md). The Leaflet/MapTiler rendering sections below are superseded research history. Cloud/ORS/Firebase sections remain future integration proposals, not services currently running.
 
 ## 1 The decision in one page
 

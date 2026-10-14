@@ -3,10 +3,10 @@ import { lineString, polygon } from '@turf/helpers';
 import type { Coordinate, Closure, PlanRequest, PlanResponse, RoutePath, RouteConflict, RouteOption } from '../../shared/types';
 import type { RoutingGraph, GraphEdge, TurnRule } from './graph';
 import { distanceMeters } from './graph';
+import { alternativeConstraints, alternativeLabel, isDistinctUsefulCandidate, segmentIndex, type Candidate } from './alternatives';
 
 const SNAP_METERS = 220;
 const TIME_MARGIN_SECONDS = 30;
-interface Candidate { path: RoutePath; edges: { index: number; start: number; finish: number }[] }
 interface EventArea { closure: Closure; start: number; end: number; bounds: number[]; fractions: Map<number, [number, number][]> }
 
 class Heap {
@@ -50,8 +50,10 @@ export class LocalRouter {
   private rules = new Map<string, TurnRule[]>();
   private maximumSpeed = 1;
   private routableNodes = new Set<number>();
+  private segments: Map<string, number[]>;
   constructor(graph: RoutingGraph) {
     this.graph = graph;
+    this.segments = segmentIndex(graph);
     this.outgoing = graph.nodes.map(() => []);
     for (let i = 0; i < graph.edges.length; i++) {
       const edge = graph.edges[i]; this.outgoing[edge.from].push(i);
@@ -80,7 +82,7 @@ export class LocalRouter {
     const only = rules.filter((r) => r.only);
     return !only.length || only.some(matches);
   }
-  private shortest(origin: number, destination: number, departure: number, excluded: Set<number>): Candidate | null {
+  private shortest(origin: number, destination: number, departure: number, excluded: Set<number>, penalties = new Map<number, number>(), deadline = Infinity): Candidate | null {
     const graph = this.graph, heap = new Heap();
     const cost = new Map<number, number>([[-1, 0]]), previous = new Map<number, number>();
     const heuristic = (node: number) => distanceMeters(graph.nodes[node].coordinate, graph.nodes[destination].coordinate) / this.maximumSpeed;
@@ -93,13 +95,13 @@ export class LocalRouter {
       const g = cost.get(state)!;
       if (f > g + heuristic(node) + .0001) continue;
       if (node === destination) { finalState = state; break; }
-      if (++iterations > Math.max(10000, graph.edges.length * 3)) return null;
+      if (++iterations > Math.max(10000, graph.edges.length * 3) || (iterations % 256 === 0 && performance.now() > deadline)) return null;
       for (const index of this.outgoing[node]) {
         if (excluded.has(index)) continue;
         const edge = graph.edges[index];
         if (!this.turnAllowed(incoming, edge)) continue;
         const penalty = incoming ? edge.to === incoming.from ? 20 : incoming.wayId !== edge.wayId ? 3 : 0 : 0;
-        const nextCost = g + edge.seconds + penalty;
+        const nextCost = g + edge.seconds * (1 + (penalties.get(index) ?? 0)) + penalty;
         if (nextCost >= (cost.get(index) ?? Infinity)) continue;
         cost.set(index, nextCost); previous.set(index, state); heap.push([index, nextCost + heuristic(edge.to)]);
       }
@@ -111,19 +113,23 @@ export class LocalRouter {
     const coordinates: Coordinate[] = [graph.nodes[origin].coordinate];
     const steps: RoutePath['steps'] = [], timings: Candidate['edges'] = [];
     let elapsed = 0, distance = 0;
+    let incoming: GraphEdge | null = null;
     for (const index of indices) {
-      const edge = graph.edges[index], finish = cost.get(index)!;
-      timings.push({ index, start: finish - edge.seconds, finish });
+      const edge = graph.edges[index];
+      const turnDelay = incoming ? edge.to === incoming.from ? 20 : incoming.wayId !== edge.wayId ? 3 : 0 : 0;
+      const start = elapsed + turnDelay, finish = start + edge.seconds;
+      timings.push({ index, start, finish });
       coordinates.push(graph.nodes[edge.to].coordinate); distance += edge.distance;
       const duration = finish - elapsed, previousStep = steps[steps.length - 1];
       if (previousStep?.roadName === edge.name) { previousStep.distanceMeters += edge.distance; previousStep.durationSeconds += duration; }
       else steps.push({ roadName: edge.name, instruction: `${steps.length ? 'Continue on' : 'Start on'} ${edge.name}`, distanceMeters: edge.distance, durationSeconds: duration });
       elapsed = finish;
+      incoming = edge;
     }
     if (coordinates.length === 1) coordinates.push([...coordinates[0]]);
     return { path: { geometry: { type: 'LineString', coordinates }, distanceMeters: distance, durationSeconds: elapsed, departureAt: new Date(departure).toISOString(), arrivalAt: new Date(departure + elapsed * 1000).toISOString(), steps, snappedOrigin: graph.nodes[origin].coordinate, snappedDestination: graph.nodes[destination].coordinate }, edges: timings };
   }
-  private areas(closures: Closure[]): EventArea[] {
+  private areas(closures: Closure[], deadline = Infinity): EventArea[] {
     return closures.filter((c) => c.status === 'published').map((closure) => {
       const start = Date.parse(closure.startsAt), end = closure.endsAt === null ? Infinity : Date.parse(closure.endsAt);
       if (!Number.isFinite(start) || Number.isNaN(end) || end <= start) throw new Error(`Published closure “${closure.title}” has an invalid time window; review it before routing.`);
@@ -132,6 +138,7 @@ export class LocalRouter {
       const fractions = new Map<number, [number, number][]>();
       const shape = polygon(closure.geometry.coordinates);
       this.graph.edges.forEach((edge, index) => {
+        if (index % 1024 === 0 && performance.now() > deadline) throw new Error('Closure validation exceeded the planning time limit. Try fewer restrictions or a smaller area.');
         const a = this.graph.nodes[edge.from].coordinate, b = this.graph.nodes[edge.to].coordinate;
         if (Math.max(a[0], b[0]) < bounds[0] || Math.min(a[0], b[0]) > bounds[2] || Math.max(a[1], b[1]) < bounds[1] || Math.min(a[1], b[1]) > bounds[3]) return;
         if (booleanIntersects(lineString([a, b]), shape)) fractions.set(index, intervalsInside(a, b, closure.geometry.coordinates));
@@ -155,6 +162,8 @@ export class LocalRouter {
     return { conflicts, blocked };
   }
   plan(request: PlanRequest, closures: Closure[], eventRevision: number): PlanResponse {
+    const deadline = performance.now() + 3000;
+    let searchesLeft = 32, searchLimited = false;
     const evaluatedAt = new Date().toISOString();
     const response: PlanResponse = { options: [], baseline: null, conflicts: [], warnings: ['Travel times use ordinary road-speed estimates, not live traffic.', 'Closure timing includes a 30-second margin at entry and exit. Recheck before departure.'], evaluatedAt, graphVersion: this.graph.version, eventRevision, source: 'local-osm' };
     const departure = Date.parse(request.departureAt);
@@ -169,37 +178,56 @@ export class LocalRouter {
     if (!origin || !destination) { response.unavailableReason = `Select endpoints within ${SNAP_METERS} metres of a supported public car-road node.`; return response; }
     if (origin.distance > 30 || destination.distance > 30) response.warnings.push(`Pins snapped to road nodes (${Math.round(origin.distance)} m at start; ${Math.round(destination.distance)} m at destination). Access between each pin and its snapped point is not routed.`);
     let areas: EventArea[];
-    try { areas = this.areas(closures); } catch (error) { response.unavailableReason = error instanceof Error ? error.message : 'A published closure needs review.'; return response; }
-    const baseline = this.shortest(origin.index, destination.index, departure, new Set());
-    if (!baseline) { response.unavailableReason = 'No connected public car route was found between these snapped endpoints in the imported road graph.'; return response; }
+    try { areas = this.areas(closures, deadline); } catch (error) { response.unavailableReason = error instanceof Error ? error.message : 'A published closure needs review.'; return response; }
+    const search = (time: number, excluded: Set<number>, penalties = new Map<number, number>()) => {
+      if (searchesLeft-- <= 0 || performance.now() > deadline) { searchLimited = true; return null; }
+      const result = this.shortest(origin.index, destination.index, time, excluded, penalties, deadline);
+      if (performance.now() > deadline) searchLimited = true;
+      return result;
+    };
+    const baseline = search(departure, new Set());
+    if (!baseline) { response.unavailableReason = searchLimited ? 'The planning limit was reached before a connected route could be validated. Try a shorter journey.' : 'No connected public car route was found between these snapped endpoints in the imported road graph.'; return response; }
     response.baseline = baseline.path;
     response.conflicts = this.conflicts(baseline, areas, departure).conflicts;
-    const findPassing = (time: number): Candidate | null => {
-      let candidate = time === departure ? baseline : this.shortest(origin.index, destination.index, time, new Set());
-      const excluded = new Set<number>();
-      for (let attempt = 0; candidate && attempt < 8; attempt++) {
+    const findPassing = (time: number, forced = new Set<number>(), penalties = new Map<number, number>(), attempts = 8): Candidate | null => {
+      // Static ordinary-speed routing does not change shape with departure. Reuse its baseline, but recheck every closure at the new time.
+      let candidate: Candidate | null = !forced.size && !penalties.size ? { edges: baseline.edges, path: { ...baseline.path, departureAt: new Date(time).toISOString(), arrivalAt: new Date(time + baseline.path.durationSeconds * 1000).toISOString() } } : search(time, forced, penalties);
+      const excluded = new Set<number>(forced);
+      for (let attempt = 0; candidate && attempt < attempts; attempt++) {
         const check = this.conflicts(candidate, areas, time);
         if (!check.conflicts.length) return candidate;
         const before = excluded.size; for (const index of check.blocked) excluded.add(index);
         if (excluded.size === before) return null;
-        candidate = this.shortest(origin.index, destination.index, time, excluded);
+        candidate = attempt + 1 < attempts ? search(time, excluded, penalties) : null;
       }
       return null;
     };
     const current = findPassing(departure);
-    const addOption = (candidate: Candidate, kind: RouteOption['kind'], offset: number) => {
+    const addOption = (candidate: Candidate, kind: RouteOption['kind'], offset: number, routeNumber = 0, primary = candidate) => {
       const warnings = ['Validated against the current published closure set; future changes can alter this result.'];
       if (departure < Date.now() - 60000) warnings.unshift('Historical schedule replay: these departure choices are hypothetical and are not current travel advice.');
       if (areas.some((area) => area.closure.endsAt !== null && Date.parse(candidate.path.departureAt) >= area.end)) warnings.push('Any announced reopening is an assumption unless separately confirmed.');
-      response.options.push({ ...candidate.path, id: `${kind}-${offset}`, kind, label: kind === 'direct' ? 'Your planned route' : kind === 'detour' ? 'Avoid the closure' : kind === 'leave_earlier' ? `Leave ${Math.abs(offset)} minutes earlier` : `Leave ${offset} minutes later`, validation: 'clear', warnings });
+      const label = kind === 'alternative' ? alternativeLabel(this.graph, candidate, primary, routeNumber + 1) : kind === 'direct' ? 'Your planned route' : kind === 'detour' ? 'Avoid the closure' : kind === 'leave_earlier' ? `Leave ${Math.abs(offset)} minutes earlier` : `Leave ${offset} minutes later`;
+      response.options.push({ ...candidate.path, id: kind === 'alternative' ? `alternative-${routeNumber}` : `${kind}-${offset}`, kind, label, validation: 'clear', warnings });
     };
-    if (current) addOption(current, response.conflicts.length ? 'detour' : 'direct', 0);
+    if (current) {
+      const sameTime = [current];
+      for (let attempt = 0; sameTime.length < 3 && attempt < 8 && !searchLimited; attempt++) {
+        const constraints = alternativeConstraints(this.graph, this.segments, sameTime, attempt);
+        if (!constraints.excluded.size && !constraints.penalties.size) continue;
+        const candidate = findPassing(departure, constraints.excluded, constraints.penalties, 3);
+        if (candidate && isDistinctUsefulCandidate(this.graph, candidate, sameTime, deadline)) sameTime.push(candidate);
+      }
+      sameTime.sort((a, b) => a.path.durationSeconds - b.path.durationSeconds || a.path.distanceMeters - b.path.distanceMeters);
+      sameTime.forEach((candidate, i) => addOption(candidate, i ? 'alternative' : response.conflicts.length ? 'detour' : 'direct', 0, i, sameTime[0]));
+    }
     if (request.compareDepartures && response.conflicts.length) {
       const earlier: { candidate: Candidate; offset: number }[] = [], later: typeof earlier = [];
       const now = Date.now();
       for (const offset of [-10, -20, -30, -45, -60, 10, 20, 30, 45, 60]) {
         const time = departure + offset * 60000;
         if (departure >= now - 60000 && time < now) continue;
+        if (searchLimited) break;
         const candidate = findPassing(time); if (candidate) (offset < 0 ? earlier : later).push({ candidate, offset });
       }
       // Prefer the smallest schedule change that restores the original ordinary duration.
@@ -210,6 +238,7 @@ export class LocalRouter {
     }
     if (!response.options.length) response.unavailableReason = 'No verified alternative was found for this time within the bounded search. Try another departure or endpoint.';
     if (response.conflicts.length) response.warnings.push('Detours use a bounded search with fixed edge exclusions per candidate; this does not prove the globally best time-dependent route.');
+    if (searchLimited || performance.now() > deadline) response.warnings.push('The planning limit was reached; only the route and departure choices fully validated so far are shown.');
     if (departure < Date.now() - 60000) response.warnings.push('This departure is in the past; results are a schedule replay, not current traffic advice.');
     return response;
   }

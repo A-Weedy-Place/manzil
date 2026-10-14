@@ -19,7 +19,7 @@ export interface RoutePath {
   snappedOrigin: Coordinate; snappedDestination: Coordinate;
 }
 export interface RouteOption extends RoutePath {
-  id: string; kind: 'direct' | 'detour' | 'leave_earlier' | 'leave_later';
+  id: string; kind: 'direct' | 'detour' | 'alternative' | 'leave_earlier' | 'leave_later';
   label: string; validation: 'clear'; warnings: string[];
 }
 export interface RouteConflict { closureId: string; title: string; entryAt: string; exitAt: string }
@@ -42,7 +42,7 @@ export interface Commute extends CommuteDraft { id: string; createdAt: string; u
 export interface CommuteImpact { commuteId: string; occurrenceAt: string; plan: PlanResponse }
 export interface Alert {
   id: string; title: string; message: string; createdAt: string; read: boolean;
-  commuteId?: string; closureId?: string;
+  commuteId?: string; frequentRouteId?: string; closureId?: string;
 }
 export interface SourceNotice {
   id: string; source: 'x' | 'manual'; sourceId: string; url: string;
@@ -63,11 +63,20 @@ export interface TripDraft {
   contributeToRoadDiscovery: boolean;
 }
 export interface Trip extends TripDraft { id: string; distanceMeters: number; durationSeconds: number; createdAt: string; gaps: number; pointCount?: number }
+export interface LocalProfile {
+  id: 'local'; displayName: string; theme: 'light' | 'dark' | 'system';
+  mapDetail: 'clean' | 'standard'; browserNotifications: boolean;
+  inferFrequentRoutes: boolean; transport: 'car'; createdAt: string; updatedAt: string;
+}
+export interface FrequentRouteProposal {
+  id: string; origin: Place; destination: Place; departureTime: string;
+  days: number[]; sampleCount: number; lastObservedAt: string;
+}
 export interface AppState {
   closures: Closure[]; commutes: Commute[]; alerts: Alert[];
   notices: SourceNotice[]; trips: Trip[];
   sourceStatus: SourceStatus; graph: GraphStatus;
-  eventRevision: number;
+  eventRevision: number; profile: LocalProfile;
 }
 export type ApiError = { error: string; details?: string };
 export type MapMode = 'browse' | 'origin' | 'destination' | 'point' | 'line' | 'polygon';

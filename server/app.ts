@@ -5,10 +5,11 @@ import type { Alert, AppState, Closure, Commute, CommuteDraft, GraphStatus, Plac
 import { Store } from './store.js';
 import { HttpError } from './errors.js';
 import { drawingToPolygon, summarizeTrace } from './geometry.js';
-import { closureDraftSchema, closureUpdateSchema, commuteSchema, drawingSchema, noticeSchema, planSchema, polygonSchema, tripSchema } from './validation.js';
+import { closureDraftSchema, closureUpdateSchema, commuteSchema, drawingSchema, noticeSchema, planSchema, polygonSchema, profilePatchSchema, tripSchema } from './validation.js';
 import { SourceService, contentHash } from './source.js';
 import { graphStatus, planJourney, searchPlaces } from './routing/index.js';
 import { checkCommute, checkEnabledCommutes, type Planner } from './commutes.js';
+import { frequentRouteProposals } from './frequent-routes.js';
 
 interface AppOptions {
   source?: SourceService; planner?: Planner;
@@ -72,8 +73,18 @@ export function createApp(store: Store, options: AppOptions = {}) {
     applyRetention(store);
     const state: AppState = { closures: store.list('closure', 2000), commutes: store.list('commute', 100),
       alerts: store.list('alert', 200), trips: store.listTripSummaries(), notices: store.listNotices(),
-      graph: currentGraph(), eventRevision: store.eventRevision, sourceStatus: store.sourceStatus() };
+      graph: currentGraph(), eventRevision: store.eventRevision, sourceStatus: store.sourceStatus(), profile: store.profile() };
     response.json(state);
+  });
+  routes.get('/profile', (_request, response) => response.json(store.profile()));
+  routes.patch('/profile', (request, response) => {
+    const patch = profilePatchSchema.parse(request.body);
+    const profile = store.updateProfile(patch);
+    if (patch.inferFrequentRoutes !== undefined) recheck();
+    response.json(profile);
+  });
+  routes.get('/frequent-routes', (_request, response) => {
+    applyRetention(store); response.json(frequentRouteProposals(store));
   });
   routes.get('/places', (request, response) => {
     const query = z.string().max(160).parse(request.query.q ?? ''); response.json(places(query));
@@ -123,7 +134,7 @@ export function createApp(store: Store, options: AppOptions = {}) {
     const draft = tripSchema.parse(request.body);
     const trip: Trip = { ...draft, id: randomUUID(), createdAt: new Date().toISOString(), ...summarizeTrace(draft.points),
       durationSeconds: Math.round((Date.parse(draft.endedAt) - Date.parse(draft.startedAt)) / 1000) };
-    store.put('trip', trip); applyRetention(store); response.status(201).json(store.get('trip', trip.id) ?? trip);
+    store.put('trip', trip); applyRetention(store); recheck(); response.status(201).json(store.get('trip', trip.id) ?? trip);
   });
   routes.patch('/trips/:id', (request, response) => {
     const body = z.object({ name: z.string().trim().min(1).max(120).optional(), contributeToRoadDiscovery: z.boolean().optional() }).strict().parse(request.body);
@@ -131,7 +142,7 @@ export function createApp(store: Store, options: AppOptions = {}) {
     store.put('trip', trip); response.json(trip);
   });
   routes.delete('/trips/:id', (request, response) => {
-    const trip = getRecord<Trip>(store, 'trip', id(request)); store.delete('trip', trip.id); response.json(trip);
+    const trip = getRecord<Trip>(store, 'trip', id(request)); store.delete('trip', trip.id); recheck(); response.json(trip);
   });
   routes.get('/notices', (_request, response) => response.json(store.listNotices()));
   routes.post('/notices', (request, response) => {

@@ -35,6 +35,21 @@ async function setup() {
 }
 
 describe('local API', () => {
+  it('keeps one local profile, validates partial preferences, and exposes consent-gated proposals', async () => {
+    const { request } = await setup();
+    const initial = await (await request('/profile')).json();
+    expect(initial).toMatchObject({ id: 'local', displayName: 'Traveller', theme: 'system', mapDetail: 'clean',
+      browserNotifications: false, inferFrequentRoutes: false, transport: 'car' });
+    const changed = await request('/profile', 'PATCH', { displayName: 'Ali', theme: 'dark', browserNotifications: true });
+    expect(changed.status).toBe(200); expect(await changed.json()).toMatchObject({ displayName: 'Ali', theme: 'dark', browserNotifications: true, inferFrequentRoutes: false });
+    expect((await (await request('/state')).json()).profile.displayName).toBe('Ali');
+    expect(await (await request('/frequent-routes')).json()).toEqual([]);
+    expect((await request('/profile', 'PATCH', { id: 'another-person' })).status).toBe(400);
+    expect((await request('/profile', 'PATCH', { displayName: '   ' })).status).toBe(400);
+    expect((await request('/profile', 'PATCH', { transport: 'bus' })).status).toBe(400);
+    expect((await request('/profile', 'PATCH', { inferFrequentRoutes: 'yes' })).status).toBe(400);
+    expect((await request('/profile', 'PATCH', {})).status).toBe(400);
+  });
   it('persists versioned closures, refuses stale edits, and soft-cancels', async () => {
     const { store, request } = await setup();
     const created = await request('/closures', 'POST', closure);
@@ -110,10 +125,12 @@ describe('durability, commute time, and privacy retention', () => {
     const notice = store.upsertNotice({ source: 'manual', sourceId: 'durable-notice', url: '', text: 'A public notice',
       publishedAt: null, mediaUrls: [], contentHash: 'fixture-hash' }).notice;
     store.updateSourceStatus({ nextCheckAt: '2026-10-14T12:15:00Z', state: 'partial' });
+    store.updateProfile({ displayName: 'A local traveller', theme: 'dark', mapDetail: 'clean', inferFrequentRoutes: true });
     store.close(); store = new Store(path); cleanup.push(() => store.close());
     expect(store.get('closure', first.id)).toMatchObject({ title: closure.title, revision: 1 }); expect(store.eventRevision).toBe(1);
     expect(store.pendingAgentNotices()[0].id).toBe(notice.id); expect(store.pendingAgentCount()).toBe(1);
     expect(store.sourceStatus().nextCheckAt).toBe('2026-10-14T12:15:00Z');
+    expect(store.profile()).toMatchObject({ id: 'local', displayName: 'A local traveller', theme: 'dark', inferFrequentRoutes: true });
   });
   it('calculates weekdays and midnight in Islamabad time, not server timezone', () => {
     const commute: Commute = { id: 'commute', name: 'Office', origin: { name: 'A', coordinate: [73, 33] },

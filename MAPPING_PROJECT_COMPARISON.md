@@ -1,5 +1,7 @@
 # Manzil: Mapping Projects, Similar Products, and Technology Comparison
 
+> **15 October implementation update:** the owner's supplied Safar **Android** screenshot identifies MapLibre Android + OpenFreeMap + OpenMapTiles + OpenStreetMap. That is distinct from the earlier Safar **website** Leaflet/CARTO finding below. Manzil now uses MapLibre GL JS/OpenFreeMap in flat 2D with cleaner styling, route alternatives and red closures. The current implemented stack and tradeoffs are in [the redesign guide](docs/REDESIGN_2026-10-15.md); earlier technology comparisons remain research history.
+
 Research and architecture comparison for the two-person Manzil team. Updated 14 October 2026, Asia/Karachi. Prototype target: 17 October. This supplements the [implementation plan](ISLAMABAD_COMMUTE_PROJECT_PLAN.md).
 
 **Implementation decision after this research:** the founder chose simple, efficient 2D. Follow [the final architecture](MANZIL_ARCHITECTURE.md): Leaflet + MapTiler Dataviz Light raster + hosted ORS and the Google Cloud/Gemini backend. The 3D comparisons below are retained research, not the current build choice.

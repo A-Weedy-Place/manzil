@@ -1,35 +1,40 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Activity, ArrowDownUp, ArrowRight, ArrowUpRight, Bell, CalendarClock, Check, ChevronRight, Clock3, Download, ExternalLink, Eye, EyeOff, Flag, Inbox, Layers2, LocateFixed, MapPinned, Navigation, Pencil, Plus, RefreshCw, Repeat2, Route, Search, ShieldCheck, SlidersHorizontal, Trash2, TriangleAlert, Upload, WifiOff, X } from 'lucide-react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { Activity, ArrowDownUp, ArrowRight, ArrowUpRight, Bell, Bookmark, CalendarClock, Check, ChevronRight, Clock3, Download, ExternalLink, Eye, EyeOff, Flag, Inbox, Layers2, LocateFixed, MapPinned, Navigation, Pencil, Plus, RefreshCw, Repeat2, Route, Search, ShieldCheck, SlidersHorizontal, Trash2, TriangleAlert, Upload, UserRound, WifiOff, X } from 'lucide-react';
 import type { Polygon } from 'geojson';
-import type { AppState, Closure, ClosureDraft, Commute, CommuteImpact, Coordinate, Drawing, MapFocus, MapMode, Place, PlanResponse, RecordedPoint, RouteOption, SourceNotice, Trip } from '../shared/types';
-import MapView from './components/MapView';
+import type { AppState, Closure, ClosureDraft, Commute, CommuteImpact, Coordinate, Drawing, FrequentRouteProposal, MapFocus, MapMode, Place, PlanResponse, RecordedPoint, RouteOption, SourceNotice, Trip } from '../shared/types';
+const MapView = lazy(() => import('./components/MapView'));
 import PlaceInput from './components/PlaceInput';
 import ClosureEditor from './components/ClosureEditor';
 import RouteResults from './components/RouteResults';
 import SourcePanel from './components/SourcePanel';
 import CommutePanel from './components/CommutePanel';
 import ActivityPanel from './components/ActivityPanel';
+import ProfilePanel from './components/ProfilePanel';
+import NavigationPanel from './components/NavigationPanel';
+import { useAlertNotifications } from './lib/notifications';
 import { api, send } from './lib/api';
 import { closureState, dateTime, dayDate, distance, downloadJSON, inputISO, localInput, relative, time } from './lib/format';
 
-type View = 'journey' | 'closures' | 'commutes' | 'activity' | 'sources' | 'alerts';
+type View = 'journey' | 'closures' | 'commutes' | 'activity' | 'sources' | 'alerts' | 'profile' | 'navigation';
 const NAV = [
-  { id: 'journey', label: 'Journey', icon: Navigation },
+  { id: 'journey', label: 'Map', icon: MapPinned },
   { id: 'closures', label: 'Closures', icon: Flag },
-  { id: 'commutes', label: 'Commutes', icon: Repeat2 },
+  { id: 'commutes', label: 'Saved', icon: Bookmark },
   { id: 'activity', label: 'Activity', icon: Activity },
-  { id: 'sources', label: 'Updates', icon: Inbox },
+  { id: 'profile', label: 'Profile', icon: UserRound },
 ] as const;
 const EXAMPLE_ORIGIN: Place = { id: 'faisal-mosque', name: 'Faisal Mosque · approach road', coordinate: [73.0376503, 33.7314163] };
 const EXAMPLE_DESTINATION: Place = { id: 'centaurus', name: 'Centaurus · Nazimuddin Road', coordinate: [73.0492744, 33.7081776] };
 
 export default function App() {
   const [state, setState] = useState<AppState | null>(null);
-  const [view, setView] = useState<View>('journey');
+  const [view, setView] = useState<View>(window.location.hash === '#alerts' ? 'alerts' : 'journey');
+  const [panelExpanded, setPanelExpanded] = useState(false);
   const [online, setOnline] = useState(true); const [startupError, setStartupError] = useState('');
   const [origin, setOrigin] = useState<Place | null>(EXAMPLE_ORIGIN);
   const [destination, setDestination] = useState<Place | null>(EXAMPLE_DESTINATION);
   const [departure, setDeparture] = useState(localInput());
+  const [departureMode, setDepartureMode] = useState<'now' | 'scheduled'>('now');
   const [compare, setCompare] = useState(true);
   const [mode, setMode] = useState<MapMode>('browse');
   const [focus, setFocus] = useState<MapFocus | null>(null);
@@ -41,7 +46,9 @@ export default function App() {
   const [editorKey, setEditorKey] = useState(0);
   const [drawing, setDrawing] = useState<Drawing | null>(null);
   const [selectedClosure, setSelectedClosure] = useState<string | null>(null);
-  const [showClosures, setShowClosures] = useState(true); const [showBaseline, setShowBaseline] = useState(true);
+  const [showClosures, setShowClosures] = useState(true); const [showBaseline, setShowBaseline] = useState(false);
+  const [systemDark, setSystemDark] = useState(window.matchMedia('(prefers-color-scheme: dark)').matches);
+  const [navigationPosition, setNavigationPosition] = useState<Coordinate | null>(null);
   const [closureFilter, setClosureFilter] = useState('current');
   const [toast, setToast] = useState(''); const [demoBusy, setDemoBusy] = useState(false);
   const [commuteOpen, setCommuteOpen] = useState(0);
@@ -51,24 +58,33 @@ export default function App() {
   const fileInput = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const planSequence = useRef(0);
+  const reloadSequence = useRef(0);
   const latestView = useRef(view); latestView.current = view;
+  const theme = state?.profile?.theme === 'system' || !state?.profile?.theme ? systemDark ? 'dark' : 'light' : state.profile.theme;
+  useEffect(() => { const media = window.matchMedia('(prefers-color-scheme: dark)'); const changed = () => setSystemDark(media.matches); media.addEventListener('change', changed); return () => media.removeEventListener('change', changed); }, []);
+  useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
+  useAlertNotifications(state, () => setView('alerts'));
+  useEffect(() => { if (!('serviceWorker' in navigator)) return; const opened = (event: MessageEvent) => { if (event.data?.type === 'OPEN_ALERTS') setView('alerts'); }; navigator.serviceWorker.addEventListener('message', opened); return () => navigator.serviceWorker.removeEventListener('message', opened); }, []);
   const notify = useCallback((message: string) => setToast(message), []);
   const reload = useCallback(async () => {
-    try { const next = await api<AppState>('/state'); setState(next); setOnline(true); setStartupError(''); }
-    catch (e) { setOnline(false); setStartupError(e instanceof Error ? e.message : 'The local API is unavailable. Start the server and retry.'); throw e; }
+    const sequence = ++reloadSequence.current;
+    try { const next = await api<AppState>('/state'); if (sequence !== reloadSequence.current) return; setState(next); setOnline(true); setStartupError(''); }
+    catch (e) { if (sequence !== reloadSequence.current) return; setOnline(false); setStartupError(e instanceof Error ? e.message : 'The local API is unavailable. Start the server and retry.'); throw e; }
   }, []);
   useEffect(() => { reload().catch(() => {}); const timer = setInterval(() => reload().catch(() => {}), 20000); return () => clearInterval(timer); }, [reload]);
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(''), 6500); return () => clearTimeout(timer); }, [toast]);
   useEffect(() => { panelRef.current?.scrollTo({ top: 0 }); }, [view, editorOpen]);
+  useEffect(() => { if (plan && view === 'journey') panelRef.current?.scrollTo({ top: 0 }); }, [plan]);
   useEffect(() => {
     const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setMode('browse'); };
     window.addEventListener('keydown', escape); return () => window.removeEventListener('keydown', escape);
   }, []);
   const focusPoints = useCallback((coordinates: Coordinate[]) => setFocus({ coordinates, token: Date.now() + Math.random() }), []);
-  const departureISO = (() => { try { return inputISO(departure); } catch { return new Date().toISOString(); } })();
+  const departureISO = (() => { try { return departureMode === 'now' ? new Date().toISOString() : inputISO(departure); } catch { return new Date().toISOString(); } })();
   const stale = !!plan && !!state && plan.eventRevision !== state.eventRevision;
-  const selectedRoute = !stale ? plan?.options.find(option => option.id === selectedRouteId) ?? plan?.options[0] ?? null : null;
-  const mapDepartureAt = view === 'journey' && selectedRoute ? selectedRoute.departureAt : departureISO;
+  const routeForGuidance = plan?.options.find(option => option.id === selectedRouteId) ?? plan?.options[0] ?? null;
+  const selectedRoute = !stale ? routeForGuidance : null;
+  const mapDepartureAt = ['journey', 'navigation'].includes(view) && selectedRoute ? selectedRoute.departureAt : departureISO;
   const visibleClosures = state?.closures.filter(closure => {
     const status = closureState(closure, departureISO);
     return closureFilter === 'all' || closureFilter === 'current' && ['active', 'scheduled', 'draft'].includes(status) || status === closureFilter;
@@ -76,7 +92,10 @@ export default function App() {
   const activeCount = state?.closures.filter(c => closureState(c, departureISO) === 'active').length ?? 0;
   const upcomingCount = state?.closures.filter(c => closureState(c, departureISO) === 'scheduled').length ?? 0;
   const unread = state?.alerts.filter(alert => !alert.read).length ?? 0;
-  function navigate(next: View) { setView(next); setMode('browse'); }
+  function navigate(next: View) {
+    if (next === 'journey' && view === 'navigation' && plan?.options.length) focusPoints(plan.options.filter(option => ['direct', 'detour', 'alternative'].includes(option.kind)).flatMap(option => option.geometry.coordinates as Coordinate[]));
+    setView(next); setMode('browse');
+  }
   function changeEndpoint(letter: 'A' | 'B', coordinate: Coordinate) {
     const place = { name: `Map point · ${coordinate[1].toFixed(4)}, ${coordinate[0].toFixed(4)}`, coordinate };
     if (letter === 'A') setOrigin(place); else setDestination(place);
@@ -93,10 +112,12 @@ export default function App() {
     if (!origin || !destination) { setPlanError('Choose a start and destination first.'); return; }
     const sequence = ++planSequence.current; setPlanning(true); setMode('browse'); setHistoryTrace([]);
     try {
-      const result = await send<PlanResponse>('/plan', { origin, destination, departureAt: inputISO(departure), compareDepartures: compare });
+      const requestedDeparture = departureMode === 'now' ? new Date().toISOString() : inputISO(departure);
+      if (departureMode === 'now') setDeparture(localInput(new Date(requestedDeparture)));
+      const result = await send<PlanResponse>('/plan', { origin, destination, departureAt: requestedDeparture, compareDepartures: compare });
       if (sequence !== planSequence.current) return;
-      setPlan(result); setSelectedRouteId(result.options[0]?.id ?? null);
-      if (result.options[0]) focusPoints(result.options[0].geometry.coordinates as Coordinate[]);
+      setPlan(result); setSelectedRouteId(result.options[0]?.id ?? null); setPanelExpanded(false);
+      if (result.options[0]) { const paths = result.options.filter(option => ['direct', 'detour', 'alternative'].includes(option.kind)); focusPoints((paths.length ? paths : [result.options[0]]).flatMap(option => option.geometry.coordinates as Coordinate[])); }
       else if (result.baseline) focusPoints(result.baseline.geometry.coordinates as Coordinate[]);
       else focusPoints([origin.coordinate, destination.coordinate]);
     } catch (e) { if (sequence === planSequence.current) setPlanError(e instanceof Error ? e.message : 'Could not calculate your route.'); }
@@ -158,30 +179,47 @@ export default function App() {
   function selectCommute(commute: Commute, impact: CommuteImpact) {
     if (latestView.current !== 'commutes') { notify('Commute check finished. Its relevant alerts are available in the inbox.'); return; }
     planSequence.current++; setPlanning(false); setHistoryTrace([]); setMode('browse'); setPlanError('');
-    setOrigin(commute.origin); setDestination(commute.destination); setDeparture(localInput(new Date(impact.occurrenceAt))); setPlan(impact.plan); setSelectedRouteId(impact.plan.options[0]?.id ?? null); setView('journey');
+    setOrigin(commute.origin); setDestination(commute.destination); setDepartureMode('scheduled'); setDeparture(localInput(new Date(impact.occurrenceAt))); setPlan(impact.plan); setSelectedRouteId(impact.plan.options[0]?.id ?? null); setView('journey');
     if (impact.plan.options[0]) focusPoints(impact.plan.options[0].geometry.coordinates as Coordinate[]);
+  }
+  async function saveProposal(proposal: FrequentRouteProposal) {
+    await send('/commutes', { name: `Usual journey · ${proposal.departureTime}`, origin: proposal.origin, destination: proposal.destination, departureTime: proposal.departureTime, days: proposal.days, enabled: true });
+    await reload(); navigate('commutes'); notify('Usual journey saved. You can check its next departure here.');
+  }
+  async function replanFromGPS(coordinate: Coordinate) {
+    if (!destination) throw new Error('Choose a destination before starting guidance.');
+    const sequence = ++planSequence.current, now = new Date().toISOString();
+    const start: Place = { name: 'Current GPS location', coordinate };
+    const result = await send<PlanResponse>('/plan', { origin: start, destination, departureAt: now, compareDepartures: false });
+    if (sequence !== planSequence.current || latestView.current !== 'navigation') throw new Error('Guidance view changed.');
+    if (!result.options.length) throw new Error(result.unavailableReason ?? 'No clear connected route was found from your location.');
+    await reload();
+    if (sequence !== planSequence.current || latestView.current !== 'navigation') throw new Error('Guidance view changed.');
+    setOrigin(start); setDepartureMode('now'); setDeparture(localInput(new Date(now))); setPlan(result); setSelectedRouteId(result.options[0].id); setPlanning(false);
+    return result.options[0];
   }
   const mapInstructions = mode === 'origin' ? 'Click the map to choose your start' : mode === 'destination' ? 'Click the map to choose your destination' : ['point', 'line', 'polygon'].includes(mode) ? `Draw ${mode === 'point' ? 'a point restriction' : mode === 'line' ? 'the affected road' : 'the affected area'} · Esc to pause` : '';
   return <div className="app-shell">
     <a className="skip-link" href="#workspace-panel">Skip to controls</a>
-    <header className="app-header"><button className="brand" onClick={() => navigate('journey')} aria-label="Manzil journey planner"><img src="/manzil-logo.png" width="42" height="42" alt="Manzil Urdu calligraphy" /><span className="brand-name">manzil<span className="brand-dot">.</span></span><span className="brand-divider" /><span className="brand-tagline">Plan ahead of the road.</span></button><div className="header-actions"><span className="local-badge"><span className={online ? 'status-dot' : 'status-dot offline'} />Local workspace</span><button className={`icon-button notification-button ${view === 'alerts' ? 'selected' : ''}`} aria-label={`Alerts${unread ? `, ${unread} unread` : ''}`} onClick={() => navigate('alerts')}><Bell size={19} />{unread > 0 && <span className="notification-count">{unread}</span>}</button><span className="workspace-avatar" title="Single-user local workspace">M</span></div></header>
+    <header className="app-header"><button className="brand" onClick={() => navigate('journey')} aria-label="Manzil journey planner"><img src="/manzil-logo.png" width="42" height="42" alt="Manzil Urdu calligraphy" /><span className="brand-name">manzil<span className="brand-dot">.</span></span><span className="brand-divider" /><span className="brand-tagline">Your way, planned ahead.</span></button><div className="header-actions"><span className="local-badge"><span className={online ? 'status-dot' : 'status-dot offline'} />Islamabad</span><button className={`icon-button notification-button ${view === 'alerts' ? 'selected' : ''}`} aria-label={`Alerts${unread ? `, ${unread} unread` : ''}`} onClick={() => navigate('alerts')}><Bell size={22} />{unread > 0 && <span className="notification-count">{unread}</span>}</button><button className="workspace-avatar" aria-label="Open profile and settings" onClick={() => navigate('profile')}>{(state?.profile?.displayName ?? 'M').slice(0, 1).toUpperCase()}</button></div></header>
     <div className="workspace">
-      <nav className="nav-rail" aria-label="Main navigation">{NAV.map(({ id, icon: Icon, label }) => <button className={`nav-item ${view === id ? 'active' : ''}`} key={id} aria-current={view === id ? 'page' : undefined} onClick={() => navigate(id)}><Icon size={21} strokeWidth={1.7} aria-hidden="true" /><span>{label}</span>{id === 'sources' && !!state?.notices.filter(n => n.status === 'pending_agent').length && <span className="nav-pip" />}</button>)}<div className="rail-bottom"><span>منزل</span><small>ISB</small></div></nav>
-      <aside ref={panelRef} className="side-panel" id="workspace-panel" aria-label={`${view} controls`}>
+      <nav className="nav-rail" aria-label="Main navigation">{NAV.map(({ id, icon: Icon, label }) => <button className={`nav-item ${view === id || id === 'journey' && view === 'navigation' || id === 'profile' && view === 'sources' ? 'active' : ''}`} key={id} aria-current={view === id ? 'page' : undefined} onClick={() => navigate(id)}><Icon size={23} strokeWidth={1.9} aria-hidden="true" /><span>{label}</span></button>)}<div className="rail-bottom"><span>منزل</span><small>ISB</small></div></nav>
+      <aside ref={panelRef} className={`side-panel ${panelExpanded ? 'is-expanded' : ''}`} id="workspace-panel" aria-label={`${view} controls`}>
+        <button className="sheet-size-toggle" aria-label={panelExpanded ? 'Show more of the map' : 'Expand controls'} aria-expanded={panelExpanded} onClick={() => setPanelExpanded(!panelExpanded)}><span /></button>
         {!state ? <div className="panel-content"><span className="eyebrow">MANZIL LOCAL</span><h1>Getting the road ready.</h1><p className="muted">Connecting to your local workspace…</p>{startupError && <><div className="error-box">{startupError}</div><button className="secondary-button" onClick={() => reload().catch(() => {})}><RefreshCw size={16} />Retry connection</button><p className="small muted">Run <code>npm run dev</code> from the project folder.</p></>}</div> : <>
           {!online && <div className="offline-banner"><WifiOff size={16} />Connection lost. Showing the last loaded data.</div>}
           <div className="panel-content" hidden={view !== 'journey'}>
-            <div className="section-heading"><div><span className="eyebrow">A CLEARER WAY HOME</span><h1>Where are you headed?</h1></div><Route size={22} strokeWidth={1.5} /></div><p className="muted intro">Choose your journey. We’ll look ahead for road restrictions.</p>
-            <form className="journey-form" onSubmit={calculate}>
+            <div className="section-heading"><div><span className="eyebrow">PLAN AHEAD</span><h1>{plan && !stale ? 'A clearer way there.' : 'Where do you want to go?'}</h1></div><Route size={25} /></div><p className="muted intro">{plan && !stale ? 'Compare routes. Pick the one that works for you.' : 'Find a route around current and scheduled closures.'}</p>
+            <details className="journey-search" open={!plan || stale}><summary><Route size={20} /><span><strong>{origin?.name ?? 'Choose a starting point'}</strong><small>to {destination?.name ?? 'your destination'}</small></span><Pencil size={17} /></summary><form className="journey-form" onSubmit={calculate}>
               <div className="endpoints"><PlaceInput label="Starting point" letter="A" value={origin} active={mode === 'origin'} onPick={() => setMode(mode === 'origin' ? 'browse' : 'origin')} onChange={place => { setOrigin(place); invalidatePlan(); }} /><button type="button" className="swap-button" aria-label="Swap starting point and destination" onClick={() => { setOrigin(destination); setDestination(origin); invalidatePlan(); }}><ArrowDownUp size={16} /></button><PlaceInput label="Destination" letter="B" value={destination} active={mode === 'destination'} onPick={() => setMode(mode === 'destination' ? 'browse' : 'destination')} onChange={place => { setDestination(place); invalidatePlan(); }} /></div>
-              <div className="departure-label"><label htmlFor="departure"><CalendarClock size={16} />Departure</label><button type="button" className="text-button" onClick={() => { setDeparture(localInput()); invalidatePlan(); }}>Leave now</button></div><input id="departure" className="departure-input" type="datetime-local" required value={departure} onInput={e => { setDeparture(e.currentTarget.value); invalidatePlan(); }} /><span className="field-hint">Pakistan time · UTC+05:00</span>
+              <div className="departure-label"><label htmlFor="departure"><CalendarClock size={16} />Departure</label><button type="button" className="text-button" aria-pressed={departureMode === 'now'} onClick={() => { setDepartureMode('now'); setDeparture(localInput()); invalidatePlan(); }}>Leave now</button></div><input id="departure" className="departure-input" type="datetime-local" required value={departure} onInput={e => { setDepartureMode('scheduled'); setDeparture(e.currentTarget.value); invalidatePlan(); }} /><span className="field-hint">{departureMode === 'now' ? 'Leaving now · time updates when you search' : 'Scheduled departure'} · Pakistan time</span>
               <label className="check-row compare-check"><input type="checkbox" checked={compare} onChange={e => { setCompare(e.target.checked); invalidatePlan(); }} />Also compare leaving earlier or later</label>
               <button className="primary-button full plan-button" disabled={planning || !origin || !destination || !state.graph.ready}><Navigation size={18} />{planning ? 'Finding a clear route…' : 'Find my route'}{!planning && <ArrowRight size={17} />}</button>
-            </form>
+            </form></details>
             {planError && <div className="error-box" role="alert">{planError}</div>}
             {!state.graph.ready && <div className="error-box">The Islamabad road graph is unavailable. Run <code>npm run data:import</code> and restart the API. No synthetic routes are used.</div>}
             {stale && <div className="notice-box warning"><RefreshCw size={17} /><div><strong>Restrictions changed</strong><p>Replan this journey to use the latest map and schedule.</p></div></div>}
-            {plan && !stale ? <RouteResults plan={plan} selectedId={selectedRouteId} onSelect={option => { setSelectedRouteId(option.id); focusPoints(option.geometry.coordinates as Coordinate[]); }} onSaveCommute={() => { setCommuteOpen(n => n + 1); navigate('commutes'); }} onDemo={addDemo} demoBusy={demoBusy} /> : !stale && <div className="journey-empty"><div className="journey-illustration"><Route size={36} strokeWidth={1.2} /><span className="illustration-a">A</span><span className="illustration-b">B</span></div><h2>A little foresight goes a long way.</h2><p>Plan a detour, change your departure, or simply know what’s ahead.</p><div className="feature-line"><ShieldCheck size={17} /><span>Works around your scheduled blockades</span></div><div className="feature-line"><Clock3 size={17} /><span>Checks when you’ll reach each restriction</span></div></div>}
+            {plan && !stale ? <RouteResults plan={plan} selectedId={selectedRouteId} onSelect={option => { setSelectedRouteId(option.id); }} onNavigate={() => { setNavigationPosition(null); navigate('navigation'); }} onSaveCommute={() => { setCommuteOpen(n => n + 1); navigate('commutes'); }} onDemo={addDemo} demoBusy={demoBusy} /> : !stale && <div className="journey-empty compact-empty"><ShieldCheck size={26} /><h2>Know before you leave.</h2><p>Choose a departure to check closures along your route. Save a regular journey to get advance alerts.</p></div>}
             <div className="panel-footnote"><span className="status-dot" />Local OSM routing · No live traffic feed</div>
           </div>
           <div className="panel-content" hidden={view !== 'closures'}>
@@ -197,17 +235,24 @@ export default function App() {
           <div className="panel-content" hidden={view !== 'commutes'}><CommutePanel key={`commutes-${commuteOpen}`} state={state} origin={origin} destination={destination} initialOpen={commuteOpen > 0} reload={reload} notify={notify} onPlan={selectCommute} onSelectEndpoints={() => navigate('journey')} /></div>
           <div className="panel-content" hidden={view !== 'activity'}><ActivityPanel state={state} points={recordedPoints} setPoints={points => { setRecordedPoints(points); if (points.length) setHistoryTrace([]); }} reload={reload} notify={notify} onView={trip => { setHistoryTrace(trip.points); setHistoryName(trip.name); focusPoints(trip.points.map(p => p.coordinate)); }} /></div>
           <div className="panel-content" hidden={view !== 'sources'}><SourcePanel state={state} reload={reload} notify={notify} onManualClosure={notice => beginClosure({ title: 'Review · imported notice', description: notice.text, sourceUrl: notice.url || undefined })} /></div>
-          <div className="panel-content" hidden={view !== 'alerts'}><div className="section-heading"><div><span className="eyebrow">YOUR HEAD START</span><h1>Commute alerts</h1></div><Bell size={23} /></div><p className="muted">Changes and restrictions affecting your saved journeys.</p>{!state.alerts.length && <div className="empty-state"><Bell size={31} /><h3>Nothing to flag yet</h3><p>Save a commute and check its next departure. Relevant impacts will appear here.</p></div>}{state.alerts.map(alert => <article className={`alert-card ${!alert.read ? 'unread' : ''}`} key={alert.id}><span className="small muted">{relative(alert.createdAt)}</span><h3>{alert.title}</h3><p>{alert.message}</p>{!alert.read && <button className="text-button" onClick={() => markAlert(alert.id)}><Check size={14} />Mark read</button>}</article>)}<div className="notice-box soft"><Clock3 size={18} /><p>These are local in-app alerts. Push delivery while the app is closed is a later deployment integration.</p></div></div>
+          <div className="panel-content" hidden={view !== 'profile'}>{state.profile && <ProfilePanel state={state} reload={reload} notify={notify} onSources={() => navigate('sources')} onActivity={() => navigate('activity')} onSaveProposal={saveProposal} />}</div>
+          {view === 'navigation' && <div className="panel-content">{routeForGuidance && destination ? <NavigationPanel route={routeForGuidance} destination={destination.name} stale={stale} onBack={() => navigate('journey')} onPosition={setNavigationPosition} onReplan={replanFromGPS} onFocus={focusPoints} /> : <><h1>Choose a route first</h1><button className="primary-button" onClick={() => navigate('journey')}>Open the planner</button></>}</div>}
+          <div className="panel-content" hidden={view !== 'alerts'}>
+            <div className="section-heading"><div><span className="eyebrow">YOUR HEAD START</span><h1>Journey alerts</h1></div><Bell size={24} /></div><p className="muted">Closures affecting saved journeys, or usual routes learned with your permission.</p>
+            <button className="secondary-button full" onClick={() => navigate('profile')}><SlidersHorizontal size={18} />Notification preferences</button>
+            {!state.alerts.length && <div className="empty-state"><Bell size={31} /><h3>No journey alerts yet</h3><p>Save a regular commute, or opt into learning from recorded trips in your profile.</p></div>}
+            {state.alerts.map(alert => <article className={`alert-card ${!alert.read ? 'unread' : ''}`} key={alert.id}><span className="small muted">{relative(alert.createdAt)}{alert.frequentRouteId ? ' · Usual journey' : ' · Saved journey'}</span><h3>{alert.title}</h3><p>{alert.message}</p><div className="row wrap">{alert.closureId && state.closures.some(c => c.id === alert.closureId) && <button className="text-button" onClick={() => { const closure = state.closures.find(c => c.id === alert.closureId)!; setSelectedClosure(closure.id); focusPoints(closure.geometry.coordinates[0] as Coordinate[]); navigate('closures'); }}><Flag size={16} />View closure</button>}{!alert.read && <button className="text-button" onClick={() => markAlert(alert.id)}><Check size={16} />Mark read</button>}</div></article>)}
+            <div className="notice-box soft"><Clock3 size={18} /><p>The server checks journeys automatically. Enable browser notifications in Profile for new alerts while the app is open. Closed-app push remains a deployment step.</p></div>
+          </div>
         </>}
       </aside>
-      <main className="map-workspace" aria-label="Journey map">
-        <MapView mode={mode} origin={origin} destination={destination} closures={state?.closures ?? []} selectedClosureId={selectedClosure} selectedRoute={selectedRoute} baseline={stale ? null : plan?.baseline ?? null} drawing={editorOpen && view === 'closures' ? drawing : null} departureAt={mapDepartureAt} focus={focus} showClosures={showClosures} showBaseline={showBaseline} recordedPoints={recordedPoints.length ? recordedPoints : historyTrace} onPick={pick} onDraw={setDrawing} onEndpointMove={changeEndpoint} onClosureSelect={id => { if (editorOpen) { notify('Finish or cancel the current edit before selecting another restriction.'); return; } setSelectedClosure(id); navigate('closures'); }} />
+      <main className="map-workspace" aria-label="Journey map"><Suspense fallback={<div className="map-status" role="status">Loading the map…</div>}>
+        <MapView theme={theme} mapDetail={state?.profile?.mapDetail ?? 'clean'} navigationPosition={navigationPosition} followPosition={view === 'navigation'} routeOptions={view === 'navigation' ? (selectedRoute ? [selectedRoute] : []) : stale ? [] : plan?.options ?? []} onRouteSelect={id => setSelectedRouteId(id)} mode={mode} origin={origin} destination={destination} closures={state?.closures ?? []} selectedClosureId={selectedClosure} selectedRoute={selectedRoute} baseline={stale ? null : plan?.baseline ?? null} drawing={editorOpen && view === 'closures' ? drawing : null} departureAt={mapDepartureAt} focus={focus} showClosures={showClosures} showBaseline={showBaseline} recordedPoints={recordedPoints.length ? recordedPoints : historyTrace} onPick={pick} onDraw={setDrawing} onEndpointMove={changeEndpoint} onClosureSelect={id => { if (editorOpen) { notify('Finish or cancel the current edit before selecting another restriction.'); return; } setSelectedClosure(id); navigate('closures'); }} />
         <div className="map-topline"><div className="city-chip"><MapPinned size={17} /><span>Islamabad<span className="city-chip-country">, Pakistan</span></span><span className="city-chip-dot" /></div><div className="map-layer-controls"><button aria-label="Show restrictions layer" aria-pressed={showClosures} className={showClosures ? 'active' : ''} onClick={() => setShowClosures(!showClosures)}><Flag size={15} /><span>Restrictions</span>{activeCount + upcomingCount > 0 && <b>{activeCount + upcomingCount}</b>}</button>{plan?.baseline && <button aria-label="Show original route layer" aria-pressed={showBaseline} className={showBaseline ? 'active' : ''} onClick={() => setShowBaseline(!showBaseline)}>{showBaseline ? <Eye size={15} /> : <EyeOff size={15} />}<span>Original route</span></button>}</div></div>
         {mapInstructions && <div className="map-instructions" role="status"><span className="status-dot" />{mapInstructions}<button className="icon-button small" aria-label="Stop map selection" onClick={() => setMode('browse')}><X size={16} /></button></div>}
         <div className="map-actions"><button className="map-action" aria-label="Use my location as start" title="Use my location as start" onClick={locate}><LocateFixed size={20} /></button><button className={`map-action ${editorOpen ? 'active' : ''}`} aria-label="Add restriction on map" title="Add restriction" onClick={() => beginClosure()}><Plus size={21} /></button><button className="map-action" aria-label="Fit journey on map" title="Fit journey" onClick={() => { if (selectedRoute) focusPoints(selectedRoute.geometry.coordinates as Coordinate[]); else if (origin && destination) focusPoints([origin.coordinate, destination.coordinate]); else focusPoints([[72.97, 33.60], [73.16, 33.75]]); }}><MapPinned size={20} /></button></div>
         <div className="map-bottom-info"><div className="map-legend"><span><i className="legend-line" />Your route</span><span><i className="legend-block" />Restriction</span><span><i className="legend-upcoming" />Scheduled</span></div><div className="map-context">{historyTrace.length && !recordedPoints.length ? <><Activity size={14} />{historyName}<button className="icon-button small" aria-label="Hide recorded trip" onClick={() => setHistoryTrace([])}><X size={13} /></button></> : <><Clock3 size={14} />{dayDate(mapDepartureAt)} · {time(mapDepartureAt)} PKT</>}</div></div>
-        {state?.graph.ready && !plan && !editorOpen && <div className="map-welcome"><span className="eyebrow">YOUR CITY. AHEAD OF TIME.</span><h2>There’s a way<br />around the unexpected.</h2><p>Your roads, your schedule.<br />A little more certainty.</p></div>}
-      </main>
+      </Suspense></main>
     </div>
     {toast && <div className="toast" role="status"><Check size={17} /><span>{toast}</span><button className="icon-button small" aria-label="Dismiss message" onClick={() => setToast('')}><X size={15} /></button></div>}
   </div>;
