@@ -7,11 +7,11 @@ Research checked 14 October 2026, Asia/Karachi. This updates the source-access d
 1. **Recent Champ posts really were readable without login.** An ordinary browser opened the public X profile, showed recent posts from today and opened an individual alert. A simple HTTP research fetch returned 403. These are different access results, not evidence that public reading always requires login.
 2. **The public timeline exposed only a limited preview in this test.** It showed an old pinned post and four recent posts; scrolling reached a “full profile” sign-in prompt. It did not establish access to all today's posts or reliable continuous collection.
 3. **A structured hackathon option may cost nothing:** eligible X accounts can receive a one-time $20 API credit without buying credits. Section 3.1 gives the card/eligibility conditions. If access is established, test Activity API webhooks for prompt new-post delivery, with timeline catch-up.
-4. **If no card/credit is available, test a spare Android device's Champ notifications as an experimental connector.** This has no X/WhatsApp API subscription, but notifications may be incomplete, grouped or missing. It needs explicit device permission and source/use permission; it is not a complete WhatsApp Channel API.
+4. **There are genuine unofficial WhatsApp Channel readers.** whatsapp-web.js and Baileys expose Channel/newsletter retrieval methods through a linked account. They are free source libraries, not supported Meta APIs, and have account/reliability risks. Section 9 gives the bounded experiment; Android notification forwarding is a separate fallback.
 5. **The strongest ongoing zero-X-cost feed is publisher cooperation:** Champ sends original notices to our authenticated webhook or publishes them to an agreed Sheet/Telegram feed. No existing official Champ RSS/Telegram feed has been verified.
 6. **Always retain paste/share/image import.** The downstream Gemini, review, scheduling, rerouting and commute-alert system is the same for every intake method.
 
-API credits are temporary, notification forwarding is experimental, and the browser preview is incomplete. None establishes “every post immediately, free forever.”
+**A verified alternative outside social platforms is APP's public RSS feed**, which contained an Islamabad Traffic Police advisory during this check. Use it as an initial automated source alongside deliberate Champ import; test a linked-account WhatsApp adapter separately. API credits are temporary and the other experimental connectors are unproven; none establishes every city event immediately.
 
 ## 2 What was actually observed
 
@@ -30,7 +30,9 @@ The examples above record access observations and source IDs, not a copied socia
 
 | Option | Paid subscription? | Timeliness and completeness | Decision for Manzil |
 | --- | --- | --- | --- |
-| X API using an eligible promotional balance | No subscription; conditional no-purchase incentive | Activity API public-account post webhooks, plus structured timeline catch-up; dependent on account access, rate limits and balance | First automatic prototype candidate if the user accepts the card condition and credit appears. Source/downstream-use checks still apply. |
+| X API using an eligible promotional balance | No subscription; conditional no-purchase incentive | Activity API public-account post webhooks, plus structured timeline catch-up; dependent on account access, rate limits and balance | Structured X candidate if the user accepts the card condition and credit appears. Source/downstream-use checks still apply. |
+| Linked-account WhatsApp Channel client | No social API subscription; library is open source, hosting still consumes resources | Documented recent-message retrieval/live event machinery; actual Champ content/delivery untested | Two-hour whatsapp-web.js spike; inspect permitted use and account risk. Details in section 9. |
+| APP RSS / official Police website | No API key or social subscription for the checked public pages | RSS is working/current; Police HTML is accessible. Publication coverage and delays remain source-dependent | Initial zero-purchase automatic adapter plus a second official-site adapter; section 10. |
 | Public X page browser collector | No API bill; browser hosting still consumes resources | Recent preview worked once; full-day discovery failed at the preview boundary. Availability, order and markup can change. | Technically possible to read visible posts; not the selected dependable feed. X's terms require prior written consent for scraping. Only evaluate unattended collection if permitted; do not evade a login/access block. |
 | Official embedded X profile timeline | No API-key requirement in the documented embedding workflow | Displays public posts; no documented machine-ingestion contract, completeness guarantee or refresh SLA | Optional source-view panel, not the ingestion engine. |
 | Own Android notification relay | No paid social API; existing phone/connectivity/backend costs remain | Potentially prompt after a device notification, but text, identity, delivery, edits and history are not guaranteed | Time-box a real-payload experiment; adopt only with measured limitations and local filtering. |
@@ -156,11 +158,63 @@ Every connector should show intake mode, last successful check/receipt, latest o
 
 ## 8 Execution decision before October 17
 
-1. Keep zero-purchase import working while building the planner. Do not delay routing/Gemini work behind a scraping experiment.
-2. Check the X free-credit offer in the user's own account if they are comfortable with the card requirement. No purchase or automatic billing setup is authorized by this document. If credit appears and intended use is permitted, test an Activity API new/deleted-post webhook and timeline catch-up. If only timeline access works, use a tested 60–120-second polling cadence.
-3. If that path is unavailable, time-box the Android payload spike to roughly two hours, including feasibility testing. Building a general notification app is outside the deadline scope.
+1. Implement APP RSS as the first no-account automatic source and keep deliberate Champ import working. Add the Police HTML adapter after its basic extraction test. Do not delay routing/Gemini work behind a WhatsApp experiment.
+2. Time-box a linked-account whatsapp-web.js Channel spike to roughly two hours, using only a deliberately authorized account/source. Test bounded recent fetch, new delivery and reconnect recovery against the actual Champ channel before promoting it. Android notification capture is a separate fallback if appropriate, not a full companion-app workstream.
+3. The X credit/API route remains optional if the user is comfortable with the card requirement and credit actually appears. No purchase or automatic billing setup is authorized by this document. Test new/deleted-post webhook and timeline catch-up, or 60–120-second polling if only timeline access works.
 4. Keep browser-only collection a conditional research adapter rather than promise a full feed from the observed limited preview.
 5. Seek a publisher-provided feed as the ongoing solution when the user chooses to contact Champ. No contact was made in this research.
 6. Demonstrate only the intake actually implemented. If import is manual, say so; if device/API access works, show measured coverage/latency and its limitations.
 
 This changes the budget priority from historical scraping to timely new notices. Historical backfill remains a later, separately permitted task. It does not change Leaflet, MapTiler, ORS, Gemini, scheduled events or the temporal rerouting architecture.
+
+## 9 Direct WhatsApp Channel clients: a real unofficial option
+
+The absence of an established official arbitrary-Channel API does **not** mean no programmatic client exists. The first pass focused too narrowly on official APIs and phone notifications. The following source-level capabilities are now verified; no account pairing or live Champ test has been performed.
+
+| Library | Actual documented/source capability | Tradeoff |
+| --- | --- | --- |
+| [whatsapp-web.js](https://github.com/wwebjs/whatsapp-web.js), Apache-2.0 | Docs labelled 1.34.7 expose getChannels/getChannelByInviteCode/subscribeToChannel and Channel.fetchMessages. Returned Message objects carry ID, text/caption, media availability and creation time. Client source implements new-message callbacks. | Runs WhatsApp Web through Puppeteer/Chromium: convenient to inspect, but heavier on the collector host and dependent on Web internals. |
+| [Baileys](https://github.com/WhiskeySockets/Baileys), MIT | Current source exposes newsletterMetadata, newsletterFetchMessages and subscribeNewsletterUpdates; the receive path handles newsletter messages. | Browser-free socket client, but raw fetch responses, event distinctions and reconnect/renewal behavior need more integration care. |
+
+[Channel method documentation](https://docs.wwebjs.dev/Channel.html) · [Client methods/events](https://docs.wwebjs.dev/Client.html) · [Channel fetch implementation](https://docs.wwebjs.dev/structures_Channel.js.html) · [Client event implementation](https://docs.wwebjs.dev/Client.js.html) · [Baileys newsletter implementation](https://github.com/WhiskeySockets/Baileys/blob/master/src/Socket/newsletter.ts)
+
+For the deadline, test **whatsapp-web.js first**. A team-controlled account is linked locally by its owner, the collector resolves only the verified Champ Channel, fetches a bounded recent window and watches matching new messages. Do not scan unrelated chats, contacts or other channel subscribers. This collector is operated once by the team; every Manzil user does not link their WhatsApp account.
+
+```text
+Champ WhatsApp Channel
+  -> team's deliberately linked WhatsApp Web client
+  -> allowlisted channel + message ID/version + original time + text/media
+  -> durable intake and extraction outbox
+  -> existing Gemini/review/event/commute workflow
+```
+
+Run the collector separately from the lightweight web frontend and request-driven worker. An existing development computer can host the prototype while powered on; it is not an always-on deployment. Browser/socket collectors need persistent connection and protected session storage, so the existing scale-to-zero HTTP worker is not automatically a suitable host. Hosted always-on compute has its own cost. Browser overhead is on the collector, not on commuters' phones.
+
+### Pass/fail experiment
+
+1. Owner explicitly authorizes linking the intended account; pairing/session credentials stay local or in protected deployment storage, never chat logs or Git. Library reuse does not establish permission over the source content or platform automation.
+2. Resolve Champ from the already verified channel link and confirm its publisher identity. Retrieve at most a small recent window first, not an unlimited history crawl.
+3. Compare returned message IDs, source timestamps, full text/captions and accessible media with the actual channel. Confirm what a non-admin follower can retrieve; do not assume publisher-admin privileges or a lifetime archive.
+4. Observe live new updates, consecutive/burst updates, edits/deletions, restart and reconnect catch-up. Deduplicate by channel plus source message identity and version/hash. Test incomplete media separately.
+5. Bound any recovery poll, track covered windows and publish a gap when recovery fails. Do not assume undocumented ordering/cursor behavior or that a connected socket means every message was received.
+6. If payload fidelity or delivery fails, keep APP/Police intake and manual Champ import working. Do not spend the remaining hackathon building an unofficial messaging platform.
+
+Baileys-specific trap: its inspected newsletter receive branch calls message upsert with type `append`; a generic consumer accepting only `notify` can silently discard Channel messages. Fetch currently returns a raw result rather than a guaranteed normalized Message array. Pin and verify a version containing the [May 2026 burst-delivery fix](https://github.com/WhiskeySockets/Baileys/pull/2482) and applicable [security fixes](https://github.com/WhiskeySockets/Baileys/security/advisories/GHSA-qvv5-jq5g-4cgg). [Receive source](https://github.com/WhiskeySockets/Baileys/blob/master/src/Socket/messages-recv.ts)
+
+The maintainers explicitly identify these clients as unofficial and warn that accounts may be blocked. A read-only use case does not establish exemption from platform rules or eliminate this risk. Do not present this as a supported Meta integration or promise uninterrupted operation. [whatsapp-web.js disclaimer](https://github.com/wwebjs/whatsapp-web.js)
+
+A separate reason notification forwarding is incomplete: WhatsApp says followers are **not notified when a Channel update is edited**, and editing an original does not update copies already forwarded. Therefore the Android bridge needs separate source reconciliation or explicit manual review; waiting for another notification is insufficient. [WhatsApp editing behavior](https://faq.whatsapp.com/1549633222110625)
+
+## 10 Other publishers: real free inputs outside social APIs
+
+| Source | Verified status on October 14 | How to use it |
+| --- | --- | --- |
+| [Associated Press of Pakistan RSS](https://www.app.com.pk/feed/) | Actual HTTP 200, XML RSS, ten items, build time 17:35:34 UTC. Included a current Islamabad Traffic Police rain/slow-traffic advisory published 17:32:18 UTC. | First automated zero-account input. Poll every 1–2 minutes, persist GUID/link/publication time and fetch only new relevant articles. This is a news publisher reporting authorities, not an exhaustive operational city feed. |
+| [Islamabad Police news](https://www.islamabadpolice.gov.pk/all-news.php), [ITP division](https://www.islamabadpolice.gov.pk/division.php?slug=islamabad-traffic-police) | Public dated news/article links and current homepage releases verified. No advertised RSS/public JSON API established. | Bounded HTML listing/detail adapter. Filter unrelated administrative/crime material; handle article/PDF formats. Measure publication lag and permitted reuse rather than assuming every closure appears. |
+| [NHMP travel advisory](https://beta.nhmp.gov.pk/ta/Public/ViewTravel.aspx) | Indexed table shows sector, direction/lanes, road status and October 12–13 update times, including M1/M2 North/N5/N75. Direct attempts returned 503. | Candidate for highways approaching Islamabad. Direct live availability is unresolved; cached/indexed rows cannot be labelled current live conditions. |
+
+The current [APP advisory](https://www.app.com.pk/national/heavy-rain-in-islamabad-itp-warns-of-slow-traffic-urges-motorists-to-drive-carefully/) demonstrates a real fresh item, but slow traffic/rain is not a complete closure. A historical [May 9, 2026 APP report](https://www.app.com.pk/national/itp-issues-diversion-plan-for-marka-e-haq-htv-entry-banned/) announced next-day restrictions and road boundaries; it demonstrates the scheduled-notice format, not a currently active event.
+
+APP's general RSS contains only the latest ten items in the observed response, across many subjects. A short polling interval reduces but cannot eliminate gaps; record a suspected gap after an outage/window turnover. Test category/history recovery before claiming completeness. RSS availability does not grant unrestricted copying/training rights: retain source links, use only necessary permitted evidence, and avoid publishing a copied news archive.
+
+An article repeating an ITP announcement and Champ repeating that announcement may share one upstream source. Link the evidence but do not count those copies as independent confirmations. Road closures, lane restrictions, weather warnings and reopenings remain distinct event types.

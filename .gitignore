@@ -10,3 +10,6 @@ coverage/
 Thumbs.db
 .codex/
 .agents/
+.wwebjs_auth/
+.wwebjs_cache/
+.baileys_auth/

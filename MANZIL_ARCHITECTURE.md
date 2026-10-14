@@ -20,7 +20,7 @@ Build a **simple, fast 2D web app inspired by Safar's clarity**. Users plan/save
 | Notifications | Firebase Cloud Messaging web push, with an in-app alert inbox |
 | Trip traces/evidence | Private Cloud Storage objects where retention is permitted; Firestore stores metadata/summaries |
 | Hosting/operations | Firebase Hosting frontend; Secret Manager, Cloud Logging, Artifact Registry |
-| Automatic intake under the no-subscription constraint | Conditional X Activity API webhook + timeline catch-up using verified promotional credit; otherwise test an opt-in Android relay or publisher-provided feed |
+| Automatic intake under the no-subscription constraint | Start with verified public APP RSS, then Police HTML; time-box an unofficial linked-account WhatsApp Channel client. X promotional-credit API and Android relay remain conditional alternatives |
 | Intake contract that works independently | Authorized notice text/image/file import; same processing pipeline as live connectors |
 
 **Traffic is deferred.** ORS durations are ordinary estimates; personal recorded-trip statistics are labelled historical observations, not city-wide live traffic.
@@ -30,6 +30,8 @@ Build a **simple, fast 2D web app inspired by Safar's clarity**. Users plan/save
 **Road discovery is an evolution of this architecture.** Collect opt-in observations now where feasible; reviewed missing-road candidates become routable later through an owned graph/provider adapter. Hosted ORS does not accept arbitrary new roads from our app.
 
 Live source collection is the material external access dependency. No complete Champ archive, platform credentials, publisher permission or API call has yet been established for this project. The [subscription-free ingestion research](CHAMP_ALERTS_INGESTION.md) records a successful accountless public X preview/detail check, its limited timeline depth, a conditional $20 API incentive, and experimental device/direct-feed alternatives. The first build session must resolve the chosen connector's access before presenting it as live.
+
+Follow-up source checks established a working public APP RSS feed with a current Islamabad traffic advisory and documented unofficial WhatsApp Channel methods in whatsapp-web.js/Baileys. These are different evidence levels: RSS retrieval was tested; linked-account Champ retrieval/live delivery was not. See sections 9–10 of the ingestion research for the bounded experiment and revised source priority.
 
 ## 2 Architecture and responsibilities
 
@@ -135,6 +137,12 @@ X's terms/developer policy constrain scraping, geographical-data reuse, redistri
 For inference, select the Google Cloud Gemini endpoint rather than unpaid product-improvement processing of imported social content. Google's Cloud model terms restrict training use without permission; that does not erase source-platform restrictions or imply zero retention. [Cloud data governance](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/data-governance)
 
 This is an access/rights check, not a reason to stop building the planner. The authorized-import adapter runs the complete same workflow and provides a truthful demo while a live connector is being established. Label each notice's intake method.
+
+### 4.3 WhatsApp clients and non-social sources
+
+The next no-payment source spike is APP RSS plus deliberate Champ import, with a two-hour whatsapp-web.js linked-account Channel experiment. No supported arbitrary-Channel API was established, but unofficial libraries do expose recent-message retrieval and event machinery. They require deliberate account linking, protected session storage and source filtering, and carry platform/account/reliability risks. Do not equate documented library methods with a verified live Champ connection.
+
+Run any browser/socket collector as a separate persistent process; the current minimum-zero request worker is not an always-connected host. The collector posts to authenticated Manzil intake and does not run in users' browsers. Add the official Police HTML adapter after testing its listing/detail extraction; NHMP direct availability remains unresolved. [Concrete methods, source checks and acceptance gates](CHAMP_ALERTS_INGESTION.md#9-direct-whatsapp-channel-clients-a-real-unofficial-option)
 
 ## 5 Ingestion and historical backfill
 

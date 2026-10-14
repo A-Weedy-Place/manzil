@@ -9,7 +9,7 @@ The current implementation decision is the [final architecture](MANZIL_ARCHITECT
 ## Project documents
 
 - [Final architecture and implementation sequence](MANZIL_ARCHITECTURE.md): start here for the selected stack, Champ-source access plan, agent/manual closures, scheduled rerouting, personal trip analytics and learned-road roadmap.
-- [Champ Alerts without a paid subscription](CHAMP_ALERTS_INGESTION.md): tested public X preview/detail access, its timeline limit, conditional free API credit, Android notification experiment, publisher feeds and freshness guarantees.
+- [Champ Alerts without a paid subscription](CHAMP_ALERTS_INGESTION.md): tested X preview and APP RSS, unofficial WhatsApp Channel clients, official-site candidates, conditional X credit, notification experiments and actual coverage limits.
 - [Developer brief and implementation plan](ISLAMABAD_COMMUTE_PROJECT_PLAN.md): start with the quick summary; later sections contain detailed feasibility research, routing comparisons, source-code findings, architecture, and the two-person build plan.
 - [Safar map findings](ISLAMABAD_COMMUTE_PROJECT_PLAN.md#19-safar-mapping-reference): verified Leaflet/CARTO Voyager web stack, its relevance to Manzil, and current basemap service conditions.
 - [Mapping projects and similar-product comparison](MAPPING_PROJECT_COMPARISON.md): application and tool licenses, actual stacks, closest precedents, 3D alternatives, and recommendations for Manzil.
