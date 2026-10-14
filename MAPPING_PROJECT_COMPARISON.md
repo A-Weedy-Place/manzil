@@ -11,6 +11,7 @@ Research and architecture comparison for the two-person Manzil team. Updated 14 
 5. **Current Mapbox GL JS has a commercial license.** Public source is not the same as unrestricted open source. Mapbox offers polished 3D and hosted navigation, with separate billing for maps, search, and routing.
 6. **A red road overlay does not change a routing engine.** The router must receive exclusions or generate candidates that our backend rejects when they conflict with a reviewed closure.
 7. **Borrow architecture and carefully selected licensed components.** Several inspected apps accept warnings or reduced exposure instead of a fully clear route. Manzil must enforce its hard-closure promise.
+8. **Google services fit the core workflow even with an open map.** Gemini, Cloud Run, Firestore, Firebase Auth, FCM and one Scheduler job have useful roles. Section 11 distinguishes recurring free allowances from trial credits and lists optional additions.
 
 The recommended routing backend remains hosted ORS for the deadline, with Gemini, Cloud Run, and Firestore for our original notice/event/commute workflow. Given the founder's 3D preference, evaluate MapLibre/OpenFreeMap as a frontend alternative before committing to Leaflet. No renderer choice removes the need to validate road coverage, route geometry, and traversal times in Islamabad.
 
@@ -239,3 +240,112 @@ Before committing to a stack, prove:
 8. A readable map in 2D and, if selected, a usable optional 3D presentation.
 
 The complete testing, source-access, cost-control and two-developer milestone plan remains in [the main developer brief](ISLAMABAD_COMMUTE_PROJECT_PLAN.md). This comparison changes our understanding of competitors and the frontend alternatives; it does not establish a running application, live source access, or tested provider quality.
+
+## 11 Google integrations and first-month cost plan
+
+Checked against official product documentation on 14 October 2026. A small prototype can plausibly use several of these services without a charge for a month or longer. That depends on the actual account, region, selected API/model, usage and associated resources. A recurring free allowance is not an unlimited free service or a spending cap.
+
+### 11.1 Recommended meaningful integrations
+
+Use Google services for the notice-to-commute workflow while retaining MapLibre/OpenFreeMap or Leaflet/ORS for the map and detours:
+
+1. **Gemini:** propose structured road events from authorized notices, optionally read screenshots, and explain already validated travel choices.
+2. **Cloud Run:** host our extraction, review, route-validation and commute-evaluation API.
+3. **Firestore:** retain reviewed events/revisions, sources, private saved commutes, preferences and notification deduplication.
+4. **Firebase Authentication with Google sign-in:** identify users and protect their saved journeys; reviewer/admin permissions are a separate server-side role.
+5. **Firebase Cloud Messaging:** deliver the source-backed “your next commute changes” notification.
+6. **One Cloud Scheduler job:** invoke the backend to evaluate upcoming occurrences even when no user has the app open.
+7. **Firebase Hosting, if useful:** serve the static React frontend with HTTPS/CDN; Cloud Run can alternatively serve the frontend, so this is a deployment choice.
+8. **Secret Manager and Cloud Logging:** support credentials and troubleshooting rather than appear as artificial user-facing features.
+
+This already makes Google AI and Cloud central to the solution. Additional services should solve a concrete problem or replace implementation work; do not add them merely to increase the count.
+
+| Google service | Manzil use | Current no-cost allowance or credit route | Important condition |
+| --- | --- | --- | --- |
+| **Gemini Developer API / AI Studio** | Text/image notice extraction, local-language interpretation and explanation of validated choices | Selected models, including listed Flash-Lite options, have free-tier input/output; account/model rate limits apply. [Pricing](https://ai.google.dev/gemini-api/docs/pricing) | Confirm the project's actual tier and current supported model. Free quota is not unlimited; billable model/tools/features differ. Keep public/synthetic input separate from private commuter information. |
+| **Gemini through the Google Cloud model endpoint** | Cloud-native inference alternative for the same extraction contract | Usage is priced by model/tokens; eligible Cloud credits can offset covered services. It is not a blanket recurring free inference entitlement. [Cloud model pricing](https://cloud.google.com/vertex-ai/generative-ai/pricing) | Distinguish this from the Developer API in AI Studio. Verify model access, billing and promotional-credit scope before selecting it. |
+| **Cloud Run service** | API and scheduled evaluation worker | Request-billing allowances: 2M requests, 180,000 vCPU-seconds and 360,000 GiB-seconds/month on the listed Tier-1 pricing basis. [Pricing](https://cloud.google.com/run/pricing) | Billing account required; account-wide discounts, regional prices, network, builds and artifacts affect cost. Use request billing/minimum instances zero; do not leave an always-running process for this prototype. |
+| **Cloud Firestore Standard** | Events, revisions, commutes and alert state | One eligible database/project: 1 GiB storage, 50,000 reads/day, 20,000 writes/day, 20,000 deletes/day, 10 GiB outbound/month. [Pricing](https://firebase.google.com/docs/firestore/pricing) | Query/listener/index reads count. Backups, PITR and TTL deletes are outside free usage. Scheduled event expiry is application logic, not a reason to enable TTL automatically. |
+| **Firebase Auth: Google sign-in** | Account login and private saved journeys | Base Auth nonphone services are no-cost. [Pricing](https://firebase.google.com/pricing) · [Integration](https://firebase.google.com/docs/auth/web/google-signin) | Optional Identity Platform has different quotas/features; do not upgrade just to enable Google sign-in. Verify identity and permissions on the backend. SMS is not included as free unlimited authentication. |
+| **FCM web push** | Advance trip-change alerts linking to updated advice/evidence | FCM service is no-cost; server/database/scheduler operations remain separate. [Pricing](https://firebase.google.com/pricing) | Requires supported browser, HTTPS, service worker, permission, recipient registration and trusted server sending. It does not calculate routes, run our scheduler or guarantee delivery. [Web setup](https://firebase.google.com/docs/cloud-messaging/web/get-started) |
+| **Cloud Scheduler** | Shared periodic upcoming-commute evaluation | Three jobs/billing account; extra jobs $0.10/job/month on the listed 31-day basis. [Pricing](https://cloud.google.com/scheduler/pricing) | Free jobs are not three per user/project. Target API/compute costs remain separate. One shared job is preferable to one job per saved commute. |
+| **Firebase Hosting** | Static React app, HTTPS and CDN | 10 GB stored. Official pricing lists 360 MB/day transfer; quota guide lists 10 GB/month. [Pricing](https://firebase.google.com/pricing) · [Quota guide](https://firebase.google.com/docs/hosting/usage-quotas-pricing) | These pages disagree on the period. Budget below both and verify console. Retained releases consume storage; Blaze charges overage. |
+| **Secret Manager** | Backend ORS key and applicable AI credentials | Six active secret versions and 10,000 accesses/month/account. [Pricing](https://cloud.google.com/secret-manager/pricing) | Version and access counts matter; disabled versions still count. Cloud Run's Google identity can avoid long-lived Google service-account key files. |
+| **Cloud Logging** | Extraction errors, stale feeds, route latency and notification failures | First 50 GiB/project/month under the standard log-storage allowance, with default 30-day retention. [Pricing](https://cloud.google.com/products/observability/pricing) | Log concise operational metadata; private endpoints/notice bodies are not needed for ordinary telemetry. Extended retention/extra volume can charge. |
+| **Artifact Registry** | Store Cloud Run container images | 0.5 GiB/account storage free. [Pricing](https://cloud.google.com/artifact-registry/pricing) | This deployment dependency can exceed the allowance even when Run usage is small. Keep images modest and remove old artifacts; builds/scanning may be separately billed. |
+
+### 11.2 Free tier, trial credits and billing are different
+
+**Recurring allowances** can support a small month-long pilot without needing a special hackathon grant. Many Cloud services nevertheless require an active billing account. Linking Cloud Billing to Firebase moves the project to Blaze; Blaze still has product no-cost allowances and charges eligible overages. Spark alone cannot supply the Cloud Run backend. [Cloud free program](https://docs.cloud.google.com/free/docs/free-cloud-features) · [Firebase plans](https://firebase.google.com/docs/projects/billing/firebase-pricing-plans)
+
+**The standard new-customer Google Cloud trial** offers $300 for 90 days, subject to eligibility and payment/identity verification. It does not automatically charge during the trial; upgrading to paid billing changes overage behavior. The actual account's expiry and remaining credit are the operational reference. [Cloud free program](https://docs.cloud.google.com/free/docs/free-cloud-features)
+
+That standard eligible trial **can cover Google Maps Platform**, alongside its recurring free SKU allowances. A specific hackathon grant is a separate offer; its amount, redemption and service coverage are still unknown for this team. [Maps billing overview](https://developers.google.com/maps/billing-and-pricing/billing-overview)
+
+The $300 Cloud welcome credit **cannot pay Gemini Developer API/AI Studio charges**. Free-tier Developer API access or its own paid billing path must be considered separately; the Cloud model endpoint is a different option. Do not infer that every Google-branded API shares one credit pool. [Cloud trial restrictions](https://docs.cloud.google.com/free/docs/free-cloud-features)
+
+### 11.3 AI endpoint and data choice
+
+Use a supported economical Gemini model available to the account, with structured extraction and representative Urdu/Roman Urdu/English examples. Pakistan is in the Developer API's [available regions](https://ai.google.dev/gemini-api/docs/available-regions). Keep the model ID configurable and read current project quotas rather than hardcoding an assumed free request rate.
+
+For Pakistan-based unpaid Gemini services, submitted prompts/results can be used to improve Google's products and reviewed by humans; the terms prohibit sensitive, confidential or personal input. Use public authorized notices or synthetic examples for that path. Paid-service treatment differs and is tied to the active billing/project conditions. [Gemini API terms](https://ai.google.dev/gemini-api/terms)
+
+Private home/work addresses, user identity and GPS history do not need to be sent to Gemini to extract a public road notice. Let deterministic code evaluate route geometry/time; pass only the necessary validated, appropriately handled facts into an explanation. A paid/Cloud endpoint is not itself proof of zero retention or unrestricted data use—verify its applicable settings/terms.
+
+### 11.4 Optional additions that solve particular problems
+
+| Optional service | Relevant feature | Free-use basis | Priority and limitation |
+| --- | --- | --- | --- |
+| **Cloud Vision OCR** | Recover notice text from screenshots when Gemini image input alone is insufficient | First 1,000 units/month per feature; text/document text detection then $1.50/1,000 in the first paid band. [Pricing](https://cloud.google.com/vision/pricing) | Useful stretch feature after text intake works. Each image/page/selected feature affects unit count; benchmark language/text accuracy rather than add duplicate OCR automatically. |
+| **Cloud Translation NMT** | Produce bilingual notice/advice text or normalize supported languages | First 500,000 characters/month applied as a recurring $10 credit. [Pricing](https://cloud.google.com/products/translate/pricing) | Optional: Gemini already interprets language. Preserve original evidence and do not let translation rewrite uncertain place names/directions as facts. |
+| **Google Sheets API** | A future Champ/operator review sheet or team-maintained aliases table | Standard API use currently has no extra charge; read/write quotas are separately 300/min/project and 60/min/user/project. [Limits](https://developers.google.com/workspace/sheets/api/limits) | Useful with an actual publisher/team workflow. Not a replacement for private-user Firestore storage; share/authorize the specific sheet. |
+| **Google Calendar API** | Optional opt-in calendar trip/time import or travel reminder | Standard use currently no extra charge; project/user quotas and the new daily threshold apply. [Limits](https://developers.google.com/workspace/calendar/api/guides/quota) | Later: OAuth/consent and calendar changes add scope. Both Calendar/Sheets docs announce future over-quota charging; do not describe them as indefinitely unlimited free. |
+| **Cloud Tasks** | Rate-limited, retryable extraction/recheck/push work | First 1M billable operations/account/month. [Pricing](https://cloud.google.com/tasks/pricing) | Add when reliable retries/queues are needed. Creation and delivery attempts can count; target runtime/network still costs. |
+| **Pub/Sub** | Fan out one event revision to several independent consumers | First 10 GiB/month of basic throughput/account. [Pricing](https://cloud.google.com/pubsub/pricing) | Later architecture; not needed for one small backend. Storage/export/network have separate pricing. |
+| **App Check with reCAPTCHA Enterprise** | Reduce automated abuse that could consume AI/routing quotas | App Check is no-cost; provider currently includes 10,000 assessments/month/organization. [Provider setup](https://firebase.google.com/docs/app-check/web/recaptcha-enterprise-provider) | Optional public-launch hardening; token refresh generates assessments. Custom backend verification and normal rate limits still matter. |
+| **Firebase Performance Monitoring** | Find slow map-page loads and API calls during UI polish | No-cost web monitoring product. [Web setup](https://firebase.google.com/docs/perf-mon/get-started-web) | Useful after the main workflow; do not duplicate extensive telemetry or delay routing implementation. |
+| **Gemini grounding with Google Search** | Optional user-initiated public-notice questions, displaying the cited result and search suggestions to that user | Model/tier-specific allowances and prices; model inference is separate. [Grounding guide](https://ai.google.dev/gemini-api/docs/google-search) | Its [terms](https://ai.google.dev/gemini-api/terms#grounding-with-google-search) restrict display and collection. Do not use grounded output/links to build or corroborate our persistent closure database, index or crawl pipeline. It supplies no private WhatsApp/X access. |
+| **Cloud Storage** | Retain authorized screenshots/evidence files if retention is needed | Always Free Standard storage: 5 GB-months in the named US regions, plus bounded operations; regional/transfer conditions apply. [Pricing](https://cloud.google.com/storage/pricing) | Optional. The same free storage assumption does not apply to a Singapore/Mumbai bucket. Begin with text intake or transient image processing if stored evidence is unnecessary. |
+
+Firebase App Hosting is another deployment route, not an additional user feature. It requires Blaze and uses several underlying billed services. For a static React app, ordinary Firebase Hosting plus Cloud Run is easier to reason about. [App Hosting costs](https://firebase.google.com/docs/app-hosting/costs)
+
+### 11.5 Google map features without forcing a map replacement
+
+**Maps URLs** are the simplest addition: an “Open in Google Maps” action requires no API key and no Maps Platform request charge. It hands off endpoints/supported waypoints; Google recalculates and does not receive a locked Manzil route or our closure model. Label that behavior clearly. [Maps URLs](https://developers.google.com/maps/documentation/urls/get-started)
+
+**Places UI Kit** is a specific option for Google place-search/details UI alongside MapLibre. The current non-EEA service terms expressly permit the kit with a non-Google map. That exception must not be assumed to license ordinary Places/Geocoding/Routes calls or unrestricted export of Google data into another router/database. Preserve branding/attribution and validate the exact integration before using widget output as routing data. [Service terms, section 15](https://cloud.google.com/maps-platform/terms/maps-service-terms) · [UI Kit guide](https://developers.google.com/maps/architecture/places-ui-kit-getting-started)
+
+| Optional Maps SKU | Recurring monthly free cap | Manzil relevance |
+| --- | ---: | --- |
+| Places UI Kit Query | 10,000 queries | Optional place search/detail UI. |
+| Places UI Kit Basic Autocomplete | 10,000 sessions | Different SKU/charging model from ordinary Autocomplete Requests. |
+| Dynamic Maps | 10,000 loads | Applies if selecting Google as our renderer. |
+| Compute Routes Essentials | 10,000 requests | Non-Pro feature set; not the free allowance for traffic-aware calls. |
+| Compute Routes Pro | 5,000 requests | Traffic-aware routing candidate if choosing the Google stack. |
+
+[Official Maps pricing](https://developers.google.com/maps/billing-and-pricing/pricing). Allowances aggregate across projects on the billing account; API billing setup is still required. Traffic-on-polyline fields can trigger Enterprise with a smaller free cap. Multiple departure/waypoint attempts consume additional requests. Standard Google traffic/route content should not be mixed into a reusable OSM graph or shown on a non-Google map under assumed permission. [SKU triggers](https://developers.google.com/maps/billing-and-pricing/sku-details) · [Service terms](https://cloud.google.com/maps-platform/terms/maps-service-terms)
+
+### 11.6 A concrete low-cost month plan
+
+An illustrative pilot, not a measured forecast:
+
+- 100 testers; 10,000 short API requests over 30 days.
+- Firestore under 5,000 reads/day, 1,000 writes/day and 0.5 GiB stored.
+- One shared Scheduler job; two credential versions and fewer than 10,000 secret accesses.
+- Static frontend under 100 MB/day transfer and 1 GB retained Hosting storage.
+- Notice extraction limited to the actual Gemini model/project quota, with a server-side daily request/token budget.
+- No unnecessary paid Maps/search requests, stored screenshots, large images or continuous router instance.
+
+Those figures sit below the stated count/storage allowances, but CPU/memory duration, builds, images, regional outbound transfer, inference tier and other account usage still determine the bill. A five-minute schedule is 8,640 invocations in 30 days: keep it a short authenticated HTTP call that checks due work, not a repeatedly launched batch Job or a full reroute of every user each time.
+
+Invoke private Cloud Run with Scheduler's service account/OIDC flow. Event revisions can trigger immediate affected-trip checks; the periodic job handles upcoming occurrences. Store a deduplication record before delivery and retry safely. FCM/service-worker delivery is the final step, with an in-app fallback. [Scheduled Cloud Run invocation](https://docs.cloud.google.com/run/docs/triggering/using-scheduler) · [Trusted FCM sending](https://firebase.google.com/docs/cloud-messaging/send/admin-sdk)
+
+Set small app/API quotas, bounded request retries, timeouts, minimum instances zero and limited maximum instances. Budget alerts notify; they do not stop usage. Audit actual billing after a small end-to-end test and before a public demo. Keep browser/service credentials correctly restricted; never ship server secrets in the frontend. [Maps cost controls](https://developers.google.com/maps/billing-and-pricing/manage-costs) · [API security](https://developers.google.com/maps/api-security-best-practices)
+
+Cloud Run's advertised internet-egress exemption has North America conditions; do not assume an Asian deployment's internet traffic is free. Choose latency/data location and actual costs together. External map tiles, ORS, social-source access and any email/SMS/WhatsApp provider remain separate from Google allowances.
+
+### 11.7 Build order for the two-person deadline
+
+First connect Gemini + Cloud Run + Firestore to a reviewed event and a valid detour. Add Auth where accounts/review access need protection, then one Scheduler-to-FCM chain for a saved commute. Use Secret Manager/Logging as normal deployment support. Select Firebase Hosting or Run frontend hosting once, rather than maintain both unnecessarily.
+
+Next add Maps URL handoff and, only if time/data tests justify them, screenshot OCR and web performance checks. Defer Calendar, publisher Sheets, Pub/Sub, advanced analytics and extra map APIs until they remove a demonstrated bottleneck. This provides a meaningful Google integration story without weakening Manzil's core routing acceptance gate.

@@ -447,6 +447,8 @@ Cloud Scheduler provides three free jobs per billing account; additional jobs ar
 
 Gemini cost depends on the actual endpoint/model, input images/tokens, output, and account entitlement. Measure a sample before promising a total. Track source retrieval, Maps requests, Gemini tokens, storage, and hosting separately. Hackathon credits are unknown; inspect the registered dashboard and confirm whether any award applies to Maps as well as Cloud. X charges are separate.
 
+The [Google integration and first-month cost plan](MAPPING_PROJECT_COMPARISON.md#11-google-integrations-and-first-month-cost-plan) lists current service allowances and the meaningful minimum stack. The standard eligible $300 Cloud trial can cover Maps, but cannot pay Gemini Developer API/AI Studio charges; hackathon promotional credits remain offer-specific. Keep endpoint/tier and shared-account usage explicit.
+
 ## 10 UX plan and useful additions
 
 ### 10.1 Four views
