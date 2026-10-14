@@ -20,7 +20,7 @@ Build a **simple, fast 2D web app inspired by Safar's clarity**. Users plan/save
 | Notifications | Firebase Cloud Messaging web push, with an in-app alert inbox |
 | Trip traces/evidence | Private Cloud Storage objects where retention is permitted; Firestore stores metadata/summaries |
 | Hosting/operations | Firebase Hosting frontend; Secret Manager, Cloud Logging, Artifact Registry |
-| Primary automatic intake candidate | Official X API for the verified author, only after access and permitted downstream processing are established |
+| Automatic intake under the no-subscription constraint | Conditional X Activity API webhook + timeline catch-up using verified promotional credit; otherwise test an opt-in Android relay or publisher-provided feed |
 | Intake contract that works independently | Authorized notice text/image/file import; same processing pipeline as live connectors |
 
 **Traffic is deferred.** ORS durations are ordinary estimates; personal recorded-trip statistics are labelled historical observations, not city-wide live traffic.
@@ -29,7 +29,7 @@ Build a **simple, fast 2D web app inspired by Safar's clarity**. Users plan/save
 
 **Road discovery is an evolution of this architecture.** Collect opt-in observations now where feasible; reviewed missing-road candidates become routable later through an owned graph/provider adapter. Hosted ORS does not accept arbitrary new roads from our app.
 
-Live source collection is the material external access dependency. No complete Champ archive, platform credentials, publisher permission or API call has yet been established for this project. The first build session must resolve the chosen connector's access before presenting it as live.
+Live source collection is the material external access dependency. No complete Champ archive, platform credentials, publisher permission or API call has yet been established for this project. The [subscription-free ingestion research](CHAMP_ALERTS_INGESTION.md) records a successful accountless public X preview/detail check, its limited timeline depth, a conditional $20 API incentive, and experimental device/direct-feed alternatives. The first build session must resolve the chosen connector's access before presenting it as live.
 
 ## 2 Architecture and responsibilities
 
@@ -55,7 +55,7 @@ flowchart TD
     H --> L["Later: reviewed road candidates and owned routing graph"]
 ```
 
-The API deployment handles client requests after Firebase identity verification. The private worker handles source polling, extraction, rechecks and delivery. Scheduler/Tasks invoke the worker with a Google service identity; ordinary browser users cannot invoke its cost-generating job endpoints. Both deployments share domain services and contracts.
+The API deployment handles client requests after Firebase identity verification. A separate public source-webhook route accepts only provider-authenticated notices, including X CRC handling and raw-body signature verification if that connector is enabled. It durably stores receipt plus extraction intent, acknowledges promptly, and leaves AI work to the private worker. The private worker handles source polling/catch-up, extraction, rechecks and delivery. Scheduler/Tasks invoke the worker with a Google service identity; ordinary browser users cannot invoke its cost-generating job endpoints. Both deployments share domain services and contracts.
 
 Use Cloud Run request billing/minimum instances zero and bounded instances/timeouts. Retain job state and cursors in Firestore, not process memory. Cloud Tasks retries are at-least-once; use idempotent handlers and client notification deduplication rather than claiming exactly-once delivery.
 
@@ -98,7 +98,7 @@ Champ's [first-party hub](https://linktr.ee/ChampAlertsOnTheGo) and channel desc
 
 | Source | Confirmed address | Connector decision |
 | --- | --- | --- |
-| X | [@shaheryarhassan](https://x.com/shaheryarhassan) | First automatic API candidate; establish access, cost and permitted processing first. |
+| X | [@shaheryarhassan](https://x.com/shaheryarhassan) | Conditional official API candidate using verified promotional credit. Public recent preview/detail reading worked, but complete-day discovery and unattended polling were not established. |
 | WhatsApp | [CAOTG channel](https://www.whatsapp.com/channel/0029Va8PLrl7j6gBLA3Y5m3J) | Reference/authorized forwarding or publisher-assisted import. No supported arbitrary Channel-history reader established. |
 | Facebook | [ChampAlertsOnTheGo](https://www.facebook.com/ChampAlertsOnTheGo) | Secondary adapter only after Meta permissions/App Review or a publisher-authorized integration. |
 | Instagram | [@champalertsonthego](https://instagram.com/champalertsonthego) | Secondary adapter if professional-account discovery/access requirements are met; current account type not verified. |
@@ -124,7 +124,11 @@ Operational completeness means **all retrievable new posts from each connected, 
 
 ### 4.2 Access, budget and processing gate
 
-Use the official X API rather than make an unofficial session scraper the foundation. Current returned-post reads are $0.005 each: 3,200 are approximately $16 before other resources; 1,000 are approximately $5. X is separate from Google credits. [X pricing](https://docs.x.com/x-api/getting-started/pricing)
+The user does not want to buy a subscription. Use an official connector only after a no-purchase promotional balance and permitted use are established; do not enable auto-recharge or buy credits. The conditional first-card incentive, expiry and budget are detailed in the [ingestion decision](CHAMP_ALERTS_INGESTION.md#31-x-credits-a-useful-temporary-route). Prioritize new notices over historical backfill; X and Google credits are separate.
+
+For prompt delivery, first test X Activity API public `post.create`/`post.delete` webhooks filtered to Champ's verified author ID, with incremental timeline recovery. Provider documentation supports public-account app authentication, but actual entitlement/delivery is untested. These event-filter registrations do not require a monthly subscription; per-event costs still consume credit. [Activity API](https://docs.x.com/x-api/activity/introduction) · [Specific event pricing](https://docs.x.com/x-api/activity/event-pricing) · [Webhook validation/acknowledgement](https://docs.x.com/x-api/webhooks/introduction)
+
+If no credit/card is available, a strictly filtered, explicitly permitted Android notification relay is a bounded experiment; usable Champ identity/text and real delivery must be tested before adoption. A publisher's original webhook/Sheet/Telegram feed is the preferred ongoing route if cooperation is established. Keep share/paste/image import throughout. Public accountless reading succeeded, but the preview reached a sign-in boundary after a few recent posts and is not a verified complete feed. [Full observations, alternatives and execution gate](CHAMP_ALERTS_INGESTION.md)
 
 X's terms/developer policy constrain scraping, geographical-data reuse, redistribution/removals and model training. A post URL alone does not establish permission for a separate operational geospatial dataset. Check permitted inference/downstream event use, and the publisher's rights, before enabling that adapter for the closure database. If it is not permitted, use the publisher's own licensed feed/archive or authorized original notices; do not route around a restriction through an unofficial mirror. [Agreement](https://docs.x.com/developer-terms/agreement) · [Policy](https://docs.x.com/developer-terms/policy)
 
@@ -134,11 +138,11 @@ This is an access/rights check, not a reason to stop building the planner. The a
 
 ## 5 Ingestion and historical backfill
 
-1. Resolve/cache the verified author ID and configure the allowed source.
-2. Bootstrap permitted accessible history with pagination; keep backfill separate from current-event evaluation.
-3. Poll new posts initially every two minutes within the actual account rate/cost budget, using the source cursor.
-4. Save each received item's identity/revision durably before advancing the cursor. Freeze the first page's newest ID as the window upper bound, paginate the window and commit only that bound after its pages are stored; later arrivals belong to the next run. Keep IDs as strings and use a connector lease to prevent overlapping runs.
-5. Enqueue one idempotent extraction job per new/revised notice. Preserve original publication time, ingestion time, canonical source, permitted evidence and repost/forward context.
+1. Configure the allowed adapter and label its actual intake/coverage mode. For an API/feed, resolve/cache the verified author ID where required; notification/manual input cannot claim the same source-history coverage.
+2. Prioritize current-day new notices and any relevant still-active older/future events. Historical backfill is a separate deferred task under the no-purchase budget.
+3. Prefer a verified provider webhook for prompt intake, with periodic incremental catch-up. If only a permitted timeline/feed works, poll initially every 60–120 seconds within actual endpoint/account limits and verified balance. Device adapters enqueue on receipt with their own partial-coverage limits.
+4. Save each item's identity/revision and pending extraction outbox entry atomically before acknowledging push receipt or advancing a polling cursor. For paginated polling, freeze the first page's newest ID as the window upper bound, paginate the window and commit only that bound after receipts/job intents are durable; later arrivals belong to the next run. Keep IDs as strings and use a connector lease to prevent overlapping runs.
+5. A retrying dispatcher enqueues one idempotent extraction job per pending notice revision. Periodically scan the pending outbox to recover a crash between database commit and task creation; idempotency also handles duplicate deliveries. Preserve original publication time, ingestion time, canonical source, permitted evidence and repost/forward context. Never wait for Gemini inside a source webhook's acknowledgement deadline.
 6. Classify closure, congestion, reopening/cancellation, unrelated, duplicate or uncertain. Do not silently exclude all replies or assume every post is a traffic restriction.
 7. Link duplicated cross-posts to one event where justified. Copies/forwards do not count as independent corroboration.
 8. Match corrections/reopenings to the existing event and create a revision. Re-evaluate affected trips.
