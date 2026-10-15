@@ -1,5 +1,10 @@
 # Manzil منزل
 
+
+**Current update:** English/Urdu interface and voice controls, a target-aware tutorial, guest account screens ready for Firebase, automatic foreground GPS rerouting (including remaining stops), and reduced map redraws. Google Cloud TTS is prepared with server-side ADC, cached audio and bounded usage; enable it only after Cloud configuration. Real Firebase sign-in remains unconnected; localhost development now offers [dummy normal/admin sign-ins](docs/DEV_ACCOUNTS_AND_TOUR.md) for testing personal screens. The [admin dashboard](docs/ADMIN_INTERFACE_PROPOSAL.md) is proposed, not implemented. Core guest planning works locally without Cloud credentials. See [feature/setup guide](docs/BILINGUAL_NAVIGATION_AND_CLOUD.md) and [implementation plan](docs/FEATURE_PLAN_2026-10-15.md).
+
+Primary tabs are **Map, Closures, Saved and Profile**, with **Activity** added after sign-in. **Try street detour** and **Demo closures** are directly available in the planner; route results expose **Block a point on this route**, and the map always shows **Add restriction**. Guests see the skippable tutorial on every fresh visit and after sign-out, even if previously completed. Signed-in users retain remembered first-use behavior; everyone can replay it from Help or Profile.
+
 Manzil is an Islamabad closure-aware commute planner proposed for the Google Cloud AI Builder Cup 2026. It evaluates scheduled road restrictions against planned journeys and offers detours or departure-time recommendations. The future Gemini agent will turn source notices into reviewable closure proposals; the current app provides manual editing and the notice queue.
 
 The repository now contains a working **localhost application**, a real Islamabad OSM road graph, tests, research and branding. No deployment or Google account is required for this local edition.
@@ -15,7 +20,7 @@ npm run dev
 
 Open **http://127.0.0.1:5173/**. The API runs at http://127.0.0.1:3001. Keep the local server running for source and commute checks. The bundled road graph needs no API key; ordinary basemap tiles need internet. Optional settings are listed in `.env.example`.
 
-Try **Find my route**, then **Try a demo restriction** to see a connected detour. Demo restrictions are explicitly synthetic and can be cancelled from Closures. Use the editor to draw your own point, road corridor or area and schedule its start/end in Pakistan time.
+Try **Find routes**, then **Block a point on this route** to see a connected detour, or use **Try street detour** for the preset street example. Demo restrictions are explicitly synthetic and can be cancelled from Closures. Use **Closures → Add closure** or the map's **Add restriction** plus button to draw your own point, road corridor or area and schedule its start/end in Pakistan time.
 
 **X collection:** the requested accountless public-page collector checks every 15 minutes and queues captured notices for a future agent. Actual checks on this network launched the browser but X navigation failed. The app reports that error and partial coverage; successful automatic retrieval is not claimed. Manual import uses the same durable queue. The user's Gemini reasoning agent is intentionally not implemented yet.
 
@@ -56,11 +61,11 @@ npm test
 npm run build
 ```
 
-The current suite has **115 passing tests**, including diverse real-road alternatives, ordered stops with turn/time continuity, actual residential-street detours, precise red-road clipping/open-junction regression, snapshot agreement, geometry-cache invalidation/isolation, efficient worker updates, demo ownership, topology/access/direction, unavailable routes, persistence, revisions, source deduplication/outbox, consented journey inference/alerts, notification delivery guards and navigation failure/progression logic. Type checking and the production build pass. Browser evidence and verification boundaries are in the implementation status. Real-device GPS, OS notification delivery and successful live X retrieval remain unverified.
+The current suite has **149 passing tests across 21 files**, including diverse real-road alternatives, ordered stops with turn/time continuity, actual residential-street detours, precise red-road clipping/open-junction regression, snapshot agreement, geometry-cache invalidation/isolation, efficient worker updates, demo ownership, topology/access/direction, unavailable routes, persistence, revisions, source deduplication/outbox, consented journey inference/alerts, notification delivery guards, navigation failure/progression logic, restored UI controls and guest/sign-in/sign-out tutorial behavior. Type checking and the production build pass. Browser evidence and verification boundaries are in the implementation status. Real-device GPS, OS notification delivery and successful live X retrieval remain unverified.
 
 Use the prominent top clock to view closures and routes at **Now** or a chosen PKT date/time. Add up to five intermediate stops. Open **Demo closures** for six test scenarios. See [map time and stops](docs/MAP_TIME_AND_STOPS.md) and [demo guide](docs/DEMOS.md). Map browsing is worldwide; the routing graph remains bounded to central Islamabad.
 
-Click **Try street detour** beside the planner heading for a real F-8 Park Road route through **Streets 20 → 25 → 21**, then **Reopen demo road** to compare it with the direct route. Both use the real graph and ordinary planner; only the closure is synthetic.
+Click **Try street detour** below the planner heading for a real F-8 Park Road route through **Streets 20 → 25 → 21**, then **Reopen demo road** to compare it with the direct route. Both use the real graph and ordinary planner; only the closure is synthetic.
 
 Blocked roads use a red coating without enclosing polygon outlines. Geometry caching and redundant worker-update suppression reduce overlay delays; measurements and a reproducible local benchmark are in [performance notes](docs/PERFORMANCE.md).
 

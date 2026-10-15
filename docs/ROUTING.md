@@ -1,5 +1,7 @@
 # Local Islamabad car routing
 
+The foreground guide now automatically replans after sustained GPS deviation, closure revisions or substantial delay, preserving unvisited stops. See [bilingual navigation](BILINGUAL_NAVIGATION_AND_CLOUD.md) for thresholds, speech configuration and device limitations. It uses the existing bounded router, without live traffic or lane-aware map matching.
+
 Manzil routes over a genuine imported OpenStreetMap road network. It needs no routing API key. The map renderer and its tiles are a separate display system; editing a tile or drawing a line does not modify this graph.
 
 ## Data and regeneration

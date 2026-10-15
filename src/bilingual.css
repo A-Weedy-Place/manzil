@@ -1,0 +1,58 @@
+/* Urdu uses a readable system font; map geometry and coordinate editors stay LTR. */
+html[lang='ur'] body { font-family: 'Nirmala UI', 'Urdu Typesetting', 'Segoe UI', sans-serif; line-height: 1.8; }
+html[lang='ur'] h1, html[lang='ur'] h2, html[lang='ur'] h3, html[lang='ur'] .eyebrow { letter-spacing: 0; line-height: 1.65; }
+html[dir='rtl'] .side-panel, html[dir='rtl'] .nav-rail { border-right: 0; border-left: 1px solid var(--border); }
+html[dir='rtl'] .place-field, html[dir='rtl'] .field-label, html[dir='rtl'] .section-heading, html[dir='rtl'] .settings-link { text-align: start; }
+html[dir='rtl'] .route-option, html[dir='rtl'] .closure-main { text-align: right; }
+html[dir='rtl'] .route-radio { margin-right: 0; margin-left: 12px; }
+html[dir='rtl'] .journey-search summary>svg:last-child { margin-left: 0; margin-right: auto; }
+.map-workspace, .maplibre-map, .coordinates, .coordinate-row, input[type='email'], input[type='password'], input[type='number'], input[type='datetime-local'], code { direction: ltr; }
+html[dir='rtl'] .map-topline, html[dir='rtl'] .map-bottom-info, html[dir='rtl'] .map-instructions { direction: rtl; }
+.brand, .brand-name { direction: ltr; }
+.language-switch { min-height: 40px; padding: 6px 12px; border-radius: 10px; background: var(--green-soft); color: var(--green); font-weight: 650; white-space: nowrap; }
+.help-panel { border-top: 1px solid var(--border); padding-top: 12px; display: flex; flex-wrap: wrap; gap: 10px; }
+.help-panel .demo-catalogue { width: 100%; }
+.map-route-label.is-pending { background: #e8edf1; color: #475569; border-color: #94a3b8; cursor: wait; }
+.route-result-controls { border: 0; margin: 0; padding: 0; min-width: 0; }
+.route-results.is-updating .route-option { background: var(--green-soft); }
+.personal-gate { padding: 32px 0; display: grid; gap: 18px; }
+.personal-gate>svg { color: var(--green); }
+.personal-gate h1 { font-size: 25px; }
+.modal-backdrop { position: fixed; inset: 0; z-index: 3000; display: grid; place-items: center; padding: 20px; background: rgb(12 25 36 / .55); overflow-y: auto; }
+.modal-card { position: relative; width: min(100%, 440px); padding: 30px; margin: auto; background: var(--paper); color: var(--ink); border: 1px solid var(--border); border-radius: 22px; box-shadow: 0 25px 80px rgb(0 0 0 / .2); }
+.modal-card h1 { margin: 14px 0 12px; }
+.modal-close { position: absolute; inset-inline-end: 12px; top: 12px; }
+.account-logo { display: block; object-fit: contain; background: white; border-radius: 50%; margin-bottom: 15px; }
+.account-fields { border: 0; padding: 0; margin: 18px 0; display: grid; gap: 14px; }
+.account-fields .field-label { margin: 0; }
+.account-modal .notice-box p { margin: 6px 0 0; font-size: 13px; }
+.account-modal .row { margin: 12px 0; }
+.dev-accounts { display: grid; gap: 9px; margin: 15px 0; }
+.dev-account { display: grid; gap: 4px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--green-soft); color: var(--ink); text-align: start; }
+.dev-account code, .dev-account small { font-size: 12px; }
+.dev-session { margin: 16px 0; padding: 14px; border: 1px dashed var(--border); border-radius: 12px; }
+.dev-session p { margin: 8px 0; }
+.tour-modal { z-index: 3100; background: transparent; isolation: isolate; overflow: hidden; }
+.tour-modal .modal-card { z-index: 2; overflow-y: auto; overscroll-behavior: contain; background: var(--paper); }
+.tour-shade { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+.tour-spotlight { position: fixed; border: 3px solid #75a8ff; border-radius: 10px; pointer-events: none; z-index: 1; }
+.tour-dots { display: flex; gap: 7px; margin: 18px 0 25px; }
+.tour-dots i { width: 7px; height: 7px; background: var(--border); border-radius: 50%; }
+.tour-dots i.active { width: 24px; border-radius: 5px; background: var(--green); }
+.tour-modal p { font-size: 15px; }
+.tour-modal .row { gap: 9px; }
+@media (max-width: 760px) {
+  .app-header { gap: 6px; padding-inline: 8px; }
+  .brand-name { display: none; }
+  .header-actions { gap: 3px; }
+  .workspace-avatar { display: none; }
+  .language-switch { padding-inline: 8px; }
+  .account-trigger { font-size: 12px; white-space: nowrap; max-width: 80px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .modal-backdrop { padding: 12px; }
+  .modal-card { padding: 23px 20px; border-radius: 18px; }
+  .tour-modal .modal-card h1 { font-size: 23px; }
+  .tour-modal .modal-card p { font-size: 14px; }
+  .map-time-trigger { gap: 5px; padding-inline: 6px; }
+  html[lang='ur'] .nav-item span { font-size: 12px; }
+}
+@media (max-height: 500px) { .tour-modal .modal-card { margin: auto; } .modal-card { padding: 18px; } }

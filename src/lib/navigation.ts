@@ -1,5 +1,5 @@
 import type { Coordinate, RouteOption, RoutePath } from '../../shared/types';
-export interface GuidanceStep { coordinate: Coordinate; atMeters: number; instruction: string; turn: 'start' | 'left' | 'right' | 'straight' | 'arrive' }
+export interface GuidanceStep { coordinate: Coordinate; atMeters: number; instruction: string; roadName?: string; turn: 'start' | 'left' | 'right' | 'straight' | 'arrive' }
 const R = 6371000;
 export function validCoordinate(value: unknown): value is Coordinate { return Array.isArray(value) && value.length === 2 && value.every(item => typeof item === 'number' && Number.isFinite(item)) && Math.abs(value[0]) <= 180 && Math.abs(value[1]) <= 90; }
 export function meters(a: Coordinate, b: Coordinate) {
@@ -27,7 +27,7 @@ export function buildGuidance(route: RoutePath): GuidanceStep[] {
   const roads: { end: number; name: string }[] = []; let end = 0;
   for (const step of route.steps) { end += step.distanceMeters; roads.push({ end, name: step.roadName || 'the mapped road' }); }
   const nameAt = (at: number) => roads.find(r => r.end > at)?.name ?? roads.at(-1)?.name ?? 'the mapped road';
-  const steps: GuidanceStep[] = [{ coordinate: coordinates[0], atMeters: 0, instruction: `Head onto ${nameAt(0)}`, turn: 'start' }];
+  const steps: GuidanceStep[] = [{ coordinate: coordinates[0], atMeters: 0, instruction: `Head onto ${nameAt(0)}`, roadName: nameAt(0), turn: 'start' }];
   for (let i = 1; i < coordinates.length - 1; i++) {
     if (cumulative[i] - steps.at(-1)!.atMeters < 45 || total - cumulative[i] < 30) continue;
     // Look ~20 m ahead/behind to avoid noise from short OSM shape segments.
@@ -37,7 +37,7 @@ export function buildGuidance(route: RoutePath): GuidanceStep[] {
     const angle = ((bearing(coordinates[i], coordinates[after]) - bearing(coordinates[before], coordinates[i]) + 540) % 360) - 180;
     if (Math.abs(angle) < 40) continue;
     const turn = angle > 0 ? 'right' : 'left';
-    steps.push({ coordinate: coordinates[i], atMeters: cumulative[i], instruction: `${Math.abs(angle) > 140 ? 'Follow the route around' : `Bear ${turn}`} toward ${nameAt(cumulative[i] + 25)}`, turn });
+    steps.push({ coordinate: coordinates[i], atMeters: cumulative[i], instruction: `${Math.abs(angle) > 140 ? 'Follow the route around' : `Bear ${turn}`} toward ${nameAt(cumulative[i] + 25)}`, roadName: nameAt(cumulative[i] + 25), turn });
   }
   steps.push({ coordinate: coordinates.at(-1)!, atMeters: total, instruction: 'Reach the destination road point', turn: 'arrive' });
   return steps;

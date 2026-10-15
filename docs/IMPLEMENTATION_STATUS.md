@@ -13,6 +13,28 @@ Local core delivered 14 October 2026; map/routing/profile/navigation redesign im
 7. **Personal activity:** explicit foreground geolocation recording, local history summaries, deletion and separate road-discovery contribution consent. No automatic road publishing.
 8. **Verification and handoff:** meaningful routing/API/source tests, type/build check, actual browser workflows at desktop/mobile size, localhost startup instructions, update README and push private repository.
 
+## Tour placement and dummy development accounts — 15 October
+
+Follow-up: restored the Closures tab for all users and Activity tab after sign-in, the planner's street-detour/demo catalogue and block-point action, and the always-visible map Add restriction button. Guests see the skippable guide on every fresh visit and after sign-out even when previously completed; polling/navigation do not reopen a dismissed guide. Signed-in first-use/replay behavior remains. Updated app component checks cover these controls and guest/sign-in/sign-out transitions. Verification: **149 tests pass across 21 files**; production type/build passes with the existing map-size warning. This follow-up has no new live browser verification.
+
+Corrected the screenshot's tour overlap: cards use target-aware free-space placement, viewport clamping and content measurement; the backdrop/spotlight is a separate sibling layer, and dialogs render through a body portal. The destination search target is compact and an initially collapsed search can open temporarily. Geometry tests cover the reported 715×431 case, mobile/landscape, RTL and viewport offsets. A rendered-component regression checks remeasurement and confirms the shade is outside the card.
+
+Added user/admin dummy sign-ins only for a loopback Vite development server. Their known UID is remembered per tab, passwords are not persisted, existing personal screens unlock, and Profile exposes role/sign-out controls. Google sign-in is removed; real Firebase and future registration/reset remain unconnected. The local database and API are still shared/unauthenticated; these roles are not production authorization. Production-bundle inspection finds none of the dummy emails/passwords.
+
+The owner chose automatic agent publication followed by admin corrections and cancellation retaining source/history. The [admin proposal](ADMIN_INTERFACE_PROPOSAL.md) is drafted for review; no new admin dashboard, role-enforced API or correction/override store has been implemented.
+
+Validation before the control-restoration follow-up: **148 tests passed in 21 files**; the latest result is **149 passing tests across 21 files** as recorded above. Production TypeScript/build passes with the existing map-size warning. Browser discovery again found no available session, so no new live screenshot verification is claimed. [Development accounts and tour guide](DEV_ACCOUNTS_AND_TOUR.md).
+
+## Bilingual/navigation/account phase — 15 October
+
+The initial phase implemented English/Urdu app copy and navigation prompts, persistent device language/voice preferences, Urdu RTL layout, a replayable first-use spotlight tour, and Firebase-ready account/create/reset screens. Its Map/Saved/Profile layout and demos behind Help were superseded by the owner-requested restoration above: Closures is a primary tab for everyone, Activity appears after sign-in, demo/edit shortcuts are directly visible, and guests receive the tour every fresh visit and after sign-out. Real Firebase remains unconnected; localhost dummy identities now unlock personal screens, while guests see the account prompt there. Existing local records remain intact and APIs are still single-user/unauthenticated.
+
+Automatic foreground GPS recovery now requires sustained accuracy-aware deviation, preserves unvisited ordered stops, retries with bounded backoff, invalidates stale callbacks/audio and revalidates closure revisions or substantial delays. Stop arrivals require repeated precise fixes and corresponding route progress. Cloud TTS uses the official server client and ADC, structured prompts, a durable bounded audio cache, deduplication, two-call concurrency and conservative UTC-month usage reservations. It is disabled by default; no paid synthesis or Cloud billing/deployment change occurred. Device speech falls back only when the selected language is actually available.
+
+Flicker investigation identified timed polling/clock-driven plan replacement and marker effect churn. Identical state polls now retain state; waypoint handlers are stable; closure/GPS markers persist. Replacing a route snapshot retains neutral grey Updating geometry without making the old plan actionable. Vite ignores local database writes. This addresses identified redraw causes; real WebGL visual verification remains outstanding.
+
+Validation: **136 tests pass across 19 files**, including all existing real-road/API regressions and new speech service/API, GPS/backoff/stop, React navigation, bilingual account/tour, late-audio cancellation and polling/snapshot/language tests. Production TypeScript/build passes (existing large map-chunk warning remains); dependency installation audit reports zero vulnerabilities. Browser discovery found no available session, so no new visual or outdoor GPS/OS permission/audio-pronunciation verification is claimed. See [feature/setup/deployment guide](BILINGUAL_NAVIGATION_AND_CLOUD.md).
+
 ## Current progress
 
 | Area | Status |
@@ -21,11 +43,12 @@ Local core delivered 14 October 2026; map/routing/profile/navigation redesign im
 | Shared types / npm scaffolding | Implemented and installed; Node 22.20.0 |
 | Local graph and routing | Real bounded OSM graph, ordered stops, precise red-road clipping; routing/cache/junction regressions pass |
 | Local API/storage/source/profile | Persistent SQLite; source/profile/API/demo and real F-8 street-detour tests pass |
-| Map/editor/interface | Five map styles, shared timeline, red road coating without enclosing polygons, cached/deduplicated overlays; ten frontend overlay/source tests pass |
+| Map/editor/interface | Five map styles, shared timeline, red road coating without enclosing polygons, cached/deduplicated overlays; restored Closures/demo/edit controls and signed-in Activity tab |
+| Accounts and tutorial | Local dummy normal/admin sign-in; personal UI gates; target-aware skippable guide each guest visit/after sign-out; signed-in first-use/replay; Firebase/admin dashboard deferred |
 | Personal notifications | Saved + consented inferred journeys; opt-in browser delivery; six notification guard tests pass |
-| Navigation | Route preview and approximate foreground GPS/voice guidance; 15 navigation tests pass |
+| Navigation | Bilingual preview/voice controls; automatic foreground recovery, remaining stops, closure revisions and bounded retries |
 | Browser verification | New renderer inspected at 1280×800 and small-phone size; workflow evidence below |
-| Build and tests | Type/build passes; 115/115 tests pass; last dependency audit reports zero vulnerabilities |
+| Build and tests | Type/build passes; 149/149 tests pass across 21 files; dependency installation audit reports zero vulnerabilities |
 | Live X collection | Scheduler and collector implemented; this network rejected navigation, so live retrieval is unverified |
 | Gemini, Cloud deployment and external push | Deferred to the owner as requested |
 

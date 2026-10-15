@@ -14,8 +14,10 @@ import { loadStreetRouteDemo, streetRouteDemo } from './street-demo.js';
 import type { RoutingGraph } from './routing/graph.js';
 import { checkCommute, checkEnabledCommutes, type Planner } from './commutes.js';
 import { frequentRouteProposals } from './frequent-routes.js';
+import { SpeechService, speechSchema } from './speech.js';
 
 interface AppOptions {
+  speech?: SpeechService;
   source?: SourceService; planner?: Planner;
   graph?: () => GraphStatus; places?: (query: string) => Place[];
   roadGraph?: () => RoutingGraph | null;
@@ -44,6 +46,7 @@ export function applyRetention(store: Store, now = Date.now()) {
 export function createApp(store: Store, options: AppOptions = {}) {
   const app = express();
   const source = options.source ?? new SourceService(store);
+  const speech = options.speech ?? new SpeechService(store);
   const planner = options.planner ?? planJourney;
   const currentGraph = options.graph ?? graphStatus;
   const places = options.places ?? searchPlaces;
@@ -74,6 +77,12 @@ export function createApp(store: Store, options: AppOptions = {}) {
   app.use(express.json({ limit: '4mb', strict: true }));
   const recheck = () => setImmediate(() => checkEnabledCommutes(store, planner));
   const routes = express.Router();
+  routes.get('/speech/status', (_request, response) => response.json(speech.status()));
+  routes.post('/speech', async (request, response) => {
+    const body = speechSchema.parse(request.body);
+    const audio = await speech.audio(body.language, body.prompt);
+    response.type('audio/mpeg').send(audio);
+  });
   routes.get('/health', (_request, response) => response.json({ ok: true, storage: 'sqlite', graphReady: currentGraph().ready,
     pendingAgentNotices: store.pendingAgentCount(), sourceCoverage: 'partial' }));
   routes.get('/state', (_request, response) => {

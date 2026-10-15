@@ -1,3 +1,4 @@
+import { t } from '../lib/language';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Crosshair, MapPin, Search, X } from 'lucide-react';
 import type { Place } from '../../shared/types';
@@ -39,9 +40,9 @@ export default function PlaceInput({ label, letter, value, onChange, onPick, act
   const canSelect = !loading && resultsFor === query;
   function select(place: Place) { editing.current = false; onChange(place); setQuery(place.name); setOpen(false); }
   return <div className={`place-field ${active ? 'picking' : ''}`}>
-    <label htmlFor={id}><span className={`endpoint-letter ${letter === 'B' ? 'destination' : ''}`}>{letter}</span>{label}</label>
+    <label htmlFor={id}><span className={`endpoint-letter ${letter === 'B' ? 'destination' : ''}`}>{letter}</span>{t(label)}</label>
     <div className="place-input-row">
-      <input id={id} value={query} placeholder="Search a place or enter lat, lng" autoComplete="off" role="combobox" aria-expanded={open} aria-controls={`${id}-options`} aria-activedescendant={open && activeIndex >= 0 ? `${id}-option-${activeIndex}` : undefined}
+      <input id={id} value={query} placeholder={t("Search a place or enter lat, lng")} autoComplete="off" role="combobox" aria-expanded={open} aria-controls={`${id}-options`} aria-activedescendant={open && activeIndex >= 0 ? `${id}-option-${activeIndex}` : undefined}
         onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 140)}
         onChange={e => { editing.current = true; setQuery(e.target.value); setPlaces([]); setResultsFor(null); setActiveIndex(-1); setLoading(true); if (value) onChange(null); setOpen(true); }}
         onKeyDown={e => {
@@ -49,14 +50,14 @@ export default function PlaceInput({ label, letter, value, onChange, onPick, act
           if (open && ['ArrowDown', 'ArrowUp'].includes(e.key) && canSelect && places.length) { e.preventDefault(); setActiveIndex(i => e.key === 'ArrowDown' ? Math.min(i + 1, places.length - 1) : Math.max(i - 1, 0)); }
           if (e.key === 'Enter' && open) { e.preventDefault(); if (canSelect && places.length) select(places[Math.max(activeIndex, 0)]); }
         }} />
-      {value && <button type="button" className="icon-button small" title={`Clear ${label.toLowerCase()}`} aria-label={`Clear ${label.toLowerCase()}`} onClick={() => { editing.current = false; setQuery(''); onChange(null); }}><X size={14} /></button>}
-      <button type="button" className={`icon-button pick-button ${active ? 'selected' : ''}`} title={`Choose ${label.toLowerCase()} on map`} aria-label={`Choose ${label.toLowerCase()} on map`} aria-pressed={active} onClick={() => { setOpen(false); onPick(); }}><Crosshair size={17} /></button>
+      {value && <button type="button" className="icon-button small" title={t(`Clear ${label.toLowerCase()}`)} aria-label={t(`Clear ${label.toLowerCase()}`)} onClick={() => { editing.current = false; setQuery(''); onChange(null); }}><X size={14} /></button>}
+      <button type="button" className={`icon-button pick-button ${active ? 'selected' : ''}`} title={t(`Choose ${label.toLowerCase()} on map`)} aria-label={t(`Choose ${label.toLowerCase()} on map`)} aria-pressed={active} onClick={() => { setOpen(false); onPick(); }}><Crosshair size={17} /></button>
     </div>
-    {value && <small className="coordinates">{value.coordinate[1].toFixed(5)}, {value.coordinate[0].toFixed(5)}</small>}
+    {value && <small className="coordinates">{value.coordinate[1].toFixed(5)}{t(", ")}{value.coordinate[0].toFixed(5)}</small>}
     {open && <div className="place-options" id={`${id}-options`} role="listbox" aria-label={`${label} suggestions`}>
-      {loading ? <div className="place-hint">Searching local places…</div> : places.length ? places.map((place, index) => <button type="button" id={`${id}-option-${index}`} role="option" aria-selected={activeIndex === index} className={activeIndex === index ? 'keyboard-active' : ''} disabled={!canSelect} key={`${place.id ?? place.name}-${index}`} onMouseDown={e => e.preventDefault()} onClick={() => { if (canSelect) select(place); }}>
-        <MapPin size={16} aria-hidden="true" /><span>{place.name}<small>{place.coordinate[1].toFixed(4)}, {place.coordinate[0].toFixed(4)}</small></span>
-      </button>) : <div className="place-hint"><Search size={16} />{searchError || 'No match. Pick a point on the map or enter lat, lng.'}</div>}
+      {loading ? <div className="place-hint">{t("Searching local places…")}</div> : places.length ? places.map((place, index) => <button type="button" id={`${id}-option-${index}`} role="option" aria-selected={activeIndex === index} className={activeIndex === index ? 'keyboard-active' : ''} disabled={!canSelect} key={`${place.id ?? place.name}-${index}`} onMouseDown={e => e.preventDefault()} onClick={() => { if (canSelect) select(place); }}>
+        <MapPin size={16} aria-hidden="true" /><span>{place.name}<small>{place.coordinate[1].toFixed(4)}{t(", ")}{place.coordinate[0].toFixed(4)}</small></span>
+      </button>) : <div className="place-hint"><Search size={16} />{t(searchError || 'No match. Pick a point on the map or enter lat, lng.')}</div>}
     </div>}
   </div>;
 }

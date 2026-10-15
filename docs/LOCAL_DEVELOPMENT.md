@@ -1,5 +1,9 @@
 # Local development
 
+For the local dummy normal/admin credentials and updated spotlight tour, see [Development accounts and tour](DEV_ACCOUNTS_AND_TOUR.md). The admin dashboard is still a [proposal for discussion](ADMIN_INTERFACE_PROPOSAL.md), not an implemented feature.
+
+English/Urdu controls, guest account screens, onboarding and automatic GPS recovery are described in [Bilingual navigation and Cloud speech](BILINGUAL_NAVIGATION_AND_CLOUD.md). Core planning still needs no Cloud credentials. Optional speech uses server-side ADC and `TTS_ENABLED=true`; Firebase and public deployment remain future work. In PowerShell, use `npm.cmd` if execution policy blocks `npm.ps1`.
+
 ## Start
 
 Use Node 22.13 or newer (verified Node 22.20.0 / npm 10.9.3). No Docker, Java, paid routing account or Google credential is required.
@@ -15,12 +19,12 @@ Open http://127.0.0.1:5173/. Vite proxies `/api` to the Express API at http://12
 
 ## First useful workflow
 
-1. The planner starts with example public road approaches near Faisal Mosque and Centaurus. These are not private home/work coordinates or guaranteed building entrances.
+1. Guests receive the skippable tutorial on every fresh visit/reload and after sign-out, even if previously completed. Skip/Finish/Escape dismiss it for this visit; polling and tab navigation do not reopen it. Signed-in users retain remembered first-use behavior. Replay is available from Help or Profile. The planner starts with example public road approaches near Faisal Mosque and Centaurus, not private home/work coordinates or guaranteed building entrances.
 2. Use the top clock for Now or a selected PKT date/time, then **Find routes**. Up to three blue driving paths follow real OSM roads; the selected route is darker/thicker. **Add stop** supports up to five intermediate locations. Open **Demo closures** for six independently toggleable scenarios; see [demo guide](DEMOS.md).
-3. Try a demo restriction to create an explicitly synthetic event on that route and compare rerouting. Cancel that event later from Closures.
-4. Draw a real manual restriction and set its schedule. Replan or save a recurring commute and check its next occurrence.
+3. Use **Block a point on this route** in route results to create an explicitly synthetic event and compare rerouting, or **Try street detour** directly below the planner heading for the preset F-8 example. Neither requires opening Help. Cancel the sample later from Closures.
+4. **Closures** is a primary tab for everyone. Use **Add closure** there or the always-visible map **Add restriction** plus button to draw a manual restriction and set its schedule. Replan, or sign in with a [dummy development account](DEV_ACCOUNTS_AND_TOUR.md) to save/check a recurring commute. **Activity** appears in primary navigation after sign-in and opens recording/history; Saved and personal alerts/settings also require sign-in.
 5. In Profile → Source updates & collector, inspect source status or import an advisory if automatic access fails.
-6. Use Profile for themes/map detail, browser alerts and optional learned-journey alerts. Select Preview & navigate on a route for preview or foreground GPS guidance. On phones, expand controls with the sheet handle button.
+6. Use Profile for language/themes/map detail; signed-in users can also configure browser alerts and optional learned-journey alerts. Select **Navigate** on a route for preview or foreground GPS guidance. On phones, expand controls with the sheet handle button.
 
 ## Configuration
 

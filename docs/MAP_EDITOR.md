@@ -2,6 +2,8 @@
 
 This describes the implemented localhost interface. The full product inventory remains in [PROJECT_CONTEXT.md](../PROJECT_CONTEXT.md); [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) records verification and remaining work. Google Cloud deployment and Gemini interpretation are future integrations.
 
+Primary navigation is **Map, Closures, Saved and Profile**, with **Activity** shown after sign-in. Closure editing and demos remain directly accessible in this localhost prototype; this is not the proposed role-enforced admin interface. The planner shows **Try street detour** and **Demo closures**, results show **Block a point on this route**, and the map always shows the **Add restriction** plus button. Guests receive a skippable tour on each fresh visit/reload and after sign-out; Help and Profile offer replay. See [accounts and tour behavior](DEV_ACCOUNTS_AND_TOUR.md).
+
 ## Map display and preferences
 
 The map uses **MapLibre GL JS 6** and OpenFreeMap. **Streets** is the colourful default; **Outdoors, High contrast, Minimal and Night** are available from Style on the map or Profile. Map styles are independent of the app's light/dark/system theme. Default **Clean** detail removes venue/POI labels, building details and road shields, and delays smaller street names until closer zoom. **Standard** restores ordinary two-dimensional detail. All choices remain flat and north-up, with pitch/rotation disabled. See [MAP_STYLES.md](MAP_STYLES.md).
@@ -14,7 +16,7 @@ If basemap resources fail, a visible warning accompanies the existing map or a p
 
 ## Journey endpoints and scheduling
 
-In **Journey**, choose a starting point and destination using local search, the map-pick buttons, or draggable A/B markers. Search covers selected landmarks and road names in the imported Islamabad graph; it is not an address or worldwide geocoder. Select a suggestion to establish an endpoint. Arrow keys move through loaded suggestions and Enter selects one. Typing another query clears the selected endpoint and invalidates its old suggestions.
+In **Map**, choose a starting point and destination using local search, the map-pick buttons, or draggable A/B markers. Search covers selected landmarks and road names in the imported Islamabad graph; it is not an address or worldwide geocoder. Select a suggestion to establish an endpoint. Arrow keys move through loaded suggestions and Enter selects one. Typing another query clears the selected endpoint and invalidates its old suggestions.
 
 The endpoint search and editor coordinate entry accept **latitude, longitude**, for example `33.7000, 73.0500`. Domain objects, API requests, recorded points and GeoJSON always store **[longitude, latitude]**, for example `[73.0500, 33.7000]`. The UI converts between these orders.
 
@@ -24,7 +26,7 @@ All scheduling fields use **Asia/Karachi (PKT, UTC+05:00)**, independently of th
 
 ## Add a restriction
 
-Open **Closures → Add a restriction**, or use the map's plus button. A new editor starts with the Road tool and a total width of 35 metres. Changing tools clears the current drawing's coordinates.
+Open **Closures → Add closure**, or use the map's always-visible **Add restriction** plus button. A new editor starts with the Road tool and a total width of 35 metres. Changing tools clears the current drawing's coordinates.
 
 | Tool | Input | Saved affected area |
 | --- | --- | --- |
@@ -76,7 +78,7 @@ Closure validation checks when the route traverses the affected geometry, with t
 
 Saved restriction changes advance an event revision. When the app receives a revision different from the plan's, it hides the stale route/results and asks for replanning. State is refreshed after local edits and polled every 20 seconds; changes made elsewhere are not instantaneous. Missing API or graph access remains visible. Endpoint snapping can leave an unrouted connector from a pin to the road; estimates exclude live traffic and do not provide turn-by-turn navigation.
 
-**Try a demo restriction** deliberately saves a labelled synthetic event on the original route and recalculates. It is not a live report. Cancel that event in Closures when finished.
+**Block a point on this route** deliberately saves a labelled synthetic event on the original route and recalculates. It appears directly in route results without opening Help. It is not a live report. Cancel that event in Closures when finished.
 
 ## Saved commutes and alerts
 

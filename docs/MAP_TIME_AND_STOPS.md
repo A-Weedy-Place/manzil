@@ -6,13 +6,15 @@
 2. **Red roads are closed at the displayed time.** Amber warning markers are upcoming closures. Expired events are hidden. Click a marker for its schedule and editing controls.
 3. **Blue routes are validated travel options.** A conflicting original route is pale red and labelled **Blocked**. It is not selectable for navigation.
 4. **Add stop** adds an intermediate location. Search or pick on the map, reorder with arrows, remove with ×, or reverse the entire journey. Up to five stops are supported.
-5. **Demo closures** offers six independently toggleable examples. Use **Add all**, or select one at a time. **Clear demos** leaves ordinary closures alone. All generated events say Demo.
-   **Try street detour**, beside the planner heading, loads a real Park Road example through Streets 20, 25 and 21. **Reopen demo road** restores the direct route for comparison.
+5. **Demo closures** is directly available in the planner and Closures view and offers six independently toggleable examples. Use **Add all**, or select one at a time. **Clear demos** leaves ordinary closures alone. All generated events say Demo.
+   **Try street detour**, below the planner heading, loads a real Park Road example through Streets 20, 25 and 21. **Reopen demo road** restores the direct route for comparison. Route results also expose **Block a point on this route**. None of these requires opening Help.
 6. Zoom and pan freely around the world. The local routing graph still covers central Islamabad; worldwide routing is not implemented.
+
+**Closures** remains a primary tab for everyone; the map's **Add restriction** plus button is always visible. **Activity** appears after sign-in. Guests receive the skippable tutorial each fresh visit/reload and after sign-out, even if previously completed; signed-in users retain remembered first-use behavior. Everyone can replay it from Help or Profile. See [accounts and tour](DEV_ACCOUNTS_AND_TOUR.md).
 
 ## Time and route behavior
 
-There is one authoritative map instant. A scheduled selection stays fixed. Now refreshes roughly once a minute, on returning focus, and when a known published closure starts/ends. An existing planner request automatically recalculates when that instant or the closure revision changes. Old results are hidden while replacing them; a late request cannot replace a newer result. Automatic refresh preserves the camera position and selected option where its ID still exists.
+There is one authoritative map instant. A scheduled selection stays fixed. Now refreshes roughly once a minute, on returning focus, and when a known published closure starts/ends. An existing planner request automatically recalculates when that instant or the closure revision changes. Previous geometry remains neutral grey with Updating labels while replacing it, and route actions are disabled until a current validated result arrives; a late request cannot replace a newer result. Automatic refresh preserves the camera position and selected option where its ID still exists.
 
 Choosing an earlier/later departure changes the visible map time and recalculates the journey there. Departure alternatives are never overlaid as if they belonged to the current map snapshot.
 
@@ -32,7 +34,7 @@ The red line represents the affected portion of a road, not the entire road shar
 
 Public mapped residential/service streets can be used as detours. Private, access-restricted, disconnected and missing roads remain excluded. The search is bounded and does not prove every possible real-world alternative has been found.
 
-Saved journeys preserve stops and check them for notifications. Route preview works with stops. Live GPS guidance for stop journeys is deliberately disabled until remaining-stop tracking is implemented; it must not silently reroute past required stops.
+Saved journeys preserve stops and check them for notifications. Route preview works with stops. Foreground GPS guidance now tracks remaining stops and automatically reroutes after sustained deviation. See [bilingual navigation](BILINGUAL_NAVIGATION_AND_CLOUD.md) for evidence requirements, restart behavior and limitations.
 
 ## Verification
 

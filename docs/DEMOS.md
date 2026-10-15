@@ -2,9 +2,11 @@
 
 These are synthetic testing controls over real imported Islamabad roads. They are never scraped notices or verified traffic reports. Every generated closure title begins **Demo ·** and its description retains an internal ownership tag. The ordinary closure editor can inspect these records.
 
+Demo controls are directly accessible to guests and signed-in users. **Demo closures** appears in both the planner and Closures view; expand it for the six scenarios and Add all/Clear demos. **Block a point on this route** appears in route results, and the map always shows the **Add restriction** plus button. Opening Help is not required. Guests can skip the automatic tutorial to use these controls immediately.
+
 ## One-click street detour
 
-Click **Try street detour** beside the planner heading. It loads **Park Road · F-8 northeast → Park Road · F-8 southwest**, adds/refreshes a short owned Demo closure on Park Road at the selected time, and calculates the real route automatically. No intermediate stops are forced into the request: the normal router chooses the detour itself.
+Click **Try street detour** directly below the planner heading. It loads **Park Road · F-8 northeast → Park Road · F-8 southwest**, adds/refreshes a short owned Demo closure on Park Road at the selected time, and calculates the real route automatically. No intermediate stops are forced into the request: the normal router chooses the detour itself.
 
 - Direct route with the demo road open: approximately **1.09 km / 2 min**.
 - First validated detour: approximately **1.35 km / 3 min**, via **Street 20 → Street 25 → Street 21**.

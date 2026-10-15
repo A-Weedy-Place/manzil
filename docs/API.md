@@ -8,6 +8,8 @@ Responses are the domain objects in [`shared/types.ts`](../shared/types.ts), wit
 
 | Method and path | Request | Response |
 | --- | --- | --- |
+| `GET /api/speech/status` | — | Configuration flag, UTC-month reserved character count and application limit; enabled does not assert credentials work |
+| `POST /api/speech` | `{language: "en" or "ur", prompt: SpeechPrompt}` | Binary `audio/mpeg`; 400 invalid prompt, 429 busy/limit, 503 disabled/provider unavailable. No arbitrary text/SSML. [Speech guide](BILINGUAL_NAVIGATION_AND_CLOUD.md). |
 | `GET /api/health` | — | Storage, graph readiness, pending-agent count; no private content |
 | `GET /api/state` | — | `AppState`: closures, commutes, alerts, notices, trips, source state, graph state, event revision |
 | `GET /api/profile` | — | The single persisted `LocalProfile` |
