@@ -16,16 +16,18 @@ export interface RouteStep { instruction: string; roadName: string; distanceMete
 export interface RoutePath {
   geometry: LineString; distanceMeters: number; durationSeconds: number;
   departureAt: string; arrivalAt: string; steps: RouteStep[];
-  snappedOrigin: Coordinate; snappedDestination: Coordinate;
+  snappedOrigin: Coordinate; snappedDestination: Coordinate; snappedWaypoints?: Coordinate[];
 }
 export interface RouteOption extends RoutePath {
   id: string; kind: 'direct' | 'detour' | 'alternative' | 'leave_earlier' | 'leave_later';
   label: string; validation: 'clear'; warnings: string[];
 }
 export interface RouteConflict { closureId: string; title: string; entryAt: string; exitAt: string }
-export interface PlanRequest { origin: Place; destination: Place; departureAt: string; compareDepartures?: boolean }
+export interface UpcomingClosure { closureId: string; title: string; startsAt: string; endsAt: string | null }
+export interface PlanRequest { origin: Place; destination: Place; waypoints?: Place[]; departureAt: string; compareDepartures?: boolean }
 export interface PlanResponse {
   options: RouteOption[]; baseline: RoutePath | null; conflicts: RouteConflict[];
+  upcoming?: UpcomingClosure[];
   warnings: string[]; unavailableReason?: string; evaluatedAt: string;
   graphVersion: string; eventRevision: number; source: 'local-osm';
 }
@@ -35,7 +37,7 @@ export interface GraphStatus {
   bounds: [number, number, number, number]; limitations: string[];
 }
 export interface CommuteDraft {
-  name: string; origin: Place; destination: Place;
+  name: string; origin: Place; destination: Place; waypoints?: Place[];
   departureTime: string; days: number[]; enabled: boolean;
 }
 export interface Commute extends CommuteDraft { id: string; createdAt: string; updatedAt: string }
@@ -80,5 +82,5 @@ export interface AppState {
   eventRevision: number; profile: LocalProfile;
 }
 export type ApiError = { error: string; details?: string };
-export type MapMode = 'browse' | 'origin' | 'destination' | 'point' | 'line' | 'polygon';
+export type MapMode = 'browse' | 'origin' | 'destination' | 'waypoint' | 'point' | 'line' | 'polygon';
 export interface MapFocus { coordinates: Coordinate[]; token: number }

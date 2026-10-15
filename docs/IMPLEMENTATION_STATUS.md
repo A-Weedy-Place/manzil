@@ -19,13 +19,13 @@ Local core delivered 14 October 2026; map/routing/profile/navigation redesign im
 | --- | --- |
 | Repository research, brand and full feature context | Present |
 | Shared types / npm scaffolding | Implemented and installed; Node 22.20.0 |
-| Local graph and routing | Real bounded OSM graph; up to three distinct same-time routes; 22 routing tests pass |
-| Local API/storage/source/profile | Persistent SQLite; 26 backend/source/profile tests pass |
-| Map/editor/interface | Clean MapLibre/OpenFreeMap 2D map, red closures, larger blue routes, preferences and expandable mobile controls |
+| Local graph and routing | Real bounded OSM graph; up to three distinct same-time routes; ordered stops; 33 routing tests pass |
+| Local API/storage/source/profile | Persistent SQLite; 32 backend/source/profile/demo tests pass |
+| Map/editor/interface | Five map styles, prominent shared timeline, red road segments, pale red blocked baseline, ordered stops, world zoom; five overlay tests pass |
 | Personal notifications | Saved + consented inferred journeys; opt-in browser delivery; six notification guard tests pass |
 | Navigation | Route preview and approximate foreground GPS/voice guidance; 15 navigation tests pass |
 | Browser verification | New renderer inspected at 1280×800 and small-phone size; workflow evidence below |
-| Build and tests | Type/build passes; 69/69 tests pass; npm audit reports zero vulnerabilities |
+| Build and tests | Type/build passes; 91/91 tests pass; last dependency audit reports zero vulnerabilities |
 | Live X collection | Scheduler and collector implemented; this network rejected navigation, so live retrieval is unverified |
 | Gemini, Cloud deployment and external push | Deferred to the owner as requested |
 
@@ -69,6 +69,19 @@ Local synthetic restrictions and the commute are labelled **Demo** and stored on
 - GPS/voice/OS delivery rely on mocked fixtures in automated checks. No real outdoor navigation, browser location permission or OS notification permission was exercised. New initial alerts are seeded quietly, and disabled/old/read alerts cannot be replayed by enabling preferences.
 
 ## Practical boundaries and remaining work
+
+### Map time, closed roads and stops
+
+Implemented the owner's next testing feedback on 15 October. [Map time and stops](MAP_TIME_AND_STOPS.md) documents all controls and contracts; [demo guide](DEMOS.md) describes the six scenarios.
+
+- Removed the basemap minimum zoom restriction; actual browser testing reached a world view. Routing still uses the existing central-Islamabad extract.
+- Replaced published-equals-red behavior with exact snapshot state. Active road edges are thick vivid red, future markers amber, ended events hidden. The map and router share the exact graph/polygon intersection helper. Full graph edges are painted; this is not a claim that the entire named road is blocked.
+- Conflicting original routes are pale red and labelled Blocked. They are not selectable. Blue cards and lines are validated options for the selected time; earlier/later departures change the global timeline before replanning. A time option cannot enable navigation at the wrong map time.
+- Added a large top clock with Now and scheduled PKT date/time, automatic planned-journey refresh, closure boundary updates, sequence/stale guards, preserved camera, and no redundant recalculation when confirming an unchanged scheduled instant. Removed the tagline and repeated introductory marketing/explanation blocks.
+- Added up to five ordered stops: search/map selection, numbered draggable markers, reorder/remove/reverse, continuous turn/time-aware search and saved-commute persistence. Public mapped residential streets remain routable; a new test proves a residential detour around a closed primary road while a private shortcut is excluded. GPS for stop journeys remains disabled pending remaining-stop tracking; route preview works.
+- Added six persistent toggleable Demo scenarios. Four active examples now leave the default Centaurus endpoint clear; a real-graph test verifies three connected, closure-free alternatives with all four enabled. Aabpara demonstrates future timing and Zero Point an expired event. Existing ordinary closures are not changed. The local test database was seeded through these controls and remains ignored.
+- **91 tests pass across 11 files**, plus the production type/build check. Output is approximately 337 kB shell JS / 105 kB gzip, 1,069 kB map JS / 293 kB gzip, 506 kB worker and 144 kB CSS / 23 kB gzip. The existing map-chunk warning remains.
+- Browser checks at default desktop size, **375×812** and **667×375**: clock/date picker, date application, return to Now, unchanged schedule confirmation, active/future/ended markers, pale red unavailable baseline, six-demo add/clear/re-add, three detours and map ETA labels, intermediate PIMS stop and its navigation preview, world zoom, and no horizontal document overflow. At 18:30 the sample closures disappeared and the original route returned. The mobile picker measured 320 px wide within the viewport. No real GPS permission or OS notification permission was granted. Temporary viewport overrides are reset before handoff.
 
 ### Colour refinement
 

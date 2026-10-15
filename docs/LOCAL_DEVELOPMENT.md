@@ -16,7 +16,7 @@ Open http://127.0.0.1:5173/. Vite proxies `/api` to the Express API at http://12
 ## First useful workflow
 
 1. The planner starts with example public road approaches near Faisal Mosque and Centaurus. These are not private home/work coordinates or guaranteed building entrances.
-2. Choose a departure, then Find my route. Up to three blue driving paths follow real OSM roads; the selected route is darker/thicker.
+2. Use the top clock for Now or a selected PKT date/time, then **Find routes**. Up to three blue driving paths follow real OSM roads; the selected route is darker/thicker. **Add stop** supports up to five intermediate locations. Open **Demo closures** for six independently toggleable scenarios; see [demo guide](DEMOS.md).
 3. Try a demo restriction to create an explicitly synthetic event on that route and compare rerouting. Cancel that event later from Closures.
 4. Draw a real manual restriction and set its schedule. Replan or save a recurring commute and check its next occurrence.
 5. In Profile → Source updates & collector, inspect source status or import an advisory if automatic access fails.

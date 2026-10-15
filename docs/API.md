@@ -4,6 +4,8 @@ This API implements the local Manzil prototype. It binds to **127.0.0.1:3001**, 
 
 Responses are the domain objects in [`shared/types.ts`](../shared/types.ts), without an envelope. All coordinates are `[longitude, latitude]`. Send `Content-Type: application/json` for every POST, PUT, or PATCH, including an empty `{}` for check operations. API times are ISO 8601 instants with an offset; responses normalize supplied instants to UTC. Commute wall-clock times and weekdays use Pakistan Standard Time, UTC+05:00.
 
+`PlanRequest` and `CommuteDraft` accept optional ordered `waypoints: Place[]`, at most five. Route paths include `snappedWaypoints` for a journey with stops. Every route option retains stop order, timing and turn restrictions. `PlanResponse.upcoming` lists future closures intersecting the original baseline within 24 hours, independently of `conflicts` (actual traversal overlap). It does not declare a currently open road blocked.
+
 | Method and path | Request | Response |
 | --- | --- | --- |
 | `GET /api/health` | — | Storage, graph readiness, pending-agent count; no private content |
@@ -15,6 +17,9 @@ Responses are the domain objects in [`shared/types.ts`](../shared/types.ts), wit
 | `POST /api/geometry` | `Drawing` | GeoJSON `Polygon`; point/line width is the full corridor width in meters |
 | `POST /api/plan` | `PlanRequest` | `PlanResponse`, including baseline conflicts, validated options, and honest unavailable reasons |
 | `POST /api/closures` | `ClosureDraft` | Saved `Closure`, HTTP 201 |
+| `GET /api/closures/roads?at=...` | ISO instant, defaults to now | GeoJSON `FeatureCollection<LineString, {closureId, title}>` of whole affected road segments for published closures active at that instant; opposite directed edges are drawn once |
+| `GET /api/demos?at=...` | ISO instant, defaults to now | `{at, scenarios}` catalogue with six named local-only synthetic road scenarios and persistent toggle status |
+| `POST /api/demos` | `{ "scenario": "faisal-avenue", "at": "2026-10-15T12:00:00Z", "enabled": true }` | Updated `{at, scenarios}` catalogue; repeat enabling does not duplicate or reschedule an existing enabled demo; disabling cancels only its owned demo |
 | `PUT /api/closures/:id` | Full `ClosureDraft` plus the last-read `revision` | Saved `Closure`; 409 if another edit changed its revision |
 | `DELETE /api/closures/:id` | — | Closure with `status: cancelled`; its evidence and history are recoverable by editing again |
 | `GET /api/commutes` | — | Up to 100 saved `Commute` objects |
@@ -39,6 +44,10 @@ Responses are the domain objects in [`shared/types.ts`](../shared/types.ts), wit
 Saved closures change a global `eventRevision`; each closure also has its own revision. Only published closures influence routing. Drafts stay visible to the editor; cancellation removes their routing effect. Open-ended closures stay in effect after their start until cancelled or given an end, rather than silently expiring.
 
 Closure areas use one closed, nonzero-area polygon ring. Crossing edges, repeated adjacent vertices, and holes are rejected; draw separate closure areas when needed. Routing reads every published closure, independently of the state view's display limit, so older active restrictions are not silently omitted.
+
+The red-road snapshot uses exactly the graph-edge/polygon intersection helper used by routing, with whole intersecting graph segments returned for a clearly visible road coating. The snapshot is active for `startsAt <= at < endsAt`, or indefinitely after an unknown end. It intentionally has no 30-second margin: routing still evaluates actual future traversal with its documented uncertainty margin. Future/expired/draft/cancelled closures are absent from this bright-red snapshot. Each feature names its closure; overlapping different closures may share road geometry. An unavailable graph returns 503 rather than an invented road layer. The map can pan worldwide; this local road endpoint still covers only the imported Islamabad graph.
+
+Demo catalogue entries contain `id`, `title`, `description`, `enabled`, `closureIds`, `coordinates`, `timing`, `startsAt`, and `endsAt`. `coordinates` is a contiguous chain of actual named OSM road segments. Four scenarios start 30 minutes before the supplied instant and end two hours after it; the Aabpara scenario starts 45 minutes after it, and Zero Point ended one hour before it. These relative schedules are chosen on enable and then remain fixed, so inspecting another map time changes visibility rather than silently moving the closure. `enabled` means the owned record is still published, including when it is future or expired. Disable/re-enable resets that demo's schedule around the supplied instant and reuses its record ID. All demo evidence is explicitly synthetic. [Demo guide](DEMOS.md) lists IDs and example workflows.
 
 Enabled commutes are checked after relevant saves and once a minute while the server is running. Alerts appear in the local app; **external push, email, SMS, and closed-server notification delivery are not implemented**. Duplicate impact alerts for the same next occurrence and closure revisions are suppressed. Route estimates use the imported OSM graph and speed assumptions, with no live traffic. Graph coverage and routing limitations are included in `AppState.graph` and each plan.
 

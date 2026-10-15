@@ -18,6 +18,8 @@ Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright
 
 ## Scheduled closures
 
+Ordered intermediate stops are supported through `waypoints?: Place[]` (maximum five). The continuous search retains the incoming edge across each stop, so a prohibited turn is not bypassed by splitting the trip into independent legs. It carries elapsed travel time across the whole journey, adds no stop dwell time, and returns snapped stop coordinates. Saved commute checks preserve the same ordered stops. See [map time and stops](MAP_TIME_AND_STOPS.md).
+
 Only published closures participate; cancelled and draft events do not block roads. The router intersects complete edge segments with the reviewed polygon, interpolates entry/exit along each edge and checks the traversal window against `[start,end)`, with a disclosed 30-second margin before entry and after exit. It checks every traversal, not just the trip departure. Unknown end remains open-ended. Invalid published schedules return an unavailable result pending review.
 
 The baseline is retained for comparison even when blocked. A blocked baseline is never returned as a validated option. Conflicting edges are excluded for another connected route search, up to eight iterations, followed by complete revalidation. Optional departure comparison samples changes of 10, 20, 30, 45 and 60 minutes in each direction; past departures are not offered for a current/future trip. Departure changes are extra schedule choices, separate from the same-departure routes below. Each candidate is checked independently. Available choices are the best found among a bounded set, not a proof of global temporal optimality: a longer path arriving at a reopening later may be missed by fixed query exclusions.

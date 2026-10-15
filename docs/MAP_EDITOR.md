@@ -18,9 +18,9 @@ In **Journey**, choose a starting point and destination using local search, the 
 
 The endpoint search and editor coordinate entry accept **latitude, longitude**, for example `33.7000, 73.0500`. Domain objects, API requests, recorded points and GeoJSON always store **[longitude, latitude]**, for example `[73.0500, 33.7000]`. The UI converts between these orders.
 
-**Use my location as start** requests one browser location fix and sets A. It does not start trip recording. Permission failure leaves map selection available. Swap reverses A/B. Changing either endpoint, the departure field, or the comparison setting clears the previous plan and prevents an older pending request from replacing the new selection.
+**Use my location as start** requests one browser location fix and sets A. It does not start trip recording. Permission failure leaves map selection available. **Add stop** adds up to five ordered intermediate locations with search, map selection and numbered markers. Arrow controls reorder stops; × removes one; **Reverse journey** reverses A/B and stop order. Changing an endpoint, stop or comparison setting clears the previous plan and prevents an older pending request from replacing it.
 
-All scheduling fields use **Asia/Karachi (PKT, UTC+05:00)**, independently of the computer's display timezone. **Leave now** refreshes the departure field; it is a selected timestamp rather than a continuously advancing clock. Choose **Find my route** after setting a departure.
+All scheduling fields use **Asia/Karachi (PKT, UTC+05:00)**, independently of the computer's display timezone. The prominent **top clock** controls the whole map and route departure. **Now** advances roughly once a minute and at known closure boundaries; selecting a PKT date/time fixes that snapshot. Existing planner results automatically recalculate on time/revision changes. Confirming an unchanged scheduled instant retains the route. **Back to now** restores the advancing clock. Choose **Find routes** to begin a journey. See [map time and stops](MAP_TIME_AND_STOPS.md).
 
 ## Add a restriction
 
@@ -48,7 +48,7 @@ Leave **Apply to route planning** checked to publish; clear it to save a draft. 
 
 Select a restriction card or its map area to focus it. **Edit** loads its details and drawing. Imported polygons without drawing metadata open as editable Area vertices. Saves send the loaded revision; conflicting edits are rejected rather than silently overwriting a newer revision.
 
-Drafts do not affect routing and are accessible through the list's Drafts or All filters. Published areas use a bright red outline and red fill, with a visible closed-road marker for active and scheduled restrictions. Scheduled outlines are dashed; ended areas are faded. Marker size stays readable as the map zooms out, even when the affected polygon is small. Cancelled events are omitted from the normal map overlay. The list's status is evaluated at the Journey departure field, not necessarily the present time. In Journey, choosing an earlier/later route option updates the map's displayed schedule and closure state to that option's departure.
+Drafts do not affect routing and remain accessible through Drafts or All filters. Only published events active at the top clock's instant have a bright red road coating, polygon and closed-road marker. Scheduled events have small amber warning markers; ended/cancelled events are hidden from the normal overlay. The red coating follows whole imported graph edges intersecting the closure, using the router's shared geometry helper. The list uses the same top-clock instant. Earlier/later departure selection changes the global map time and replans there.
 
 **Cancel restriction** changes its saved status to cancelled, retaining its details. Use All restrictions to find it later. Editing a cancelled record offers **Apply to route planning** checked by default: review that checkbox and schedule before saving, because saving it checked republishes the event.
 
@@ -68,7 +68,7 @@ Features save sequentially. If a later feature fails, earlier successful imports
 
 The thick saturated blue route, with a white casing, is the selected validated option. Other validated direct/detour/alternative routes for the **same departure instant** are drawn in muted blue. Click an alternative line or its minute label to select it; the side-panel result cards provide the same choice. Time-change options are not overlaid as if they shared the current departure. Minute labels estimate driving duration, not live traffic.
 
-The dashed original route is a comparison baseline and may cross a restriction; its presence is not a recommendation to drive it. Results show estimated duration, distance, departure/arrival times, road sequence, warnings and original-route conflicts. No valid connected option produces an explicit unavailable result. The renderer draws options returned by the routing API; it does not invent extra geometry to make multiple routes appear.
+The original route appears only when conflicting: it is pale red, labelled **Blocked**, and cannot be selected for navigation. The **Blocked route** layer toggle hides it. Results show duration, distance and arrival; road sequence and detailed assumptions are expandable. No valid connected option at the selected time produces an explicit unavailable result, even when a different departure is possible. The renderer draws actual API geometry and never invents extra routes.
 
 With **Also compare leaving earlier or later**, the local router checks a bounded set of alternatives around the requested departure. Available options can include a direct route, detour, earlier departure or later departure. Later departure means waiting before starting; it does not model waiting at a roadside closure. Options are not guaranteed for every direction or time, and the search is not globally optimal.
 
@@ -80,7 +80,7 @@ Saved restriction changes advance an event revision. When the app receives a rev
 
 ## Saved commutes and alerts
 
-Use **Save journey & get closure alerts** from results or open **Saved → Save a commute**. The form uses the current planner endpoints and asks for a name, usual PKT departure time and repeat weekdays. Its time initially defaults to 17:00; choosing a route option does not automatically copy that option's time into the commute form. Up to 100 commutes can be saved. The current UI supports creation, checking and removal; editing an existing commute or toggling its enabled state is not exposed there.
+Use **Save journey** from results or open **Saved → Save a commute**. The form retains current planner endpoints and ordered stops, and asks for a name, usual PKT departure time and repeat weekdays. Its time initially defaults to 17:00; choosing a route option does not automatically copy that option's time into the commute form. Up to 100 commutes can be saved. The current UI supports creation, checking and removal; editing an existing commute or toggling its enabled state is not exposed there.
 
 **Check next departure** checks the next matching occurrence and opens its plan if the user is still in Saved when the request finishes. Automatic checks run after relevant saves and once a minute while the local API runs. New conflicts and cleared disruptions can produce in-app alerts; duplicate impacts for the same occurrence and closure revisions are suppressed. The bell opens the inbox. Profile can separately enable usual-journey learning/alerts and opt-in browser notifications while the page is open. There is no closed-server or closed-app push delivery. See [the redesign guide](REDESIGN_2026-10-15.md).
 

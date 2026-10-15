@@ -57,9 +57,9 @@ export const closureDraftSchema = z.object({
   if (value.endsAt && Date.parse(value.endsAt) <= Date.parse(value.startsAt)) ctx.addIssue({ code: 'custom', path: ['endsAt'], message: 'End must be after start.' });
 });
 export const closureUpdateSchema = closureDraftSchema.and(z.object({ revision: z.number().int().positive() }));
-export const planSchema = z.object({ origin: placeSchema, destination: placeSchema, departureAt: instantSchema, compareDepartures: z.boolean().optional() });
+export const planSchema = z.object({ origin: placeSchema, destination: placeSchema, waypoints: z.array(placeSchema).max(5, 'Add at most five intermediate stops.').optional(), departureAt: instantSchema, compareDepartures: z.boolean().optional() });
 export const commuteSchema = z.object({
-  name: z.string().trim().min(1).max(120), origin: placeSchema, destination: placeSchema,
+  name: z.string().trim().min(1).max(120), origin: placeSchema, destination: placeSchema, waypoints: z.array(placeSchema).max(5, 'Add at most five intermediate stops.').optional(),
   departureTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/), days: z.array(z.number().int().min(0).max(6)).min(1).max(7), enabled: z.boolean(),
 });
 export const tripSchema = z.object({

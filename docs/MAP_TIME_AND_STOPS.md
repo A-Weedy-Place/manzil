@@ -1,0 +1,38 @@
+# Map time, closed roads and stops
+
+## Quick guide
+
+1. **Click the clock at the top.** Now is the default. Choose any date/time in Pakistan time, or choose **Back to now**. Closures and route departures use this same instant.
+2. **Red roads are closed at the displayed time.** Amber warning markers are upcoming closures. Expired events are hidden. Click a marker for its schedule and editing controls.
+3. **Blue routes are validated travel options.** A conflicting original route is pale red and labelled **Blocked**. It is not selectable for navigation.
+4. **Add stop** adds an intermediate location. Search or pick on the map, reorder with arrows, remove with ×, or reverse the entire journey. Up to five stops are supported.
+5. **Demo closures** offers six independently toggleable examples. Use **Add all**, or select one at a time. **Clear demos** leaves ordinary closures alone. All generated events say Demo.
+6. Zoom and pan freely around the world. The local routing graph still covers central Islamabad; worldwide routing is not implemented.
+
+## Time and route behavior
+
+There is one authoritative map instant. A scheduled selection stays fixed. Now refreshes roughly once a minute, on returning focus, and when a known published closure starts/ends. An existing planner request automatically recalculates when that instant or the closure revision changes. Old results are hidden while replacing them; a late request cannot replace a newer result. Automatic refresh preserves the camera position and selected option where its ID still exists.
+
+Choosing an earlier/later departure changes the visible map time and recalculates the journey there. Departure alternatives are never overlaid as if they belonged to the current map snapshot.
+
+Map red state uses exact `[startsAt, endsAt)` membership, without the routing margin. Routing evaluates when the vehicle reaches each polygon, with the existing 30-second margin. A road which closes after the trip has passed can remain usable; a road reopening before arrival can also be usable. These time-dependent cases are different from a permanent road exclusion. Future closures intersecting the original route within 24 hours appear as a short upcoming notice, explicitly labelled as applying to the original route.
+
+Foreground navigation keeps its accepted in-progress route while the map clock advances. It does not silently replace that route every minute. Existing stale-closure/GPS guards still apply; continuous time-dependent resimulation during GPS travel remains future work.
+
+## Road painting
+
+`GET /api/closures/roads?at=...` returns actual graph edges affected by published closures active at that instant. Rendering and routing share `closureEdgeFractions`, so display selection and exclusions use the same geometry intersection. Reverse directed copies are deduplicated. Whole affected graph edges are painted with a vivid red stroke over route lines, with a white casing; a small polygon remains visible. This makes a small point restriction visible along the affected road rather than only as a large marker.
+
+The line length represents the affected imported graph edge, not the entire road sharing its name. Draw the whole blocked stretch as a road corridor to close a longer stretch. A two-dimensional polygon may also cover a nearby carriageway, ramp or flyover; lane-specific and direction-specific closure editing remain future work. No GPS shortcut, missing road or visual crossing is invented as a connection.
+
+## Ordered stops
+
+`PlanRequest.waypoints?: Place[]` and `CommuteDraft.waypoints?: Place[]` accept at most five ordered intermediate places. Responses include `snappedWaypoints` when stops exist. One continuous A* state carries the incoming edge and next-stop progress. This preserves one-way/turn restrictions at a stop and cumulative arrival time for later-leg closures. Stops add no dwell time. The whole path is revalidated, including alternative and departure options. Unsupported or disconnected stops return unavailable.
+
+Public mapped residential/service streets can be used as detours. Private, access-restricted, disconnected and missing roads remain excluded. The search is bounded and does not prove every possible real-world alternative has been found.
+
+Saved journeys preserve stops and check them for notifications. Route preview works with stops. Live GPS guidance for stop journeys is deliberately disabled until remaining-stop tracking is implemented; it must not silently reroute past required stops.
+
+## Verification
+
+The expanded test suite covers waypoint order, cumulative temporal checks, turn restrictions through stops, residential detours, graph/display agreement, snapshot boundaries, demo ownership/idempotence and stale overlay guards. See [implementation status](IMPLEMENTATION_STATUS.md) for the final test/build and browser evidence. Demo records remain in the ignored local database, not Git.

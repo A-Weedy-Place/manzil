@@ -21,7 +21,7 @@ export type Planner = typeof planJourney;
 export function checkCommute(store: Store, commute: Commute, planner: Planner = planJourney, now = Date.now(), frequentRouteId?: string, coveredConflictIds: Set<string> = new Set()): CommuteImpact {
   const occurrenceAt = nextOccurrence(commute, now);
   const closures = store.routingClosures();
-  const plan: PlanResponse = planner({ origin: commute.origin, destination: commute.destination, departureAt: occurrenceAt,
+  const plan: PlanResponse = planner({ origin: commute.origin, destination: commute.destination, waypoints: commute.waypoints, departureAt: occurrenceAt,
     compareDepartures: true }, closures, store.eventRevision);
   const notifyConflicts = plan.conflicts.filter(conflict => !coveredConflictIds.has(conflict.closureId));
   const signature = createHash('sha256').update(JSON.stringify(notifyConflicts.map(conflict => {

@@ -1,49 +1,18 @@
-import booleanIntersects from '@turf/boolean-intersects';
-import { lineString, polygon } from '@turf/helpers';
 import type { Coordinate, Closure, PlanRequest, PlanResponse, RoutePath, RouteConflict, RouteOption } from '../../shared/types';
 import type { RoutingGraph, GraphEdge, TurnRule } from './graph';
 import { distanceMeters } from './graph';
 import { alternativeConstraints, alternativeLabel, isDistinctUsefulCandidate, segmentIndex, type Candidate } from './alternatives';
+import { closureEdgeFractions } from './closure-segments';
 
 const SNAP_METERS = 220;
 const TIME_MARGIN_SECONDS = 30;
-interface EventArea { closure: Closure; start: number; end: number; bounds: number[]; fractions: Map<number, [number, number][]> }
+interface EventArea { closure: Closure; start: number; end: number; fractions: Map<number, [number, number][]> }
 
 class Heap {
   private values: [number, number][] = [];
   push(value: [number, number]) { const a = this.values; a.push(value); let i = a.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (a[p][1] <= value[1]) break; a[i] = a[p]; i = p; } a[i] = value; }
   pop(): [number, number] | undefined { const a = this.values; if (!a.length) return; const first = a[0], last = a.pop()!; if (a.length) { let i = 0; while (true) { let c = i * 2 + 1; if (c >= a.length) break; if (c + 1 < a.length && a[c + 1][1] < a[c][1]) c++; if (a[c][1] >= last[1]) break; a[i] = a[c]; i = c; } a[i] = last; } return first; }
 }
-function insideRing(p: Coordinate, ring: number[][]): boolean {
-  let inside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const a = ring[i], b = ring[j];
-    if ((a[1] > p[1]) !== (b[1] > p[1]) && p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0]) inside = !inside;
-  }
-  return inside;
-}
-function intervalsInside(a: Coordinate, b: Coordinate, rings: number[][][]): [number, number][] {
-  const cuts = [0, 1], dx = b[0] - a[0], dy = b[1] - a[1];
-  for (const ring of rings) for (let i = 1; i < ring.length; i++) {
-    const c = ring[i - 1], d = ring[i], ex = d[0] - c[0], ey = d[1] - c[1];
-    const cross = dx * ey - dy * ex;
-    if (Math.abs(cross) < 1e-17) continue;
-    const qx = c[0] - a[0], qy = c[1] - a[1];
-    const t = (qx * ey - qy * ex) / cross, u = (qx * dy - qy * dx) / cross;
-    if (t >= 0 && t <= 1 && u >= 0 && u <= 1) cuts.push(t);
-  }
-  cuts.sort((x, y) => x - y);
-  const intervals: [number, number][] = [];
-  for (let i = 1; i < cuts.length; i++) {
-    if (cuts[i] - cuts[i - 1] < 1e-10) continue;
-    const m = (cuts[i] + cuts[i - 1]) / 2;
-    const point: Coordinate = [a[0] + dx * m, a[1] + dy * m];
-    if (insideRing(point, rings[0]) && !rings.slice(1).some((ring) => insideRing(point, ring))) intervals.push([cuts[i - 1], cuts[i]]);
-  }
-  // Turf already established intersection: touching an uncertain closure boundary is conservative.
-  return intervals.length ? intervals : [[0, 1]];
-}
-
 export class LocalRouter {
   readonly graph: RoutingGraph;
   private outgoing: number[][];
@@ -82,33 +51,41 @@ export class LocalRouter {
     const only = rules.filter((r) => r.only);
     return !only.length || only.some(matches);
   }
-  private shortest(origin: number, destination: number, departure: number, excluded: Set<number>, penalties = new Map<number, number>(), deadline = Infinity): Candidate | null {
-    const graph = this.graph, heap = new Heap();
-    const cost = new Map<number, number>([[-1, 0]]), previous = new Map<number, number>();
-    const heuristic = (node: number) => distanceMeters(graph.nodes[node].coordinate, graph.nodes[destination].coordinate) / this.maximumSpeed;
-    heap.push([-1, heuristic(origin)]);
+  private shortest(origin: number, targets: number[], departure: number, excluded: Set<number>, penalties = new Map<number, number>(), deadline = Infinity): Candidate | null {
+    const graph = this.graph, heap = new Heap(), stride = graph.edges.length + 1;
+    // One search state carries both the incoming edge and the next ordered stop. Splitting
+    // the journey into independent legs would forget prohibited turns at stop nodes.
+    const advance = (progress: number, node: number) => { while (progress < targets.length && targets[progress] === node) progress++; return progress; };
+    const initialProgress = advance(0, origin), initialState = initialProgress * stride;
+    const cost = new Map<number, number>([[initialState, 0]]), previous = new Map<number, number>();
+    const remaining = targets.map(() => 0);
+    for (let i = targets.length - 2; i >= 0; i--) remaining[i] = remaining[i + 1] + distanceMeters(graph.nodes[targets[i]].coordinate, graph.nodes[targets[i + 1]].coordinate);
+    const heuristic = (node: number, progress: number) => progress === targets.length ? 0 : (distanceMeters(graph.nodes[node].coordinate, graph.nodes[targets[progress]].coordinate) + remaining[progress]) / this.maximumSpeed;
+    heap.push([initialState, heuristic(origin, initialProgress)]);
     let finalState: number | undefined;
     let iterations = 0;
     while (true) {
       const item = heap.pop(); if (!item) break;
-      const [state, f] = item, incoming = state < 0 ? null : graph.edges[state], node = incoming?.to ?? origin;
+      const [state, f] = item, progress = Math.floor(state / stride), incomingIndex = state % stride - 1;
+      const incoming = incomingIndex < 0 ? null : graph.edges[incomingIndex], node = incoming?.to ?? origin;
       const g = cost.get(state)!;
-      if (f > g + heuristic(node) + .0001) continue;
-      if (node === destination) { finalState = state; break; }
-      if (++iterations > Math.max(10000, graph.edges.length * 3) || (iterations % 256 === 0 && performance.now() > deadline)) return null;
+      if (f > g + heuristic(node, progress) + .0001) continue;
+      if (progress === targets.length) { finalState = state; break; }
+      if (++iterations > Math.max(10000, graph.edges.length * (targets.length + 1) * 3) || (iterations % 256 === 0 && performance.now() > deadline)) return null;
       for (const index of this.outgoing[node]) {
         if (excluded.has(index)) continue;
         const edge = graph.edges[index];
         if (!this.turnAllowed(incoming, edge)) continue;
         const penalty = incoming ? edge.to === incoming.from ? 20 : incoming.wayId !== edge.wayId ? 3 : 0 : 0;
         const nextCost = g + edge.seconds * (1 + (penalties.get(index) ?? 0)) + penalty;
-        if (nextCost >= (cost.get(index) ?? Infinity)) continue;
-        cost.set(index, nextCost); previous.set(index, state); heap.push([index, nextCost + heuristic(edge.to)]);
+        const nextProgress = advance(progress, edge.to), nextState = nextProgress * stride + index + 1;
+        if (nextCost >= (cost.get(nextState) ?? Infinity)) continue;
+        cost.set(nextState, nextCost); previous.set(nextState, state); heap.push([nextState, nextCost + heuristic(edge.to, nextProgress)]);
       }
     }
     if (finalState === undefined) return null;
     const indices: number[] = []; let state = finalState;
-    while (state !== -1) { indices.push(state); state = previous.get(state)!; }
+    while (state !== initialState) { indices.push(state % stride - 1); state = previous.get(state)!; }
     indices.reverse();
     const coordinates: Coordinate[] = [graph.nodes[origin].coordinate];
     const steps: RoutePath['steps'] = [], timings: Candidate['edges'] = [];
@@ -127,23 +104,13 @@ export class LocalRouter {
       incoming = edge;
     }
     if (coordinates.length === 1) coordinates.push([...coordinates[0]]);
-    return { path: { geometry: { type: 'LineString', coordinates }, distanceMeters: distance, durationSeconds: elapsed, departureAt: new Date(departure).toISOString(), arrivalAt: new Date(departure + elapsed * 1000).toISOString(), steps, snappedOrigin: graph.nodes[origin].coordinate, snappedDestination: graph.nodes[destination].coordinate }, edges: timings };
+    return { path: { geometry: { type: 'LineString', coordinates }, distanceMeters: distance, durationSeconds: elapsed, departureAt: new Date(departure).toISOString(), arrivalAt: new Date(departure + elapsed * 1000).toISOString(), steps, snappedOrigin: graph.nodes[origin].coordinate, snappedDestination: graph.nodes[targets[targets.length - 1]].coordinate, ...(targets.length > 1 ? { snappedWaypoints: targets.slice(0, -1).map(index => graph.nodes[index].coordinate) } : {}) }, edges: timings };
   }
   private areas(closures: Closure[], deadline = Infinity): EventArea[] {
     return closures.filter((c) => c.status === 'published').map((closure) => {
       const start = Date.parse(closure.startsAt), end = closure.endsAt === null ? Infinity : Date.parse(closure.endsAt);
       if (!Number.isFinite(start) || Number.isNaN(end) || end <= start) throw new Error(`Published closure “${closure.title}” has an invalid time window; review it before routing.`);
-      const points = closure.geometry.coordinates.flat();
-      const bounds = [Math.min(...points.map((p) => p[0])), Math.min(...points.map((p) => p[1])), Math.max(...points.map((p) => p[0])), Math.max(...points.map((p) => p[1]))];
-      const fractions = new Map<number, [number, number][]>();
-      const shape = polygon(closure.geometry.coordinates);
-      this.graph.edges.forEach((edge, index) => {
-        if (index % 1024 === 0 && performance.now() > deadline) throw new Error('Closure validation exceeded the planning time limit. Try fewer restrictions or a smaller area.');
-        const a = this.graph.nodes[edge.from].coordinate, b = this.graph.nodes[edge.to].coordinate;
-        if (Math.max(a[0], b[0]) < bounds[0] || Math.min(a[0], b[0]) > bounds[2] || Math.max(a[1], b[1]) < bounds[1] || Math.min(a[1], b[1]) > bounds[3]) return;
-        if (booleanIntersects(lineString([a, b]), shape)) fractions.set(index, intervalsInside(a, b, closure.geometry.coordinates));
-      });
-      return { closure, start, end, bounds, fractions };
+      return { closure, start, end, fractions: closureEdgeFractions(this.graph, closure.geometry, deadline) };
     });
   }
   private conflicts(candidate: Candidate, areas: EventArea[], departure: number): { conflicts: RouteConflict[]; blocked: Set<number> } {
@@ -168,20 +135,23 @@ export class LocalRouter {
     const response: PlanResponse = { options: [], baseline: null, conflicts: [], warnings: ['Travel times use ordinary road-speed estimates, not live traffic.', 'Closure timing includes a 30-second margin at entry and exit. Recheck before departure.'], evaluatedAt, graphVersion: this.graph.version, eventRevision, source: 'local-osm' };
     const departure = Date.parse(request.departureAt);
     if (!Number.isFinite(departure)) throw new Error('Choose a valid departure date and time.');
-    for (const place of [request.origin, request.destination]) {
+    if ((request.waypoints?.length ?? 0) > 5) throw new Error('Add at most five intermediate stops.');
+    const places = [request.origin, ...(request.waypoints ?? []), request.destination];
+    for (const place of places) {
       const [lon, lat] = place.coordinate;
       if (!Number.isFinite(lon) || !Number.isFinite(lat) || lon < this.graph.bounds[0] || lon > this.graph.bounds[2] || lat < this.graph.bounds[1] || lat > this.graph.bounds[3]) {
-        response.unavailableReason = 'Both endpoints must be inside the imported Islamabad area.'; return response;
+        response.unavailableReason = 'The start, destination and every stop must be inside the imported Islamabad area.'; return response;
       }
     }
-    const origin = this.snap(request.origin.coordinate), destination = this.snap(request.destination.coordinate);
-    if (!origin || !destination) { response.unavailableReason = `Select endpoints within ${SNAP_METERS} metres of a supported public car-road node.`; return response; }
-    if (origin.distance > 30 || destination.distance > 30) response.warnings.push(`Pins snapped to road nodes (${Math.round(origin.distance)} m at start; ${Math.round(destination.distance)} m at destination). Access between each pin and its snapped point is not routed.`);
+    const snapped = places.map(place => this.snap(place.coordinate));
+    if (snapped.some(point => !point)) { response.unavailableReason = `Select the start, destination and stops within ${SNAP_METERS} metres of a supported public car-road node.`; return response; }
+    const origin = snapped[0]!, targets = snapped.slice(1).map(point => point!.index);
+    if (snapped.some(point => point!.distance > 30)) response.warnings.push(`Pins snapped to road nodes (${snapped.map((point, index) => `${Math.round(point!.distance)} m at ${index === 0 ? 'start' : index === snapped.length - 1 ? 'destination' : `stop ${index}`}`).join('; ')}). Access between each pin and its snapped point is not routed.`);
     let areas: EventArea[];
     try { areas = this.areas(closures, deadline); } catch (error) { response.unavailableReason = error instanceof Error ? error.message : 'A published closure needs review.'; return response; }
     const search = (time: number, excluded: Set<number>, penalties = new Map<number, number>()) => {
       if (searchesLeft-- <= 0 || performance.now() > deadline) { searchLimited = true; return null; }
-      const result = this.shortest(origin.index, destination.index, time, excluded, penalties, deadline);
+      const result = this.shortest(origin.index, targets, time, excluded, penalties, deadline);
       if (performance.now() > deadline) searchLimited = true;
       return result;
     };
@@ -189,6 +159,9 @@ export class LocalRouter {
     if (!baseline) { response.unavailableReason = searchLimited ? 'The planning limit was reached before a connected route could be validated. Try a shorter journey.' : 'No connected public car route was found between these snapped endpoints in the imported road graph.'; return response; }
     response.baseline = baseline.path;
     response.conflicts = this.conflicts(baseline, areas, departure).conflicts;
+    response.upcoming = areas.filter(area => area.start > departure && area.start <= departure + 24 * 3600_000 && baseline.edges.some(edge => area.fractions.has(edge.index)))
+      .sort((a, b) => a.start - b.start)
+      .map(({ closure }) => ({ closureId: closure.id, title: closure.title, startsAt: closure.startsAt, endsAt: closure.endsAt }));
     const findPassing = (time: number, forced = new Set<number>(), penalties = new Map<number, number>(), attempts = 8): Candidate | null => {
       // Static ordinary-speed routing does not change shape with departure. Reuse its baseline, but recheck every closure at the new time.
       let candidate: Candidate | null = !forced.size && !penalties.size ? { edges: baseline.edges, path: { ...baseline.path, departureAt: new Date(time).toISOString(), arrivalAt: new Date(time + baseline.path.durationSeconds * 1000).toISOString() } } : search(time, forced, penalties);

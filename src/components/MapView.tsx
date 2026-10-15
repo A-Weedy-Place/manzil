@@ -3,15 +3,17 @@ import { AttributionControl, Map as LibreMap, Marker, NavigationControl, ScaleCo
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import type { Feature, FeatureCollection, Geometry, Polygon } from 'geojson';
 import type { Closure, Coordinate, Drawing, MapFocus, MapMode, MapStyleId, Place, RecordedPoint, RouteOption, RoutePath } from '../../shared/types';
-import { closureState } from '../lib/format';
+import { closureState, dateTime } from '../lib/format';
 import { api } from '../lib/api';
 import { emptyMapStyle, loadMapStyle, MAP_ATTRIBUTION, type MapDetail, type MapTheme } from '../lib/mapStyle';
+import { activeClosurePolygons, closureRoadKey, routeMatchesMapSnapshot, visibleClosureRoads, type ClosureRoads } from '../lib/mapOverlays';
 
 setWorkerUrl(workerUrl);
 setWorkerCount(2);
 
 export interface MapViewProps {
   mode: MapMode; origin: Place | null; destination: Place | null;
+  waypoints?: (Place | null)[];
   closures: Closure[]; selectedClosureId: string | null;
   selectedRoute: RouteOption | null; baseline: RoutePath | null;
   routeOptions?: RouteOption[]; onRouteSelect?: (id: string) => void;
@@ -21,10 +23,11 @@ export interface MapViewProps {
   navigationPosition?: Coordinate | null; followPosition?: boolean;
   onPick: (coordinate: Coordinate) => void; onDraw: (drawing: Drawing) => void;
   onEndpointMove: (letter: 'A' | 'B', coordinate: Coordinate) => void;
+  onWaypointMove?: (index: number, coordinate: Coordinate) => void;
   onClosureSelect: (id: string) => void; onReady?: () => void;
 }
 
-const SOURCE_IDS = ['baseline', 'routes', 'connectors', 'closures', 'drawing', 'trace', 'trace-end'] as const;
+const SOURCE_IDS = ['baseline', 'routes', 'connectors', 'closures', 'closure-roads', 'drawing', 'trace', 'trace-end'] as const;
 const sid = (id: typeof SOURCE_IDS[number]) => `manzil-${id}`;
 const emptyFeatures = (): FeatureCollection => ({ type: 'FeatureCollection', features: [] });
 const feature = (geometry: Geometry, properties: Record<string, unknown> = {}): Feature => ({ type: 'Feature', geometry, properties });
@@ -39,16 +42,18 @@ function updateSource(map: LibreMap, name: typeof SOURCE_IDS[number], data: Feat
 
 function installOverlays(map: LibreMap) {
   for (const id of SOURCE_IDS) if (!map.getSource(sid(id))) map.addSource(sid(id), { type: 'geojson', data: emptyFeatures() });
-  map.addLayer({ id: 'manzil-baseline-line', type: 'line', source: sid('baseline'), layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#8993a5', 'line-width': 4, 'line-opacity': .7, 'line-dasharray': [2, 2] } });
+  map.addLayer({ id: 'manzil-baseline-casing', type: 'line', source: sid('baseline'), layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#fff7f8', 'line-width': 12, 'line-opacity': .95 } });
+  map.addLayer({ id: 'manzil-baseline-line', type: 'line', source: sid('baseline'), layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#f3a0ad', 'line-width': 8, 'line-opacity': .9 } });
   map.addLayer({ id: 'manzil-alternative-casing', type: 'line', source: sid('routes'), filter: ['==', ['get', 'selected'], false], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#f7f9ff', 'line-width': 12, 'line-opacity': .92 } });
   map.addLayer({ id: 'manzil-alternative-line', type: 'line', source: sid('routes'), filter: ['==', ['get', 'selected'], false], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#8eaadd', 'line-width': 8, 'line-opacity': .98 } });
   map.addLayer({ id: 'manzil-route-casing', type: 'line', source: sid('routes'), filter: ['==', ['get', 'selected'], true], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': 15, 'line-opacity': .98 } });
   map.addLayer({ id: 'manzil-route-line', type: 'line', source: sid('routes'), filter: ['==', ['get', 'selected'], true], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#2563eb', 'line-width': 10 } });
   map.addLayer({ id: 'manzil-route-hit', type: 'line', source: sid('routes'), paint: { 'line-color': '#2563eb', 'line-width': 23, 'line-opacity': .01 } });
   map.addLayer({ id: 'manzil-connectors-line', type: 'line', source: sid('connectors'), paint: { 'line-color': '#2563eb', 'line-width': 2, 'line-dasharray': [1, 2], 'line-opacity': .75 } });
-  map.addLayer({ id: 'manzil-closure-fill', type: 'fill', source: sid('closures'), paint: { 'fill-color': '#ed353b', 'fill-opacity': ['case', ['==', ['get', 'state'], 'ended'], .035, ['==', ['get', 'selected'], true], .26, .17] } });
-  map.addLayer({ id: 'manzil-closure-line', type: 'line', source: sid('closures'), filter: ['!=', ['get', 'state'], 'scheduled'], paint: { 'line-color': '#e32632', 'line-width': ['case', ['==', ['get', 'selected'], true], 4, 3], 'line-opacity': ['case', ['==', ['get', 'state'], 'ended'], .35, 1] } });
-  map.addLayer({ id: 'manzil-closure-scheduled', type: 'line', source: sid('closures'), filter: ['==', ['get', 'state'], 'scheduled'], paint: { 'line-color': '#e32632', 'line-width': 3, 'line-dasharray': [2, 1.5] } });
+  map.addLayer({ id: 'manzil-closure-fill', type: 'fill', source: sid('closures'), paint: { 'fill-color': '#ff163a', 'fill-opacity': ['case', ['==', ['get', 'selected'], true], .18, .09] } });
+  map.addLayer({ id: 'manzil-closure-line', type: 'line', source: sid('closures'), paint: { 'line-color': '#ed1539', 'line-width': ['case', ['==', ['get', 'selected'], true], 3, 1.5], 'line-opacity': .7 } });
+  map.addLayer({ id: 'manzil-closure-roads-casing', type: 'line', source: sid('closure-roads'), layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#fff6f8', 'line-width': 16, 'line-opacity': .98 } });
+  map.addLayer({ id: 'manzil-closure-roads-line', type: 'line', source: sid('closure-roads'), layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#ff163a', 'line-width': 11, 'line-opacity': 1 } });
   map.addLayer({ id: 'manzil-drawing-fill', type: 'fill', source: sid('drawing'), filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': '#ed353b', 'fill-opacity': .16 } });
   map.addLayer({ id: 'manzil-drawing-line', type: 'line', source: sid('drawing'), filter: ['!=', ['geometry-type'], 'Point'], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#e32632', 'line-width': 3, 'line-dasharray': [2, 1.5] } });
   map.addLayer({ id: 'manzil-drawing-point', type: 'circle', source: sid('drawing'), filter: ['==', ['geometry-type'], 'Point'], paint: { 'circle-radius': 5, 'circle-color': '#e32632', 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } });
@@ -57,10 +62,9 @@ function installOverlays(map: LibreMap) {
 }
 
 function sameDepartureOptions(props: MapViewProps): RouteOption[] {
-  const departure = Date.parse(props.selectedRoute?.departureAt ?? props.departureAt);
   const options = props.routeOptions ?? (props.selectedRoute ? [props.selectedRoute] : []);
-  const result = options.filter(option => option.validation === 'clear' && Date.parse(option.departureAt) === departure && !['leave_earlier', 'leave_later'].includes(option.kind));
-  if (props.selectedRoute?.validation === 'clear' && !result.some(option => option.id === props.selectedRoute!.id)) result.push(props.selectedRoute);
+  const result = options.filter(option => option.validation === 'clear' && routeMatchesMapSnapshot(option.departureAt, props.departureAt, props.followPosition) && !['leave_earlier', 'leave_later'].includes(option.kind));
+  if (props.selectedRoute?.validation === 'clear' && routeMatchesMapSnapshot(props.selectedRoute.departureAt, props.departureAt, props.followPosition) && !result.some(option => option.id === props.selectedRoute!.id)) result.push(props.selectedRoute);
   return [...new Map(result.map(option => [option.id, option])).values()];
 }
 
@@ -132,13 +136,17 @@ export default function MapView(props: MapViewProps) {
   const [styleLoading, setStyleLoading] = useState(true);
   const [preview, setPreview] = useState<{ drawing: Drawing; geometry: Polygon } | null>(null);
   const [previewError, setPreviewError] = useState(false);
+  const [closureRoads, setClosureRoads] = useState<{ key: string; data: ClosureRoads } | null>(null);
+  const [closureRoadError, setClosureRoadError] = useState('');
+  const roadKey = closureRoadKey(props.closures, props.departureAt);
+  const hasActiveClosures = props.closures.some(closure => closureState(closure, props.departureAt) === 'active');
   const mapStyle = props.mapStyle ?? 'streets', theme = mapStyle === 'night' ? 'dark' : 'light', detail = props.mapDetail ?? 'clean';
 
   useEffect(() => {
     if (!container.current) return;
     let map: LibreMap;
     try {
-      map = new LibreMap({ container: container.current, style: emptyMapStyle(current.current.mapStyle === 'night' ? 'dark' : 'light'), center: [73.052, 33.715], zoom: 11.9, minZoom: 6, maxZoom: 19,
+      map = new LibreMap({ container: container.current, style: emptyMapStyle(current.current.mapStyle === 'night' ? 'dark' : 'light'), center: [73.052, 33.715], zoom: 11.9, minZoom: 0, maxZoom: 19,
         pitch: 0, minPitch: 0, maxPitch: 0, bearing: 0, dragRotate: false, pitchWithRotate: false, touchPitch: false,
         renderWorldCopies: false, pixelRatio: Math.min(window.devicePixelRatio || 1, 1.75), reduceMotion: reducedMotion(), fadeDuration: 0, maxTileCacheZoomLevels: 2, attributionControl: false });
     } catch {
@@ -157,12 +165,12 @@ export default function MapView(props: MapViewProps) {
     map.on('webglcontextrestored', () => setMapError(''));
     map.on('click', event => {
       const p = current.current, coordinate: Coordinate = [event.lngLat.lng, event.lngLat.lat];
-      if (p.mode === 'origin' || p.mode === 'destination') { p.onPick(coordinate); return; }
+      if (p.mode === 'origin' || p.mode === 'destination' || p.mode === 'waypoint') { p.onPick(coordinate); return; }
       if (p.mode === 'point' || p.mode === 'line' || p.mode === 'polygon') {
         const coordinates = p.mode === 'point' ? [coordinate] : [...(p.drawing?.kind === p.mode ? p.drawing.coordinates : []), coordinate];
         p.onDraw({ kind: p.mode, coordinates, widthMeters: p.drawing?.widthMeters ?? 35 }); return;
       }
-      const layers = ['manzil-closure-fill', 'manzil-closure-line', 'manzil-closure-scheduled', 'manzil-route-hit'].filter(id => map.getLayer(id));
+      const layers = ['manzil-closure-fill', 'manzil-closure-line', 'manzil-closure-roads-line', 'manzil-route-hit'].filter(id => map.getLayer(id));
       const found = map.queryRenderedFeatures(event.point, { layers });
       const closure = found.find(item => item.properties?.closureId);
       if (closure) { p.onClosureSelect(String(closure.properties!.closureId)); return; }
@@ -171,7 +179,7 @@ export default function MapView(props: MapViewProps) {
     });
     map.on('mousemove', event => {
       if (current.current.mode !== 'browse') { map.getCanvas().style.cursor = 'crosshair'; return; }
-      const layers = ['manzil-closure-fill', 'manzil-route-hit'].filter(id => map.getLayer(id));
+      const layers = ['manzil-closure-fill', 'manzil-closure-roads-line', 'manzil-route-hit'].filter(id => map.getLayer(id));
       map.getCanvas().style.cursor = layers.length && map.queryRenderedFeatures(event.point, { layers }).length ? 'pointer' : '';
     });
     const observer = new ResizeObserver(() => map.resize()); observer.observe(container.current);
@@ -206,6 +214,18 @@ export default function MapView(props: MapViewProps) {
   }, [props.drawing]);
 
   useEffect(() => {
+    setClosureRoadError('');
+    if (!props.showClosures || !hasActiveClosures) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      api<ClosureRoads>(`/closures/roads?at=${encodeURIComponent(props.departureAt)}`, { signal: controller.signal })
+        .then(data => { if (!controller.signal.aborted) setClosureRoads({ key: roadKey, data }); })
+        .catch(() => { if (!controller.signal.aborted) setClosureRoadError('Closed-road highlighting unavailable.'); });
+    }, 180);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [roadKey, props.showClosures, hasActiveClosures, retry]);
+
+  useEffect(() => {
     const map = mapRef.current; if (!map) return;
     map.getCanvas().style.cursor = props.mode === 'browse' ? '' : 'crosshair';
     map.doubleClickZoom[props.mode === 'browse' ? 'enable' : 'disable']();
@@ -227,11 +247,26 @@ export default function MapView(props: MapViewProps) {
 
   useEffect(() => {
     const map = mapRef.current; if (!map) return;
+    const markers: Marker[] = [];
+    props.waypoints?.forEach((place, index) => {
+      if (!place || !validCoordinate(place.coordinate)) return;
+      const element = button('map-endpoint map-endpoint-waypoint', `Stop ${index + 1}: ${place.name}. Drag or use arrow keys to adjust.`, String(index + 1));
+      const marker = new Marker({ element, draggable: !!props.onWaypointMove, anchor: 'center' }).setLngLat(place.coordinate).addTo(map);
+      marker.on('dragend', () => { const point = marker.getLngLat(); current.current.onWaypointMove?.(index, [point.lng, point.lat]); });
+      nudgeOnKeys(element, map, () => [marker.getLngLat().lng, marker.getLngLat().lat], coordinate => current.current.onWaypointMove?.(index, coordinate));
+      markers.push(marker);
+    });
+    return () => markers.forEach(marker => marker.remove());
+  }, [props.waypoints, props.onWaypointMove, retry]);
+
+  useEffect(() => {
+    const map = mapRef.current; if (!map) return;
     const options = sameDepartureOptions(props);
-    updateSource(map, 'baseline', props.baseline && props.showBaseline ? collection([feature(props.baseline.geometry)]) : emptyFeatures());
+    const baseline = !props.followPosition && props.baseline && props.showBaseline && routeMatchesMapSnapshot(props.baseline.departureAt, props.departureAt) ? props.baseline : null;
+    updateSource(map, 'baseline', baseline ? collection([feature(baseline.geometry)]) : emptyFeatures());
     updateSource(map, 'routes', collection(options.map(option => feature(option.geometry, { routeId: option.id, selected: option.id === props.selectedRoute?.id }))));
     const connectors: Feature[] = [];
-    if (props.selectedRoute) for (const [place, snapped] of [[props.origin, props.selectedRoute.snappedOrigin], [props.destination, props.selectedRoute.snappedDestination]] as const) {
+    if (props.selectedRoute && options.some(option => option.id === props.selectedRoute!.id)) for (const [place, snapped] of [[props.origin, props.selectedRoute.snappedOrigin], [props.destination, props.selectedRoute.snappedDestination]] as const) {
       if (place && snapped) connectors.push(feature({ type: 'LineString', coordinates: [place.coordinate, snapped] }));
     }
     updateSource(map, 'connectors', collection(connectors));
@@ -240,10 +275,12 @@ export default function MapView(props: MapViewProps) {
       markers.forEach(marker => marker.remove()); markers.length = 0;
       if (props.mode !== 'browse') return;
       const occupied: { x: number; y: number }[] = [];
-      for (const place of [props.origin, props.destination]) if (place) occupied.push(map.project(place.coordinate));
+      for (const place of [props.origin, ...(props.waypoints ?? []), props.destination]) if (place) occupied.push(map.project(place.coordinate));
       const bounds = map.getContainer().getBoundingClientRect();
-      for (const [index, option] of [...options].sort((a,b) => Number(b.id === props.selectedRoute?.id) - Number(a.id === props.selectedRoute?.id)).entries()) {
-        const coordinates = option.geometry.coordinates as Coordinate[]; if (!coordinates.length) continue;
+      const labelPaths: { path: RoutePath; option: RouteOption | null }[] = [...options].sort((a,b) => Number(b.id === props.selectedRoute?.id) - Number(a.id === props.selectedRoute?.id)).map(option => ({ path: option, option }));
+      if (baseline) labelPaths.push({ path: baseline, option: null });
+      for (const [index, { path, option }] of labelPaths.entries()) {
+        const coordinates = path.geometry.coordinates as Coordinate[]; if (!coordinates.length) continue;
         const fractions = index % 2 ? [.7, .35, .83, .5, .2] : [.45, .75, .25, .6, .85];
         let position = pointAlong(coordinates, fractions[0]), offset: [number, number] = [0, 0], best = -Infinity;
         for (const fraction of fractions) for (const shift of [[0,0],[45,0],[-45,0],[0,40],[0,-40]] as [number,number][]) {
@@ -255,32 +292,39 @@ export default function MapView(props: MapViewProps) {
           if (score > best) { best = score; position = candidate; offset = shift; }
         }
         const projected = map.project(position); occupied.push({x:projected.x + offset[0], y:projected.y + offset[1]});
-        const selected = option.id === props.selectedRoute?.id, minutes = Math.max(1, Math.round(option.durationSeconds / 60));
-        const element = button(`map-route-label${selected ? ' is-selected' : ''}`, `${option.label}, ${minutes} minutes. Select route.`, `${minutes} min`);
-        element.setAttribute('aria-pressed', String(selected));
-        element.addEventListener('click', () => current.current.onRouteSelect?.(option.id));
+        const selected = !!option && option.id === props.selectedRoute?.id, minutes = Math.max(1, Math.round(path.durationSeconds / 60));
+        const element = option ? button(`map-route-label${selected ? ' is-selected' : ''}`, `${option.label}, ${minutes} minutes. Select route.`, `${minutes} min`) : document.createElement('div');
+        if (option) {
+          element.setAttribute('aria-pressed', String(selected));
+          element.addEventListener('click', () => current.current.onRouteSelect?.(option.id));
+        } else {
+          element.className = 'map-route-label is-blocked'; element.textContent = 'Blocked';
+          element.setAttribute('aria-label', 'Blocked route. Unavailable.');
+          element.style.pointerEvents = 'none';
+        }
         markers.push(new Marker({ element, anchor: 'center', offset }).setLngLat(position).addTo(map));
       }
     };
     placeLabels(); map.on('moveend', placeLabels);
     return () => { map.off('moveend', placeLabels); markers.forEach(marker => marker.remove()); };
-  }, [props.routeOptions, props.selectedRoute, props.baseline, props.showBaseline, props.origin, props.destination, props.departureAt, props.mode, styleVersion, retry]);
+  }, [props.routeOptions, props.selectedRoute, props.baseline, props.showBaseline, props.origin, props.destination, props.waypoints, props.departureAt, props.followPosition, props.mode, styleVersion, retry]);
 
   useEffect(() => {
     const map = mapRef.current; if (!map) return;
-    const features: Feature[] = [], markers: Marker[] = [];
+    const markers: Marker[] = [];
     if (props.showClosures) for (const closure of props.closures) {
       if (closure.status !== 'published') continue;
       const state = closureState(closure, props.departureAt), selected = closure.id === props.selectedClosureId;
-      features.push(feature(closure.geometry, { closureId: closure.id, state, selected }));
-      if (state === 'ended' && !selected) continue;
-      const element = button(`map-closure-marker${state === 'scheduled' ? ' is-scheduled' : ''}${selected ? ' is-selected' : ''}`, `${closure.title} — ${state}. Open restriction.`, '−');
+      if (state !== 'active' && state !== 'scheduled') continue;
+      const label = state === 'scheduled' ? `${closure.title} — upcoming ${dateTime(closure.startsAt)}. Open restriction.` : `${closure.title} — closed. Open restriction.`;
+      const element = button(`map-closure-marker${state === 'scheduled' ? ' is-scheduled' : ''}${selected ? ' is-selected' : ''}`, label, state === 'scheduled' ? '!' : '−');
       element.addEventListener('click', () => current.current.onClosureSelect(closure.id));
       markers.push(new Marker({ element, anchor: 'center' }).setLngLat(polygonCentre(closure.geometry)).addTo(map));
     }
-    updateSource(map, 'closures', collection(features));
+    updateSource(map, 'closures', props.showClosures ? activeClosurePolygons(props.closures, props.departureAt, props.selectedClosureId) : emptyFeatures());
+    updateSource(map, 'closure-roads', props.showClosures ? visibleClosureRoads(closureRoads, roadKey, props.closures, props.departureAt) : emptyFeatures());
     return () => markers.forEach(marker => marker.remove());
-  }, [props.closures, props.selectedClosureId, props.showClosures, props.departureAt, styleVersion, retry]);
+  }, [props.closures, props.selectedClosureId, props.showClosures, props.departureAt, closureRoads, roadKey, styleVersion, retry]);
 
   useEffect(() => {
     const map = mapRef.current; if (!map) return;
@@ -331,10 +375,11 @@ export default function MapView(props: MapViewProps) {
   }, [props.navigationPosition, props.followPosition, retry]);
 
   return <>
-    <div ref={container} className={`maplibre-map map-theme-${theme}`} role="region" aria-label="Islamabad interactive map. Journey fields and the coordinate editor provide keyboard alternatives." />
+    <div ref={container} className={`maplibre-map map-theme-${theme}`} role="region" aria-label="Interactive map" />
     {mapError ? <div className="map-status map-status-error" role="alert"><span>{mapError}</span><button type="button" onClick={() => setRetry(value => value + 1)}>Restart map</button><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a></div>
       : tileError ? <div className="map-status map-status-error" role="status">{tileError}</div>
       : styleLoading ? <div className="map-status" role="status">Loading the map…</div>
-      : previewError ? <div className="map-status map-status-error" role="status">Restriction preview unavailable. Check the local connection or adjust the drawing before saving.</div> : null}
+      : previewError ? <div className="map-status map-status-error" role="status">Restriction preview unavailable.</div>
+      : closureRoadError ? <div className="map-status map-status-error" role="status">{closureRoadError}</div> : null}
   </>;
 }

@@ -69,3 +69,53 @@ p.muted { font-size:14px; line-height:1.65; } .small { font-size:12px; } .field-
 @media(max-width:760px) and (orientation:portrait) { .side-panel::before { display:none; } .sheet-size-toggle { display:grid; place-items:center; position:sticky; top:0; margin:0 auto; width:70px; height:28px; background:var(--paper); border-radius:0 0 12px 12px; z-index:3; } .sheet-size-toggle>span { width:36px; height:4px; border-radius:4px; background:var(--muted); opacity:.45; } .side-panel.is-expanded { height:calc(100% - 145px - env(safe-area-inset-bottom,0px)); } .panel-content { padding-top:9px; } }
 .maplibregl-ctrl-bottom-right .maplibregl-ctrl-group { margin-bottom:36px; }
 .maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib { position:absolute; bottom:0; right:0; margin:0; white-space:nowrap; }
+
+/* One visible clock controls the map and journey departure together. */
+.app-header { height:86px; gap:12px; }
+.map-time-control { position:relative; z-index:1900; }
+.map-time-trigger { display:flex; align-items:center; gap:13px; min-height:70px; min-width:230px; padding:9px 17px; background:var(--green-soft); border:1px solid var(--green); color:var(--green); border-radius:15px; text-align:left; }
+.map-time-trigger>span { display:flex; flex-direction:column; flex:1; }
+.map-time-trigger small { font-size:9px; font-weight:700; letter-spacing:1px; }
+.map-time-trigger strong { font-size:23px; line-height:1.2; letter-spacing:-.6px; }
+.map-time-trigger em { font-style:normal; font-size:10px; font-weight:550; letter-spacing:0; }
+.map-time-trigger>span>span { font-size:11px; }
+.map-time-trigger.is-scheduled { background:var(--blue-soft); color:var(--blue); border-color:var(--blue); }
+.map-time-picker { position:absolute; top:calc(100% + 10px); left:50%; transform:translateX(-50%); width:320px; max-width:calc(100vw - 24px); padding:16px; background:var(--paper); border:1px solid var(--border); border-radius:16px; box-shadow:0 12px 40px #18334530; color:var(--ink); }
+.map-time-picker .field-label { display:flex; flex-direction:column; gap:9px; margin:12px 0 18px; }
+.map-time-picker .text-button { margin-top:7px; }
+.map-topline { flex-wrap:wrap; gap:8px; }
+.map-layer-controls { max-width:100%; flex-wrap:wrap; }
+.map-layer-controls button.blocked-toggle.active { color:var(--red-ink); background:var(--red-soft); }
+.legend-block { width:17px; height:5px; border:0; border-radius:2px; }
+.legend-blocked-route { width:17px; height:5px; background:#f4a8b1; border-radius:2px; }
+.legend-upcoming { border-color:#df950c; border-style:solid; border-radius:50%; }
+.map-legend { flex-wrap:wrap; }
+.map-route-label.is-blocked { color:#8b1730; background:#fff1f2; border-color:#f4a8b1; }
+.map-closure-marker.is-scheduled { width:28px; height:28px; background:#fff7df; color:#9c6306; border-color:#f5a623; box-shadow:0 1px 5px #7a4b2326; font-size:17px; }
+.map-closure-marker.is-scheduled::after { display:none; }
+.map-endpoint-waypoint { background:#bc7900; width:34px; height:34px; font-size:14px; }
+.waypoint-row { position:relative; border-top:1px solid var(--border); padding-top:5px; }
+.waypoint-actions { display:flex; justify-content:flex-end; gap:4px; padding-bottom:7px; }
+.waypoint-row .place-field { padding-bottom:0; }
+.add-stop { margin:2px 0 4px; gap:7px; }
+.add-stop>span { margin-left:auto; }
+.blocked-route-card { display:flex; align-items:center; gap:11px; padding:13px; margin:12px 0 18px; border:1px solid #f2b0bb; color:var(--red-ink); background:var(--red-soft); border-radius:12px; }
+.blocked-route-card strong,.blocked-route-card small { display:block; font-size:12px; }
+.blocked-route-card small { font-size:11px; margin-top:3px; }
+.upcoming-route-notice { display:flex; gap:8px; align-items:flex-start; padding:12px; border:1px solid #dbad52; background:#fff8e6; color:#7d5104; font-size:12px; border-radius:11px; margin:10px 0 16px; }
+.upcoming-route-notice>svg { flex-shrink:0; margin-top:2px; }
+.start-navigation { margin-top:18px; }
+.demo-catalogue { margin-top:23px; border:1px solid var(--border); border-radius:13px; padding:0 13px 12px; }
+.demo-catalogue:not([open]) { padding-bottom:0; }
+.demo-catalogue>summary { min-height:48px; display:flex; align-items:center; gap:8px; color:var(--green); cursor:pointer; font-size:13px; font-weight:600; }
+.demo-catalogue>summary>span { margin-left:auto; font-size:11px; font-weight:400; color:var(--muted); }
+.demo-actions { display:flex; justify-content:space-between; gap:8px; border-top:1px solid var(--border); border-bottom:1px solid var(--border); padding:4px 0; }
+.demo-scenario { display:flex; align-items:center; gap:4px; min-height:64px; border-bottom:1px solid var(--border); }
+.demo-scenario>label { display:flex; align-items:center; gap:9px; flex:1; min-width:0; cursor:pointer; }
+.demo-scenario strong { display:block; font-size:12px; }
+.demo-scenario small { display:block; font-size:10px; color:var(--muted); padding-top:3px; }
+.demo-catalogue>.small { display:block; margin-top:10px; }
+.map-style-picker { top:102px; }
+@media(max-width:760px) { .app-header { height:80px; padding:0 9px; gap:6px; } .brand { gap:6px; } .brand-name { font-size:24px; } .brand img { width:30px; height:30px; } .header-actions { gap:1px; } .header-actions .icon-button { min-width:36px; width:36px; } .workspace-avatar { width:30px; height:30px; font-size:13px; } .map-time-trigger { min-width:0; padding:7px 9px; min-height:65px; gap:6px; } .map-time-trigger>svg:first-child { display:none; } .map-time-trigger strong { font-size:20px; } .map-time-trigger small { font-size:8px; letter-spacing:.5px; } .map-time-trigger>span>span { font-size:10px; } .map-time-picker { position:fixed; top:86px; left:50%; } .map-style-picker { top:92px; } .city-chip { display:none; } .map-topline { justify-content:flex-start; right:13px; } .map-layer-controls button { font-size:11px; } .map-layer-controls button span { display:inline; } .map-instructions { top:65px; } }
+@media(max-width:760px) and (orientation:landscape) { .app-header { height:76px; } }
+@media(prefers-reduced-motion:reduce) { .map-time-trigger { transition:none; } }

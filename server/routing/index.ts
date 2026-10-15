@@ -27,6 +27,8 @@ export function graphStatus(): GraphStatus {
   return { ready: !!router, source: router?.graph.source ?? 'OpenStreetMap local import', version: router?.graph.version ?? 'not-imported', nodeCount: router?.graph.nodes.length ?? 0, edgeCount: router?.graph.edges.length ?? 0, importedAt: router?.graph.importedAt ?? null, bounds: router?.graph.bounds ?? DEFAULT_BOUNDS, limitations: loadError ? [`Graph unavailable: ${loadError}`, ...LIMITATIONS] : LIMITATIONS };
 }
 export const getGraphStatus = graphStatus;
+/** Shared local road data for closure display and clearly labelled demo fixtures. */
+export function getRoutingGraph(): RoutingGraph | null { return router?.graph ?? null; }
 export function planJourney(request: PlanRequest, closures: Closure[], eventRevision: number): PlanResponse {
   if (router) return router.plan(request, closures, eventRevision);
   return { options: [], baseline: null, conflicts: [], warnings: [loadError, 'Run npm run data:import to import the real OSM road graph.'], unavailableReason: 'The real Islamabad routing graph is unavailable. No synthetic route has been substituted.', evaluatedAt: new Date().toISOString(), graphVersion: 'not-imported', eventRevision, source: 'local-osm' };

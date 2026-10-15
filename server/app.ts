@@ -5,15 +5,19 @@ import type { Alert, AppState, Closure, Commute, CommuteDraft, GraphStatus, Plac
 import { Store } from './store.js';
 import { HttpError } from './errors.js';
 import { drawingToPolygon, summarizeTrace } from './geometry.js';
-import { closureDraftSchema, closureUpdateSchema, commuteSchema, drawingSchema, noticeSchema, planSchema, polygonSchema, profilePatchSchema, tripSchema } from './validation.js';
+import { closureDraftSchema, closureUpdateSchema, commuteSchema, drawingSchema, instantSchema, noticeSchema, planSchema, polygonSchema, profilePatchSchema, tripSchema } from './validation.js';
 import { SourceService, contentHash } from './source.js';
-import { graphStatus, planJourney, searchPlaces } from './routing/index.js';
+import { getRoutingGraph, graphStatus, planJourney, searchPlaces } from './routing/index.js';
+import { activeClosureRoads } from './routing/closure-segments.js';
+import { demoCatalogue, toggleDemo } from './demos.js';
+import type { RoutingGraph } from './routing/graph.js';
 import { checkCommute, checkEnabledCommutes, type Planner } from './commutes.js';
 import { frequentRouteProposals } from './frequent-routes.js';
 
 interface AppOptions {
   source?: SourceService; planner?: Planner;
   graph?: () => GraphStatus; places?: (query: string) => Place[];
+  roadGraph?: () => RoutingGraph | null;
 }
 const id = (request: Request) => z.string().min(1).max(180).parse(request.params.id);
 const localHosts = new Set(['127.0.0.1', 'localhost', '[::1]']);
@@ -42,6 +46,8 @@ export function createApp(store: Store, options: AppOptions = {}) {
   const planner = options.planner ?? planJourney;
   const currentGraph = options.graph ?? graphStatus;
   const places = options.places ?? searchPlaces;
+  const roadGraph = options.roadGraph ?? getRoutingGraph;
+  const requireRoadGraph = () => { const graph = roadGraph(); if (!graph) throw new HttpError(503, 'The local road graph is unavailable.'); return graph; };
   app.disable('x-powered-by');
   app.use((request, response, next) => {
     response.setHeader('Cache-Control', 'no-store');
@@ -97,6 +103,18 @@ export function createApp(store: Store, options: AppOptions = {}) {
   });
   routes.post('/closures', (request, response) => {
     const closure = store.saveClosure(closureDraftSchema.parse(request.body)); recheck(); response.status(201).json(closure);
+  });
+  routes.get('/closures/roads', (request, response) => {
+    const at = instantSchema.parse(request.query.at ?? new Date().toISOString());
+    response.json(activeClosureRoads(requireRoadGraph(), store.routingClosures(), at));
+  });
+  routes.get('/demos', (request, response) => {
+    const at = instantSchema.parse(request.query.at ?? new Date().toISOString());
+    response.json(demoCatalogue(store, requireRoadGraph(), at));
+  });
+  routes.post('/demos', (request, response) => {
+    const body = z.object({ scenario: z.string().min(1).max(80), at: instantSchema, enabled: z.boolean() }).strict().parse(request.body);
+    const result = toggleDemo(store, requireRoadGraph(), body.scenario, body.at, body.enabled); recheck(); response.json(result);
   });
   routes.put('/closures/:id', (request, response) => {
     const { revision, ...draft } = closureUpdateSchema.parse(request.body);
