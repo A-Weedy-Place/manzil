@@ -19,13 +19,13 @@ Local core delivered 14 October 2026; map/routing/profile/navigation redesign im
 | --- | --- |
 | Repository research, brand and full feature context | Present |
 | Shared types / npm scaffolding | Implemented and installed; Node 22.20.0 |
-| Local graph and routing | Real bounded OSM graph; up to three distinct same-time routes; ordered stops; 33 routing tests pass |
+| Local graph and routing | Real bounded OSM graph; ordered stops; 33 routing + ten geometry-cache tests pass |
 | Local API/storage/source/profile | Persistent SQLite; 32 backend/source/profile/demo tests pass |
-| Map/editor/interface | Five map styles, prominent shared timeline, red road segments, pale red blocked baseline, ordered stops, world zoom; five overlay tests pass |
+| Map/editor/interface | Five map styles, shared timeline, red road coating without enclosing polygons, cached/deduplicated overlays; ten frontend overlay/source tests pass |
 | Personal notifications | Saved + consented inferred journeys; opt-in browser delivery; six notification guard tests pass |
 | Navigation | Route preview and approximate foreground GPS/voice guidance; 15 navigation tests pass |
 | Browser verification | New renderer inspected at 1280×800 and small-phone size; workflow evidence below |
-| Build and tests | Type/build passes; 91/91 tests pass; last dependency audit reports zero vulnerabilities |
+| Build and tests | Type/build passes; 106/106 tests pass; last dependency audit reports zero vulnerabilities |
 | Live X collection | Scheduler and collector implemented; this network rejected navigation, so live retrieval is unverified |
 | Gemini, Cloud deployment and external push | Deferred to the owner as requested |
 
@@ -69,6 +69,10 @@ Local synthetic restrictions and the commute are labelled **Demo** and stored on
 - GPS/voice/OS delivery rely on mocked fixtures in automated checks. No real outdoor navigation, browser location permission or OS notification permission was exercised. New initial alerts are seeded quietly, and disabled/old/read alerts cannot be replayed by enabling preferences.
 
 ## Practical boundaries and remaining work
+
+### Overlay simplification and latency
+
+Removed ordinary closure polygon fill/outlines as requested; actual red road strokes remain. Red-road requests no longer wait 180 ms, and unchanged active sets are cached across clock ticks. Repeated source data is not sent back to map workers; unchanged polled closures and route arrays retain their references. Style swaps preserve local layers and data with idempotent installation. Backend intersections now use bounded graph/content caches with edit, deadline and mutation-isolation regression tests. The full suite has **106 passing tests in 13 files** and the production type/build check passes. A fresh-page Find routes check showed lines in the first captured screenshot; Outdoors/Night swaps retained them without new rendering errors. The actual local graph benchmark reduced repeated geometry work from **23.45 ms to 0.07 ms median**, and its three-option plan from **112.73 ms to 95.88 ms**; first computation was not faster. This is not a whole-map/low-end-device benchmark. Full method and limits are in [PERFORMANCE.md](PERFORMANCE.md). Current output is approximately 337 kB shell JS, 1,069 kB map JS, 506 kB worker and 144 kB CSS; the existing map-chunk warning remains.
 
 ### Map time, closed roads and stops
 

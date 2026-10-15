@@ -4,6 +4,8 @@ Owner's instructions, updated 14 October 2026. Team of two; usable prototype tar
 
 ## Current build request
 
+**Overlay refinement:** do not encircle blocked roads with filled/outlined polygons during ordinary browsing. Keep the red road coating and editing previews. Prioritize prompt red/blue line appearance: cache unchanged road geometry, avoid repeated worker re-indexing and retain overlays during basemap style changes, while preserving time/revision validation. See [performance evidence](docs/PERFORMANCE.md).
+
 **Map time and stops (15 October):** one prominent top clock controls all visible closure state and planner departure; default Now, selectable PKT date/time. Only active published closures are bright red, including whole affected graph edges. Upcoming warnings are small amber markers, ended closures hidden. Blocked baseline routes are pale red, labelled unavailable and never recommended. Add up to five ordered intermediate stops, retain them in saved journeys, and preserve cumulative closure timing and turn restrictions. Allow worldwide map browsing while keeping honest bounded routing. Provide six toggleable demo scenarios and concise controls, removing the header tagline and repeated explanatory copy. See [map time and stops](docs/MAP_TIME_AND_STOPS.md).
 
 **Colour correction:** keep the low-clutter map, but avoid a grey/dull default. Offer independent basemap styles with green parks, blue water and warm main roads. Streets is the new default; Outdoors, High contrast, Minimal and Night remain selectable and persisted separately from app theme. See [Map styles](docs/MAP_STYLES.md).

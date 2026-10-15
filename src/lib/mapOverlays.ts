@@ -10,10 +10,10 @@ export function routeMatchesMapSnapshot(routeDepartureAt: string, mapAt: string,
   return Number.isFinite(departure) && Number.isFinite(snapshot) && (inProgress || departure === snapshot);
 }
 
-/** A response belongs to one map instant and one set of published revisions. */
+/** Road geometry changes at active-set/revision boundaries, not on every clock tick. */
 export function closureRoadKey(closures: Closure[], at: string): string {
-  const revisions = closures.filter(closure => closure.status === 'published').map(closure => `${closure.id}:${closure.revision}`).sort();
-  return `${at}|${revisions.join('|')}`;
+  const revisions = closures.filter(closure => closureState(closure, at) === 'active').map(closure => [closure.id, closure.revision]).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  return JSON.stringify(revisions);
 }
 
 export function activeClosurePolygons(closures: Closure[], at: string, selectedId: string | null): FeatureCollection<Polygon> {

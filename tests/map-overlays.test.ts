@@ -29,11 +29,13 @@ describe('map closure snapshots', () => {
     expect(activeClosurePolygons([{ ...closure, endsAt: null }], '2026-10-16T11:00:00Z', null).features).toHaveLength(1);
   });
 
-  it('cannot paint roads returned for an earlier time or a previous revision', () => {
+  it('reuses unchanged active road geometry across time ticks, but never across active-set or revision changes', () => {
     const key = closureRoadKey([closure], closure.startsAt), response = { key, data: roads };
     expect(visibleClosureRoads(response, key, [closure], closure.startsAt).features).toHaveLength(1);
     const nextTime = '2026-10-15T10:01:00Z';
-    expect(visibleClosureRoads(response, closureRoadKey([closure], nextTime), [closure], nextTime).features).toHaveLength(0);
+    expect(closureRoadKey([closure], nextTime)).toBe(key);
+    expect(visibleClosureRoads(response, closureRoadKey([closure], nextTime), [closure], nextTime).features).toHaveLength(1);
+    expect(visibleClosureRoads(response, closureRoadKey([closure], '2026-10-15T09:59:59Z'), [closure], '2026-10-15T09:59:59Z').features).toHaveLength(0);
     expect(visibleClosureRoads(response, closureRoadKey([{ ...closure, revision: 2 }], closure.startsAt), [closure], closure.startsAt).features).toHaveLength(0);
     expect(visibleClosureRoads(response, key, [closure], closure.endsAt!).features).toHaveLength(0);
   });
@@ -41,5 +43,8 @@ describe('map closure snapshots', () => {
   it('does not refetch because a closure array was reordered or a draft changed', () => {
     const other = { ...closure, id: 'other' }, draft = { ...closure, id: 'draft', status: 'draft' as const };
     expect(closureRoadKey([closure, other], closure.startsAt)).toBe(closureRoadKey([other, closure, draft], closure.startsAt));
+    const future = { ...closure, id: 'future', startsAt: '2026-10-16T10:00:00Z', endsAt: null };
+    expect(closureRoadKey([closure], closure.startsAt)).toBe(closureRoadKey([closure, future], closure.startsAt));
+    expect(closureRoadKey([closure, future], future.startsAt)).not.toBe(closureRoadKey([closure], closure.startsAt));
   });
 });

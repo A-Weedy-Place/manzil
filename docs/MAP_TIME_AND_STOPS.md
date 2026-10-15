@@ -21,7 +21,7 @@ Foreground navigation keeps its accepted in-progress route while the map clock a
 
 ## Road painting
 
-`GET /api/closures/roads?at=...` returns actual graph edges affected by published closures active at that instant. Rendering and routing share `closureEdgeFractions`, so display selection and exclusions use the same geometry intersection. Reverse directed copies are deduplicated. Whole affected graph edges are painted with a vivid red stroke over route lines, with a white casing; a small polygon remains visible. This makes a small point restriction visible along the affected road rather than only as a large marker.
+`GET /api/closures/roads?at=...` returns actual graph edges affected by published closures active at that instant. Rendering and routing share `closureEdgeFractions`, so display selection and exclusions use the same geometry intersection. Reverse directed copies are deduplicated. Whole affected graph edges are painted with a vivid red stroke over route lines, with a white casing. Ordinary browsing has no surrounding polygon outline/fill; the editor still previews its authoring geometry. Unchanged active sets and road geometry are cached to avoid delayed or disappearing lines on clock updates. See [performance evidence](PERFORMANCE.md).
 
 The line length represents the affected imported graph edge, not the entire road sharing its name. Draw the whole blocked stretch as a road corridor to close a longer stretch. A two-dimensional polygon may also cover a nearby carriageway, ramp or flyover; lane-specific and direction-specific closure editing remain future work. No GPS shortcut, missing road or visual crossing is invented as a connection.
 
