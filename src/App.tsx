@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Palette } from 'lucide-react';
+import { FlaskConical, Palette } from 'lucide-react';
 import type { LocalProfile, MapStyleId } from '../shared/types';
 import { Activity, ArrowDown, ArrowDownUp, ArrowRight, ArrowUp, ArrowUpRight, Bell, Bookmark, CalendarClock, Check, ChevronRight, Clock3, Download, ExternalLink, Eye, EyeOff, Flag, Inbox, Layers2, LocateFixed, MapPinned, Navigation, Pencil, Plus, RefreshCw, Repeat2, Route, Search, ShieldCheck, SlidersHorizontal, Trash2, TriangleAlert, Upload, UserRound, WifiOff, X } from 'lucide-react';
 import type { Polygon } from 'geojson';
@@ -30,6 +30,7 @@ const NAV = [
 ] as const;
 const EXAMPLE_ORIGIN: Place = { id: 'faisal-mosque', name: 'Faisal Mosque · approach road', coordinate: [73.0376503, 33.7314163] };
 const EXAMPLE_DESTINATION: Place = { id: 'centaurus', name: 'Centaurus · Nazimuddin Road', coordinate: [73.0492744, 33.7081776] };
+interface StreetRouteDemo { id: string; title: string; origin: Place; destination: Place; closure: ClosureDraft; closureId?: string; streetNames: string[]; expectedStreetMeters: number }
 
 export default function App() {
   const [state, setState] = useState<AppState | null>(null);
@@ -63,6 +64,9 @@ export default function App() {
   const [navigationPosition, setNavigationPosition] = useState<Coordinate | null>(null);
   const [closureFilter, setClosureFilter] = useState('current');
   const [toast, setToast] = useState(''); const [demoBusy, setDemoBusy] = useState(false);
+  const [streetDemoBusy, setStreetDemoBusy] = useState(false);
+  const [demoStreetNames, setDemoStreetNames] = useState<string[]>([]);
+  const [streetDemoClosureId, setStreetDemoClosureId] = useState<string | null>(null);
   const [commuteOpen, setCommuteOpen] = useState(0);
   const [recordedPoints, setRecordedPoints] = useState<RecordedPoint[]>([]);
   const [historyTrace, setHistoryTrace] = useState<RecordedPoint[]>([]);
@@ -115,6 +119,7 @@ export default function App() {
   const activeCount = state?.closures.filter(c => closureState(c, departureISO) === 'active').length ?? 0;
   const upcomingCount = state?.closures.filter(c => closureState(c, departureISO) === 'scheduled').length ?? 0;
   const unread = state?.alerts.filter(alert => !alert.read).length ?? 0;
+  const streetDemoClosure = demoStreetNames.length ? state?.closures.find(closure => closure.id === streetDemoClosureId && closure.status === 'published') : null;
   useEffect(() => {
     if (view !== 'navigation' && planWanted && lastPlanKey.current !== requestKey && origin && destination && waypoints.every(Boolean)) void calculate(undefined, true);
   }, [requestKey, planWanted, view]);
@@ -128,7 +133,7 @@ export default function App() {
     if (letter === 'A') setOrigin(place); else setDestination(place);
     invalidatePlan();
   }
-  function invalidatePlan(resetWanted = true) { planSequence.current++; setPlanning(false); setPlan(null); setPlanError(''); setHistoryTrace([]); if (resetWanted) setPlanWanted(false); }
+  function invalidatePlan(resetWanted = true) { planSequence.current++; setPlanning(false); setPlan(null); setPlanError(''); setHistoryTrace([]); if (resetWanted) { setPlanWanted(false); setDemoStreetNames([]); } }
   function changeMapTime(value: string | null) {
     if (value && departureMode === 'scheduled' && inputISO(value) === departureISO && view !== 'navigation') return;
     lastPlanKey.current = '';
@@ -202,6 +207,21 @@ export default function App() {
     } catch (e) { notify(e instanceof Error ? e.message : 'Could not create the demo restriction.'); }
     finally { setDemoBusy(false); }
   }
+  async function loadStreetDemo() {
+    if (streetDemoBusy) return;
+    invalidatePlan(); const sequence = planSequence.current; setStreetDemoBusy(true);
+    try {
+      const demo = await send<StreetRouteDemo>('/demos/street-route', { at: departureISO });
+      await reload();
+      if (sequence !== planSequence.current || latestView.current !== 'journey') return;
+      setOrigin(demo.origin); setDestination(demo.destination); setWaypoints([]); setDemoStreetNames(demo.streetNames);
+      setSelectedClosure(demo.closureId ?? null); setStreetDemoClosureId(demo.closureId ?? null); setDrawing(null); setEditorOpen(false); setMode('browse');
+      lastPlanKey.current = ''; setPlanWanted(true); setPanelExpanded(false);
+      focusPoints([demo.origin.coordinate, demo.destination.coordinate]);
+      notify('F-8 street detour demo loaded.');
+    } catch (error) { if (sequence === planSequence.current) setPlanError(error instanceof Error ? error.message : 'Could not load the street demo.'); }
+    finally { setStreetDemoBusy(false); }
+  }
   function exportClosures() {
     downloadJSON('manzil-restrictions.geojson', { type: 'FeatureCollection', features: state?.closures.map(({ geometry, ...properties }) => ({ type: 'Feature', geometry, properties })) ?? [] });
   }
@@ -270,7 +290,7 @@ export default function App() {
         {!state ? <div className="panel-content"><span className="eyebrow">MANZIL LOCAL</span><h1>Getting the road ready.</h1><p className="muted">Connecting to your local workspace…</p>{startupError && <><div className="error-box">{startupError}</div><button className="secondary-button" onClick={() => reload().catch(() => {})}><RefreshCw size={16} />Retry connection</button><p className="small muted">Run <code>npm run dev</code> from the project folder.</p></>}</div> : <>
           {!online && <div className="offline-banner"><WifiOff size={16} />Connection lost. Showing the last loaded data.</div>}
           <div className="panel-content" hidden={view !== 'journey'}>
-            <div className="section-heading"><h1>{plan && !stale ? 'Your routes' : 'Where to?'}</h1><Route size={25} /></div>
+            <div className="section-heading journey-heading"><h1>{plan && !stale ? 'Your routes' : 'Where to?'}</h1><button className="text-button street-demo-button" disabled={streetDemoBusy} onClick={loadStreetDemo}><FlaskConical size={17} aria-hidden="true" />{streetDemoBusy ? 'Loading…' : 'Try street detour'}</button></div>
             <details className="journey-search" open={!plan || stale}><summary><Route size={20} /><span><strong>{origin?.name ?? 'Choose a starting point'}</strong><small>to {destination?.name ?? 'your destination'}{waypoints.length ? ` · ${waypoints.length} stop${waypoints.length === 1 ? '' : 's'}` : ''}</small></span><Pencil size={17} /></summary><form className="journey-form" onSubmit={calculate}>
               <div className="endpoints"><PlaceInput label="Starting point" letter="A" value={origin} active={mode === 'origin'} onPick={() => setMode(mode === 'origin' ? 'browse' : 'origin')} onChange={place => { setOrigin(place); invalidatePlan(); }} /><button type="button" className="swap-button" aria-label="Reverse journey" onClick={() => { setOrigin(destination); setDestination(origin); setWaypoints(current => [...current].reverse()); setMode('browse'); invalidatePlan(); }}><ArrowDownUp size={16} /></button>
                 {waypoints.map((place, index) => <div className="waypoint-row" key={index}><PlaceInput label={`Stop ${index + 1}`} letter={`${index + 1}`} value={place} active={mode === 'waypoint' && pickingWaypoint === index} onPick={() => { setPickingWaypoint(index); setMode(mode === 'waypoint' && pickingWaypoint === index ? 'browse' : 'waypoint'); }} onChange={next => changeWaypoint(index, next)} /><div className="waypoint-actions"><button type="button" className="icon-button small" aria-label={`Move stop ${index + 1} earlier`} disabled={index === 0} onClick={() => moveWaypoint(index, -1)}><ArrowUp size={15} /></button><button type="button" className="icon-button small" aria-label={`Move stop ${index + 1} later`} disabled={index === waypoints.length - 1} onClick={() => moveWaypoint(index, 1)}><ArrowDown size={15} /></button><button type="button" className="icon-button small danger-text" aria-label={`Remove stop ${index + 1}`} onClick={() => { setWaypoints(current => current.filter((_, i) => i !== index)); setMode('browse'); invalidatePlan(); }}><X size={16} /></button></div></div>)}
@@ -282,7 +302,7 @@ export default function App() {
             {planError && <div className="error-box" role="alert">{planError}</div>}
             {!state.graph.ready && <div className="error-box">The Islamabad road graph is unavailable. Run <code>npm run data:import</code> and restart the API. No synthetic routes are used.</div>}
             {stale && <div className="notice-box warning"><RefreshCw size={17} /><div><strong>Restrictions changed</strong><p>Replan this journey to use the latest map and schedule.</p></div></div>}
-            {plan && !stale && <RouteResults plan={plan} selectedId={selectedRouteId} onSelect={selectRoute} onNavigate={() => { setNavigationPosition(null); navigate('navigation'); }} onSaveCommute={() => { setCommuteOpen(n => n + 1); navigate('commutes'); }} onDemo={addDemo} demoBusy={demoBusy} />}
+            {plan && !stale && <RouteResults plan={plan} selectedId={selectedRouteId} onSelect={selectRoute} onNavigate={() => { setNavigationPosition(null); navigate('navigation'); }} onSaveCommute={() => { setCommuteOpen(n => n + 1); navigate('commutes'); }} onDemo={addDemo} demoBusy={demoBusy} streetDemoNames={demoStreetNames} onReopenDemo={streetDemoClosure ? () => { void cancelClosure(streetDemoClosure); } : undefined} />}
             {view === 'journey' && <DemoClosures at={departureISO} revision={state.eventRevision} reload={reload} notify={notify} onFocus={focusPoints} />}
           </div>
           <div className="panel-content" hidden={view !== 'closures'}>

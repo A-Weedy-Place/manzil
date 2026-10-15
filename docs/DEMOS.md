@@ -2,6 +2,20 @@
 
 These are synthetic testing controls over real imported Islamabad roads. They are never scraped notices or verified traffic reports. Every generated closure title begins **Demo ·** and its description retains an internal ownership tag. The ordinary closure editor can inspect these records.
 
+## One-click street detour
+
+Click **Try street detour** beside the planner heading. It loads **Park Road · F-8 northeast → Park Road · F-8 southwest**, adds/refreshes a short owned Demo closure on Park Road at the selected time, and calculates the real route automatically. No intermediate stops are forced into the request: the normal router chooses the detour itself.
+
+- Direct route with the demo road open: approximately **1.09 km / 2 min**.
+- First validated detour: approximately **1.35 km / 3 min**, via **Street 20 → Street 25 → Street 21**.
+- About **489 m** of that detour is on original OSM ways tagged `highway=residential`. The regression checks exact OSM way IDs and directed edges, not merely names. Street 25's nearby footway is excluded.
+- **Reopen demo road** cancels only this owned synthetic restriction and automatically restores the direct route. **Try street detour** blocks it again. The existing six scenarios and ordinary closures are preserved.
+- This example also passes with all six catalogue demos enabled. Other user restrictions can still make it unavailable; no precomputed geometry is substituted for a plan.
+
+The source ways include Park Road `8096411`/`159502667`, Street 20 `288861053`, Street 25 `22723925`/`22724330` and Street 21 `158316584` in the bundled attributed OSM snapshot. Estimates are ordinary road speeds without live traffic. The UI shows the street names from the currently selected result, and rounded time/distance.
+
+## Toggleable road scenarios
+
 | Scenario ID | Location | Initial schedule relative to selected map time |
 | --- | --- | --- |
 | `faisal-avenue` | Faisal Avenue near the PIMS/Centaurus approaches | Active: −30 min to +2 hr |
@@ -11,7 +25,7 @@ These are synthetic testing controls over real imported Islamabad roads. They ar
 | `aabpara-future` | Muncipal Road by Aabpara | Future: +45 min to +2 hr 30 min |
 | `zero-point-expired` | Islamabad Expressway by Zero Point | Expired: −2 hr to −1 hr |
 
-Each scenario follows a short contiguous chain of named graph edges. A 60-meter-wide corridor deliberately closes several graph segments; this can affect adjacent carriageways, ramps or stacked roads conservatively. The red road coating reflects actual graph edges intersecting that area. It does not claim lane-level precision.
+Each scenario follows a short contiguous chain of named graph edges. A 60-meter-wide corridor deliberately closes several graph segments; this can affect adjacent carriageways, ramps or stacked roads conservatively. Red coating is clipped to the portions actually inside/on that area, leaving open approach junctions clear. It does not claim lane-level precision. **Clear demos** in this catalogue affects these six toggles; use **Reopen demo road** for the separately loaded street example.
 
 Active sample chains avoid the preset landmark pins so that closing a road demonstrates a detour rather than automatically closing the destination itself. With all four active samples enabled, the tested Faisal Mosque → Centaurus preset still produces valid detours. This does not guarantee that every endpoint pair remains reachable with multiple closures; unavailable results can still be correct or reflect the bounded search.
 

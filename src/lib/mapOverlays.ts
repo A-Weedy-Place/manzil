@@ -13,7 +13,7 @@ export function routeMatchesMapSnapshot(routeDepartureAt: string, mapAt: string,
 /** Road geometry changes at active-set/revision boundaries, not on every clock tick. */
 export function closureRoadKey(closures: Closure[], at: string): string {
   const revisions = closures.filter(closure => closureState(closure, at) === 'active').map(closure => [closure.id, closure.revision]).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
-  return JSON.stringify(revisions);
+  return `clipped-v2:${JSON.stringify(revisions)}`;
 }
 
 export function activeClosurePolygons(closures: Closure[], at: string, selectedId: string | null): FeatureCollection<Polygon> {

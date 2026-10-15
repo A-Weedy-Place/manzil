@@ -19,13 +19,13 @@ Local core delivered 14 October 2026; map/routing/profile/navigation redesign im
 | --- | --- |
 | Repository research, brand and full feature context | Present |
 | Shared types / npm scaffolding | Implemented and installed; Node 22.20.0 |
-| Local graph and routing | Real bounded OSM graph; ordered stops; 33 routing + ten geometry-cache tests pass |
-| Local API/storage/source/profile | Persistent SQLite; 32 backend/source/profile/demo tests pass |
+| Local graph and routing | Real bounded OSM graph, ordered stops, precise red-road clipping; routing/cache/junction regressions pass |
+| Local API/storage/source/profile | Persistent SQLite; source/profile/API/demo and real F-8 street-detour tests pass |
 | Map/editor/interface | Five map styles, shared timeline, red road coating without enclosing polygons, cached/deduplicated overlays; ten frontend overlay/source tests pass |
 | Personal notifications | Saved + consented inferred journeys; opt-in browser delivery; six notification guard tests pass |
 | Navigation | Route preview and approximate foreground GPS/voice guidance; 15 navigation tests pass |
 | Browser verification | New renderer inspected at 1280×800 and small-phone size; workflow evidence below |
-| Build and tests | Type/build passes; 106/106 tests pass; last dependency audit reports zero vulnerabilities |
+| Build and tests | Type/build passes; 115/115 tests pass; last dependency audit reports zero vulnerabilities |
 | Live X collection | Scheduler and collector implemented; this network rejected navigation, so live retrieval is unverified |
 | Gemini, Cloud deployment and external push | Deferred to the owner as requested |
 
@@ -69,6 +69,14 @@ Local synthetic restrictions and the commute are labelled **Demo** and stored on
 - GPS/voice/OS delivery rely on mocked fixtures in automated checks. No real outdoor navigation, browser location permission or OS notification permission was exercised. New initial alerts are seeded quietly, and disabled/old/read alerts cannot be replayed by enabling preferences.
 
 ## Practical boundaries and remaining work
+
+### Clear junctions and a real residential-street example
+
+Fixed a display mismatch reported in the next screenshot: red paint previously covered complete graph edges although routing used only their actual polygon-intersection fractions. On the reproduced Kaghan Road alternative, open approach junctions were therefore painted red. Red roads now interpolate exact clipped endpoints, split around holes, avoid tangent-only false arms and use flat end caps. The conservative routing boundary checks are unchanged; blue was not merely drawn above red to hide an error. A real-graph regression verifies that every default clear route avoids every red segment, including the two reported Kaghan junctions.
+
+Added **Try street detour** beside the planner heading. It loads actual F-8 Park Road endpoints and an explicitly synthetic 35 m closure, then uses the normal planner without forced waypoints. The first validated option is **1,352 m / 199 s**, including **489 m of OSM residential streets**: **Street 20 → Street 25 → Street 21**. Original way IDs and directed topology are checked by tests. **Reopen demo road** cancels only that sample and restores the direct **1,088 m / 134 s** route; other closures and six catalogue scenarios are preserved. The owner can reload this demonstration after refreshing the page.
+
+**115 tests pass in 14 files**, with the production type/build check. Actual browser verification reproduced the former junction case, showed the clear blue Kaghan detour, loaded the F-8 street example, and reopened it to recover the direct two-minute route. The map leaves additional space for right-side controls when fitting endpoints. The local geometry benchmark still records 0.07 ms warm median; its first geometry pass was 30.01 ms and the three-option plan 117.90 ms in this run (timing varies). See [demo guide](DEMOS.md), [map time and stops](MAP_TIME_AND_STOPS.md) and [performance evidence](PERFORMANCE.md).
 
 ### Overlay simplification and latency
 

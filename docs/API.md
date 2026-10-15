@@ -17,9 +17,11 @@ Responses are the domain objects in [`shared/types.ts`](../shared/types.ts), wit
 | `POST /api/geometry` | `Drawing` | GeoJSON `Polygon`; point/line width is the full corridor width in meters |
 | `POST /api/plan` | `PlanRequest` | `PlanResponse`, including baseline conflicts, validated options, and honest unavailable reasons |
 | `POST /api/closures` | `ClosureDraft` | Saved `Closure`, HTTP 201 |
-| `GET /api/closures/roads?at=...` | ISO instant, defaults to now | GeoJSON `FeatureCollection<LineString, {closureId, title}>` of whole affected road segments for published closures active at that instant; opposite directed edges are drawn once |
+| `GET /api/closures/roads?at=...` | ISO instant, defaults to now | GeoJSON `FeatureCollection<LineString, {closureId, title}>` clipped to actual affected portions for published closures active at that instant; holes split lines and opposite directed edges are drawn once |
 | `GET /api/demos?at=...` | ISO instant, defaults to now | `{at, scenarios}` catalogue with six named local-only synthetic road scenarios and persistent toggle status |
 | `POST /api/demos` | `{ "scenario": "faisal-avenue", "at": "2026-10-15T12:00:00Z", "enabled": true }` | Updated `{at, scenarios}` catalogue; repeat enabling does not duplicate or reschedule an existing enabled demo; disabling cancels only its owned demo |
+| `GET /api/demos/street-route?at=...` | ISO instant, defaults to now | Read-only `{id,title,origin,destination,closure,streetNames,expectedStreetMeters}` for the real F-8 Park Road example; no saved records changed |
+| `POST /api/demos/street-route` | `{ "at": "2026-10-15T12:00:00Z" }` | Same example plus persisted `closureId`; creates/refreshes only its tagged synthetic closure. The UI uses normal `/plan` with A/B and no forced waypoints; reopen through `DELETE /closures/:id` |
 | `PUT /api/closures/:id` | Full `ClosureDraft` plus the last-read `revision` | Saved `Closure`; 409 if another edit changed its revision |
 | `DELETE /api/closures/:id` | — | Closure with `status: cancelled`; its evidence and history are recoverable by editing again |
 | `GET /api/commutes` | — | Up to 100 saved `Commute` objects |

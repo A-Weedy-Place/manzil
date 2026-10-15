@@ -9,6 +9,7 @@ import { activeClosureRoads, closureEdgeFractions } from '../server/routing/clos
 import { getRoutingGraph, planJourney } from '../server/routing/index';
 import { demoCatalogue, toggleDemo } from '../server/demos';
 import type { RoutingGraph } from '../server/routing/graph';
+import { LocalRouter } from '../server/routing/engine';
 import type { DemoCatalogue } from '../server/demos';
 
 const cleanup: (() => void | Promise<void>)[] = [];
@@ -38,14 +39,31 @@ async function setup(roadGraph: RoutingGraph = graph) {
 }
 
 describe('active road display and independently toggled demos', () => {
-  it('coats complete affected road edges, deduplicates reverse direction, and retains exact routing fractions', () => {
+  it('coats only the affected part of a road edge, deduplicates reverse direction, and retains exact routing fractions', () => {
     const closure: Closure = { ...draft, id: 'test', revision: 1, createdAt: at, updatedAt: at };
     const roads = activeClosureRoads(graph, [closure], at);
     expect(roads.features).toHaveLength(1);
-    expect(roads.features[0].geometry.coordinates).toEqual([coordinates[0], coordinates[1]]);
+    expect(roads.features[0].geometry.coordinates).toEqual([[73.004, 33.68], [73.006, 33.68]]);
     expect(roads.features[0].properties).toEqual({ closureId: 'test', title: draft.title });
     const fractions = closureEdgeFractions(graph, draft.geometry);
     expect(fractions.size).toBe(2); expect(fractions.get(0)![0][0]).toBeCloseTo(.4); expect(fractions.get(0)![0][1]).toBeCloseTo(.6);
+  });
+  it('does not extend the red main-road coating across a legal side-street detour at either junction', () => {
+    const detourGraph: RoutingGraph = { ...graph,
+      nodes: [coordinates[0], coordinates[1], [73, 33.69] as Coordinate, [73.01, 33.69] as Coordinate].map((coordinate, i) => ({ id: String(i), coordinate })),
+      edges: [[0, 1, 60], [0, 2, 90], [2, 3, 90], [3, 1, 90]].flatMap(([from, to, seconds], i) => [
+        { from, to, seconds, distance: seconds * 10, wayId: String(i), name: i ? 'Residential street' : 'Main road' },
+        { from: to, to: from, seconds, distance: seconds * 10, wayId: String(i), name: i ? 'Residential street' : 'Main road' },
+      ]),
+    };
+    const event: Closure = { ...draft, id: 'detour-test', revision: 1, createdAt: at, updatedAt: at };
+    const plan = new LocalRouter(detourGraph).plan({ origin: { name: 'Start', coordinate: coordinates[0] }, destination: { name: 'End', coordinate: coordinates[1] }, departureAt: at }, [event], 1);
+    expect(plan.conflicts).toHaveLength(1);
+    expect(plan.options[0].kind).toBe('detour');
+    expect(plan.options[0].steps.some(step => step.roadName === 'Residential street')).toBe(true);
+    const roads = activeClosureRoads(detourGraph, [event], at);
+    expect(roads.features).toHaveLength(1);
+    for (const feature of roads.features) expect(booleanIntersects(plan.options[0].geometry, feature.geometry)).toBe(false);
   });
   it('uses the requested snapshot time with inclusive start, exclusive end, and no routing uncertainty margin', async () => {
     const { store, request } = await setup();
@@ -96,7 +114,7 @@ describe('active road display and independently toggled demos', () => {
     expect(reenabled.scenarios.find(s => s.id === enable.scenario)!.closureIds).toEqual(firstScenario.closureIds);
     expect(store.list('closure')).toHaveLength(2);
   });
-  it('keeps the default preset destination open and finds verified detours with every active demo enabled', () => {
+  it('keeps the default destination and Kaghan Road detour junctions clear with every active demo enabled', () => {
     const store = new Store(':memory:'); cleanup.push(() => store.close());
     const realGraph = getRoutingGraph()!;
     for (const scenario of demoCatalogue(store, realGraph, at).scenarios.filter(s => s.timing === 'active')) toggleDemo(store, realGraph, scenario.id, at, true);
@@ -108,6 +126,11 @@ describe('active road display and independently toggled demos', () => {
     for (const option of result.options) for (const closure of closures) expect(booleanIntersects(option.geometry, closure.geometry)).toBe(false);
     const roads = activeClosureRoads(realGraph, closures, at);
     expect(roads.features.some(feature => feature.geometry.coordinates.some(p => p[0] === request.destination.coordinate[0] && p[1] === request.destination.coordinate[1]))).toBe(false);
+    // These are the real Kaghan Road junctions from the owner's screenshot: the
+    // closure covers the far end of each long main-road edge, not the ramp join.
+    const clearJoins = [[73.0492736, 33.7137383], [73.0493346, 33.7136299]];
+    for (const join of clearJoins) expect(roads.features.some(feature => feature.geometry.coordinates.some(p => p[0] === join[0] && p[1] === join[1]))).toBe(false);
+    for (const option of result.options) for (const feature of roads.features) expect(booleanIntersects(option.geometry, feature.geometry)).toBe(false);
   });
   it('rejects unknown demos and invalid instants without changing saved closures', async () => {
     const { store, request } = await setup(getRoutingGraph()!);

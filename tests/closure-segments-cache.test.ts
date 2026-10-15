@@ -27,7 +27,7 @@ describe('bounded, content-keyed closure geometry cache', () => {
     expect(scan).toHaveBeenCalledTimes(1);
     const second = closureEdgeFractions(roads, structuredClone(rectangle()));
     expect(second).toEqual(first); expect(second).not.toBe(first);
-    expect(activeClosureRoads(roads, [closure(rectangle())], at).features).toHaveLength(1);
+    expect(activeClosureRoads(roads, [closure(rectangle())], at).features.map(feature => feature.geometry.coordinates)).toEqual([[[4, 0], [6, 0]]]);
     expect(scan).toHaveBeenCalledTimes(1);
   });
   it('invalidates unsaved coordinate edits on the same polygon object and retains exact direction-dependent fractions', () => {
@@ -44,6 +44,7 @@ describe('bounded, content-keyed closure geometry cache', () => {
     expect(closureEdgeFractions(roads, geometry).get(0)).toEqual([[0, 1]]);
     geometry.coordinates.push([[3, -.5], [7, -.5], [7, .5], [3, .5], [3, -.5]]);
     expect(closureEdgeFractions(roads, geometry).get(0)).toEqual([[0, .3], [.7, 1]]);
+    expect(activeClosureRoads(roads, [closure(geometry)], at).features.map(feature => feature.geometry.coordinates)).toEqual([[[0, 0], [3, 0]], [[7, 0], [10, 0]]]);
     geometry.coordinates = [rectangle(-1, 11).coordinates[0], [[-1, -.5], [11, -.5], [11, .5], [-1, .5], [-1, -.5]]];
     expect(closureEdgeFractions(roads, geometry).size).toBe(0);
   });
@@ -73,6 +74,29 @@ describe('bounded, content-keyed closure geometry cache', () => {
     const roads = graph(), geometry: Polygon = { type: 'Polygon', coordinates: [[[4, 0], [6, 0], [6, 1], [4, 1], [4, 0]]] };
     expect(closureEdgeFractions(roads, geometry).size).toBe(2);
     expect(closureEdgeFractions(roads, geometry)).toEqual(closureEdgeFractions(roads, structuredClone(geometry)));
+    expect(activeClosureRoads(roads, [closure(geometry)], at).features.map(feature => feature.geometry.coordinates)).toEqual([[[4, 0], [6, 0]]]);
+  });
+  it('does not paint a zero-length tangent contact as a blocked road while retaining conservative routing', () => {
+    const roads = graph(), geometry: Polygon = { type: 'Polygon', coordinates: [[[5, 0], [6, 1], [4, 1], [5, 0]]] };
+    expect(closureEdgeFractions(roads, geometry).size).toBe(2);
+    expect(activeClosureRoads(roads, [closure(geometry)], at).features).toHaveLength(0);
+  });
+  it('clips partial collinear boundary overlap regardless of direction, rather than colouring the whole edge', () => {
+    const roads = graph(), geometry: Polygon = { type: 'Polygon', coordinates: [[[4, 0], [6, 0], [6, -1], [4, -1], [4, 0]]] };
+    expect(closureEdgeFractions(roads, geometry).size).toBe(2);
+    expect(activeClosureRoads(roads, [closure(geometry)], at).features.map(feature => feature.geometry.coordinates)).toEqual([[[4, 0], [6, 0]]]);
+    const reversed = graph(); reversed.edges.reverse();
+    expect(activeClosureRoads(reversed, [closure(geometry)], at).features.map(feature => feature.geometry.coordinates)).toEqual([[[6, 0], [4, 0]]]);
+  });
+  it('isolates cached display coordinates from returned feature mutations and graph node coordinates', () => {
+    const roads = graph(), event = closure(rectangle(-1, 11));
+    const first = activeClosureRoads(roads, [event], at);
+    first.features[0].geometry.coordinates[0][0] = 999;
+    first.features[0].properties.title = 'Mutated';
+    expect(roads.nodes[0].coordinate).toEqual([0, 0]);
+    const second = activeClosureRoads(roads, [event], at);
+    expect(second.features[0].geometry.coordinates).toEqual([[0, 0], [10, 0]]);
+    expect(second.features[0].properties.title).toBe(event.title);
   });
   it('enforces deadlines for fresh computations and cached hits without poisoning subsequent results', () => {
     const roads = graph(), geometry = rectangle(), now = vi.spyOn(performance, 'now').mockReturnValue(100);

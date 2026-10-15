@@ -56,9 +56,11 @@ npm test
 npm run build
 ```
 
-The current suite has **106 passing tests**, including diverse real-road alternatives, ordered stops with turn/time continuity, residential street detours, red-road/snapshot agreement, geometry-cache invalidation/isolation, efficient worker updates, demo ownership, topology/access/direction, unavailable routes, persistence, revisions, source deduplication/outbox, consented journey inference/alerts, notification delivery guards and navigation failure/progression logic. Type checking and the production build pass. Browser evidence and verification boundaries are in the implementation status. Real-device GPS, OS notification delivery and successful live X retrieval remain unverified.
+The current suite has **115 passing tests**, including diverse real-road alternatives, ordered stops with turn/time continuity, actual residential-street detours, precise red-road clipping/open-junction regression, snapshot agreement, geometry-cache invalidation/isolation, efficient worker updates, demo ownership, topology/access/direction, unavailable routes, persistence, revisions, source deduplication/outbox, consented journey inference/alerts, notification delivery guards and navigation failure/progression logic. Type checking and the production build pass. Browser evidence and verification boundaries are in the implementation status. Real-device GPS, OS notification delivery and successful live X retrieval remain unverified.
 
 Use the prominent top clock to view closures and routes at **Now** or a chosen PKT date/time. Add up to five intermediate stops. Open **Demo closures** for six test scenarios. See [map time and stops](docs/MAP_TIME_AND_STOPS.md) and [demo guide](docs/DEMOS.md). Map browsing is worldwide; the routing graph remains bounded to central Islamabad.
+
+Click **Try street detour** beside the planner heading for a real F-8 Park Road route through **Streets 20 → 25 → 21**, then **Reopen demo road** to compare it with the direct route. Both use the real graph and ordinary planner; only the closure is synthetic.
 
 Blocked roads use a red coating without enclosing polygon outlines. Geometry caching and redundant worker-update suppression reduce overlay delays; measurements and a reproducible local benchmark are in [performance notes](docs/PERFORMANCE.md).
 

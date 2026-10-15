@@ -10,6 +10,7 @@ import { SourceService, contentHash } from './source.js';
 import { getRoutingGraph, graphStatus, planJourney, searchPlaces } from './routing/index.js';
 import { activeClosureRoads } from './routing/closure-segments.js';
 import { demoCatalogue, toggleDemo } from './demos.js';
+import { loadStreetRouteDemo, streetRouteDemo } from './street-demo.js';
 import type { RoutingGraph } from './routing/graph.js';
 import { checkCommute, checkEnabledCommutes, type Planner } from './commutes.js';
 import { frequentRouteProposals } from './frequent-routes.js';
@@ -111,6 +112,14 @@ export function createApp(store: Store, options: AppOptions = {}) {
   routes.get('/demos', (request, response) => {
     const at = instantSchema.parse(request.query.at ?? new Date().toISOString());
     response.json(demoCatalogue(store, requireRoadGraph(), at));
+  });
+  routes.get('/demos/street-route', (request, response) => {
+    const at = instantSchema.parse(request.query.at ?? new Date().toISOString());
+    response.json(streetRouteDemo(requireRoadGraph(), at));
+  });
+  routes.post('/demos/street-route', (request, response) => {
+    const { at } = z.object({ at: instantSchema }).strict().parse(request.body);
+    const result = loadStreetRouteDemo(store, requireRoadGraph(), at); recheck(); response.json(result);
   });
   routes.post('/demos', (request, response) => {
     const body = z.object({ scenario: z.string().min(1).max(80), at: instantSchema, enabled: z.boolean() }).strict().parse(request.body);

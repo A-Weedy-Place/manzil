@@ -24,6 +24,8 @@ The improvement is reuse of previously calculated geometry; the initial scan is 
 
 ## Verification
 
-106 tests pass with the production type/build check. Cache tests cover edits/holes, graph isolation, output mutation, active/cancelled/reopened timing, deadline enforcement and eviction. Frontend tests cover active-set/revision boundaries, redundant worker suppression, clears/retries, out-of-order failures and style preservation.
+The subsequent junction correction clips red paint to the actual polygon intervals rather than whole intersecting graph edges. Display and conservative routing fractions share one graph scan/cache; holes and tangencies have explicit regression coverage. Cache keys in the browser are versioned for the revised geometry. The latest run measured first geometry 30.01 ms, warm median 0.07 ms (worst 0.16 ms), and a three-option plan 117.90 ms. The earlier table records the original cache comparison, not a claim that every run becomes faster. The full suite now has **115 passing tests in 14 files**, including the real F-8 residential-street demo.
+
+The production type/build check passes. Cache tests cover edits/holes, graph isolation, output mutation, active/cancelled/reopened timing, deadline enforcement and eviction. Frontend tests cover active-set/revision boundaries, redundant worker suppression, clears/retries, out-of-order failures and style preservation.
 
 Actual browser checks found the blue routes and red roads visible in the first captured frame after Find routes. Fresh-page Outdoors → Night → Outdoors changes retained lines without new rendering errors. A warning seen during development came from an older hot-reload handler; it did not recur after a fresh load. This is visual verification, not a frame-time benchmark. No claim of physical low-end-device profiling is made.

@@ -119,3 +119,8 @@ p.muted { font-size:14px; line-height:1.65; } .small { font-size:12px; } .field-
 @media(max-width:760px) { .app-header { height:80px; padding:0 9px; gap:6px; } .brand { gap:6px; } .brand-name { font-size:24px; } .brand img { width:30px; height:30px; } .header-actions { gap:1px; } .header-actions .icon-button { min-width:36px; width:36px; } .workspace-avatar { width:30px; height:30px; font-size:13px; } .map-time-trigger { min-width:0; padding:7px 9px; min-height:65px; gap:6px; } .map-time-trigger>svg:first-child { display:none; } .map-time-trigger strong { font-size:20px; } .map-time-trigger small { font-size:8px; letter-spacing:.5px; } .map-time-trigger>span>span { font-size:10px; } .map-time-picker { position:fixed; top:86px; left:50%; } .map-style-picker { top:92px; } .city-chip { display:none; } .map-topline { justify-content:flex-start; right:13px; } .map-layer-controls button { font-size:11px; } .map-layer-controls button span { display:inline; } .map-instructions { top:65px; } }
 @media(max-width:760px) and (orientation:landscape) { .app-header { height:76px; } }
 @media(prefers-reduced-motion:reduce) { .map-time-trigger { transition:none; } }
+.street-demo-button { font-size:12px; gap:6px; white-space:nowrap; min-height:44px; }
+.journey-heading { gap:8px; }
+.street-route-proof { display:flex; align-items:center; gap:8px; color:var(--green); background:var(--green-soft); border-radius:10px; padding:10px 12px; margin:10px 0; font-size:12px; }
+.street-route-proof>svg { flex-shrink:0; }
+@media(max-width:380px) { .street-demo-button { font-size:11px; gap:4px; } }
