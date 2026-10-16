@@ -13,20 +13,20 @@ function sharedLength(a: number[][], b: number[][]) {
 }
 
 describe('bundled real Islamabad OSM graph', () => {
-  it('loads real attributed data and finds a connected closure detour for the demo corridor', () => {
+  it('loads real attributed data and finds a connected closure detour for the demo corridor', async () => {
     const status = graphStatus();
     expect(status.ready).toBe(true);
     expect(status.nodeCount).toBeGreaterThan(1000);
     expect(status.source).toContain('OpenStreetMap');
     const request = { origin: { name: 'Faisal Mosque approach', coordinate: [73.0365451, 33.7283199] as Coordinate }, destination: { name: 'Centaurus vicinity', coordinate: [73.0489072, 33.7078995] as Coordinate }, departureAt: '2027-01-15T11:00:00.000Z' };
-    const direct = planJourney(request, [], 0);
+    const direct = await planJourney(request, [], 0);
     expect(direct.baseline).not.toBeNull();
     const coordinates = direct.baseline!.geometry.coordinates;
     const midpoint = coordinates[Math.floor(coordinates.length / 2)];
     const geometry = buffer(point(midpoint), 25, { units: 'meters' })!.geometry;
     if (geometry.type !== 'Polygon') throw new Error('Expected one point buffer.');
     const closure: Closure = { id: 'test-only-road-event', title: 'Synthetic test closure on real roads', description: 'Unit test, never published to the app', reason: 'construction', geometry, startsAt: '2027-01-15T10:30:00Z', endsAt: '2027-01-15T11:30:00Z', status: 'published', revision: 1, createdAt: request.departureAt, updatedAt: request.departureAt };
-    const rerouted = planJourney(request, [closure], 1);
+    const rerouted = await planJourney(request, [closure], 1);
     expect(rerouted.conflicts).toHaveLength(1);
     expect(rerouted.options[0]?.kind).toBe('detour');
     expect(rerouted.options[0].distanceMeters).toBeGreaterThan(direct.baseline!.distanceMeters);
@@ -42,9 +42,9 @@ describe('bundled real Islamabad OSM graph', () => {
     }
     for (let i = 0; i < sameTime.length; i++) for (let j = i + 1; j < sameTime.length; j++) expect(sharedLength(sameTime[i].geometry.coordinates, sameTime[j].geometry.coordinates)).toBeLessThanOrEqual(Math.min(sameTime[i].distanceMeters, sameTime[j].distanceMeters) * .82 + 1);
   });
-  it('returns three genuinely different choices at one departure on the main preset corridor', () => {
+  it('returns three genuinely different choices at one departure on the main preset corridor', async () => {
     const request = { origin: { name: 'Faisal Mosque Road approach', coordinate: [73.0376503, 33.7314163] as Coordinate }, destination: { name: 'PIMS road approach', coordinate: [73.052076, 33.7060737] as Coordinate }, departureAt: '2027-01-15T11:00:00.000Z', compareDepartures: false };
-    const result = planJourney(request, [], 0);
+    const result = await planJourney(request, [], 0);
     expect(result.options).toHaveLength(3);
     expect(result.options.map((option) => option.kind)).toEqual(['direct', 'alternative', 'alternative']);
     for (const option of result.options) expect(option.departureAt).toBe(request.departureAt);

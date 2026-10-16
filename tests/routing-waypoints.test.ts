@@ -107,7 +107,7 @@ describe('ordered intermediate stops', () => {
         days: [5], departureTime: '16:00', enabled: true, createdAt: departureAt, updatedAt: departureAt };
       const empty: PlanResponse = { options: [], baseline: null, conflicts: [], warnings: [], evaluatedAt: departureAt, graphVersion: 'test', eventRevision: 0, source: 'local-osm' };
       let planned: PlanRequest | undefined;
-      (await checkCommute(store, commute, (input) => { planned = input; return empty; }, Date.parse(departureAt)));
+      await checkCommute(store, commute, (input) => { planned = input; return empty; }, Date.parse(departureAt));
       expect(planned).toMatchObject({ origin: place(0), destination: place(2), waypoints: [place(1)] });
     } finally { store.close(); }
   });

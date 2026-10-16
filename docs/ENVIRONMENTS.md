@@ -19,6 +19,8 @@ Closure/time validation, OSM graph routing, demo geometry, commute checks, infer
 
 ## Environment requirements
 
+**17 October workstation distinction:** the incoming branch was verified on another Windows environment with Node 22/Java 17 on PATH and portable Node 24/Android Studio Java 21.0.8 selected by `npm.cmd run dev:local`. This machine instead has installed **Node 24.22.0 / npm 11.19.1 and Java 25.0.1**, so ordinary `dev:firebase` and test commands work directly. Keep the helper for machines that need it: it optionally selects ignored `.local-tools/` runtimes or installed Android Studio Java, changes only the child-process environment, and downloads nothing. Portable tools are not shipped or committed. `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/with-local-runtime.ps1 run config:check` can run another npm script with that selection; its execution policy applies only to that process.
+
 - **Node 24.12.0 or newer**: required by the current Firebase SDK dependency set. On 16 October, this machine was rechecked with **Node 24.22.0 / npm 11.19.1**; `npm.cmd run config:check` passes with `nodeSupported: true`. The earlier Node upgrade prerequisite is complete. The checker reports the selected mode and returns nonzero on an unsupported Node version. It prints no credentials and creates no resources.
 - **Java 21+** for the Firestore Emulator. Java 25 is installed on the inspected machine.
 - Dependencies are in `package-lock.json`; use `npm.cmd ci` on a new checkout. The Firebase CLI is a project development dependency, not a required global install.
@@ -103,6 +105,8 @@ Configuration/build checks do not deploy by themselves. The release commands in 
 
 ## Worker and roles
 
+National online planning can make a 20-user saved-journey batch substantially slower than local graph checks. The current worker has no durable per-journey continuation or bounded wall-clock batch budget, so large national workloads can exceed a deployed HTTP timeout. Verify provider capacity and add resumable bounded jobs before enabling larger hosted schedules. Local mutation-triggered rechecks coalesce a trailing sweep so saved/updated journeys arriving during a previous check are included; continuous edits can extend that wait. Periodic timer calls do not request extra trailing sweeps.
+
 Deploy the same image separately with `MANZIL_SERVICE_ROLE=worker` only after agreeing on the deployment plan. It exposes `POST /internal/tick` with `{ "job": "source" }` or `{ "job": "commutes" }`; the public API service does not expose worker operations, and the worker does not expose personal API routes. Production requires Google-signed OIDC tokens matching `WORKER_AUDIENCE` and `WORKER_SERVICE_ACCOUNT_EMAIL`, plus private Cloud Run IAM. Commute runs check at most 20 users and persist a pagination cursor for the next invocation. Schedule source checks and user checks at the agreed frequency; no cloud timers or Scheduler resources are automatically created.
 
 For an existing Firebase user, the operator-only `npm.cmd run auth:admin -- USER_UID` sets a custom admin claim using explicitly selected emulator/production configuration and existing Admin credentials. It is not called during startup or deployment; production users are never seeded with dummy credentials. Sign out/in to refresh a changed role.
@@ -110,6 +114,8 @@ For an existing Firebase user, the operator-only `npm.cmd run auth:admin -- USER
 `PUBLIC_CLOUD_SPEECH=false` is the default: cloud synthesis requires sign-in, while guest guidance can use an available matching device voice. If guest cloud voice is required, explicitly enable public speech only after deciding its usage limits and abuse controls. `TTS_ENABLED=false` remains the default. Gemini extraction/provider activation is not implemented by this infrastructure change and still belongs to the next integration plan.
 
 ## Verification
+
+**17 October merged checkout:** **229 standard + twelve real emulator cases pass (241 across 30 files)** and the cloud-configured frontend/backend build passes. Both Hosting-host and case/trailing-slash authorization regressions are retained. This verifies the local merge, not a new cloud release. Earlier live national-provider and portable-launcher observations belong to the incoming workstation; first-deployment live/browser evidence belongs to the deployed revision. See [merged verification](IMPLEMENTATION_STATUS.md#merge-reconciliation--17-october) for scope.
 
 ```powershell
 npm.cmd test

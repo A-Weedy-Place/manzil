@@ -4,6 +4,9 @@ import { fileURLToPath } from 'node:url';
 import type { Closure, GraphStatus, Place, PlanRequest, PlanResponse } from '../../shared/types';
 import { LocalRouter } from './engine';
 import { DEFAULT_BOUNDS, type RoutingGraph } from './graph';
+import { planWorldJourney } from './world';
+import { createPlaceSearch } from './places';
+import { isInPakistan } from './pakistan';
 
 let router: LocalRouter | null = null;
 let loadError = '';
@@ -15,7 +18,9 @@ try {
 
 const LIMITATIONS = [
   'Ordinary car-road speed estimates only; no current congestion or live traffic.',
-  'Bounded Islamabad extract; roads outside the coverage area are unavailable.',
+  'Local Islamabad road data; other Pakistan journeys use an online OSM routing service.',
+  'Pakistan-only endpoints and stops; online route availability depends on mapped car-road connectivity and internet access.',
+  'Toll charges, toll-plaza lists, checkpost locations and checkpoint waiting times are not currently provided.',
   'Endpoint pins snap to road nodes within 220 m; pin-to-road access is not routed.',
   'Basic OSM node turn restrictions are enforced; unsupported via-way restrictions conservatively exclude via roads.',
   'Conditional access/one-way and reversible roads are excluded conservatively; conditional turn prohibitions apply continuously.',
@@ -29,10 +34,24 @@ export function graphStatus(): GraphStatus {
 export const getGraphStatus = graphStatus;
 /** Shared local road data for closure display and clearly labelled demo fixtures. */
 export function getRoutingGraph(): RoutingGraph | null { return router?.graph ?? null; }
-export function planJourney(request: PlanRequest, closures: Closure[], eventRevision: number): PlanResponse {
-  if (router) return router.plan(request, closures, eventRevision);
-  return { options: [], baseline: null, conflicts: [], warnings: [loadError, 'Run npm run data:import to import the real OSM road graph.'], unavailableReason: 'The real Islamabad routing graph is unavailable. No synthetic route has been substituted.', evaluatedAt: new Date().toISOString(), graphVersion: 'not-imported', eventRevision, source: 'local-osm' };
+export function createJourneyPlanner(local: LocalRouter | null, online = planWorldJourney) {
+  return async (request: PlanRequest, closures: Closure[], eventRevision: number): Promise<PlanResponse> => {
+    if (!Number.isFinite(Date.parse(request.departureAt))) throw new Error('Choose a valid departure date and time.');
+    if ((request.waypoints?.length ?? 0) > 5) throw new Error('Add at most five intermediate stops.');
+    const places = [request.origin, ...(request.waypoints ?? []), request.destination];
+    if (places.some(place => !isInPakistan(place.coordinate))) return {
+      options: [], baseline: null, conflicts: [], warnings: [],
+      unavailableReason: 'Choose the start, destination and every stop within Pakistan.',
+      evaluatedAt: new Date().toISOString(), graphVersion: local?.graph.version ?? 'not-imported', eventRevision, source: 'local-osm',
+    };
+    const bounds = local?.graph.bounds;
+    const covered = bounds && places.every(({ coordinate: [longitude, latitude] }) => longitude >= bounds[0] && longitude <= bounds[2] && latitude >= bounds[1] && latitude <= bounds[3]);
+    if (local && covered) return local.plan(request, closures, eventRevision);
+    return online(request, closures, eventRevision);
+  };
 }
+export const planJourney = createJourneyPlanner(router);
+
 const LANDMARKS: Place[] = [
   { id: 'faisal-mosque', name: 'Faisal Mosque Road · approach', coordinate: [73.0376503, 33.7314163] },
   { id: 'pims', name: 'PIMS · Ibn-e-Sina Road approach', coordinate: [73.052076, 33.7060737] },
@@ -40,7 +59,7 @@ const LANDMARKS: Place[] = [
   { id: 'aabpara', name: 'Aabpara Market · Municipal Road', coordinate: [73.0881746, 33.7101232] },
   { id: 'centaurus', name: 'Centaurus · Nazimuddin Road', coordinate: [73.0492744, 33.7081776] },
 ];
-export function searchPlaces(query: string): Place[] {
+export function searchLocalPlaces(query: string): Place[] {
   const q = query.trim().toLowerCase();
   const results = LANDMARKS.filter((place) => !q || place.name.toLowerCase().includes(q));
   if (q.length >= 2 && router) {
@@ -56,3 +75,5 @@ export function searchPlaces(query: string): Place[] {
   }
   return results.slice(0, 12);
 }
+
+export const searchPlaces = createPlaceSearch(searchLocalPlaces);

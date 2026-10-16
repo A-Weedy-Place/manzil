@@ -11,6 +11,7 @@ const PROFILE_URL = 'https://x.com/shaheryarhassan';
 /** A single-user, local database. All SQL values are bound parameters. */
 export class Store {
   readonly backend = 'sqlite' as const;
+  get isOpen() { return this.db.isOpen; }
   forUser(_uid: string | null) { return this; }
   routingSnapshot(includeUnpublished = false) { return { closures: includeUnpublished ? this.list<Closure>('closure', 2000) : this.routingClosures(), revision: this.eventRevision }; }
   readonly db: DatabaseSync;

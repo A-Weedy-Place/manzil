@@ -1,5 +1,7 @@
 # Manzil API
 
+**17 October merge:** the local code now includes Pakistan-wide providers, asynchronous snapshot/revision checks and case/trailing-slash authorization fixes. The live first release has not been updated by resolving this merge. National-provider endpoint behavior below describes the merged checkout until the next deployment.
+
 The shared Express API supports three explicit modes. Standalone `local` binds to **127.0.0.1:3001**, retains shared SQLite/trusted-local behavior and must not be exposed publicly. `emulator` uses loopback Auth/Firestore and real token/ownership checks. The core `production` API is deployed through **https://manzil-app-v1.web.app/api/** and Cloud Run in Singapore. Hosts/HTTPS origins are explicitly configured; Hosting `fh-*` tagged URLs are accepted only for the selected service. See [environment configuration](ENVIRONMENTS.md) and [release procedure](FIRST_DEPLOYMENT.md).
 
 In Firebase modes send `Authorization: Bearer FIREBASE_ID_TOKEN` for personal endpoints (commutes/trips/alerts/inference and profile changes). Shared closure/demo writes, notice/outbox access and source changes require a verified `admin: true` claim. Invalid tokens return 401; authenticated users without the required role get 403. Owner IDs/roles supplied in bodies are not authority. Public state contains published closures and empty personal lists for guests; signed-in state is scoped to that UID, and raw notices are admin-only. Guest appearance is stored in the browser. Speech synthesis requires identity unless explicitly enabled for guests; enabled speech still observes the global application character budget. Direct browser Firestore access is denied by rules.
@@ -19,7 +21,7 @@ Responses are the domain objects in [`shared/types.ts`](../shared/types.ts), wit
 | `GET /api/profile` | — | Standalone shared profile, signed-in user's profile, or guest defaults depending on mode |
 | `PATCH /api/profile` | Any nonempty subset of `displayName`, `theme`, `mapDetail`, `mapStyle`, `browserNotifications`, `inferFrequentRoutes`, `transport` | Updated `LocalProfile`; unknown properties and edits to ID/timestamps are rejected |
 | `GET /api/frequent-routes` | — | `FrequentRouteProposal[]` learned from consented local trip analysis; empty while consent is off; no raw traces |
-| `GET /api/places?q=...` | Optional local name query, at most 160 characters | Up to 12 local landmarks or imported OSM road names; this is not a global geocoder |
+| `GET /api/places?q=...` | Optional name query, at most 160 characters | Pakistan-filtered Photon results with local landmark/road-name fallback; see online search below |
 | `POST /api/geometry` | `Drawing` | GeoJSON `Polygon`; point/line width is the full corridor width in meters |
 | `POST /api/plan` | `PlanRequest` | `PlanResponse`, including baseline conflicts, validated options, and honest unavailable reasons |
 | `POST /api/closures` | `ClosureDraft` | Saved `Closure`, HTTP 201 |
@@ -57,9 +59,19 @@ The red-road snapshot uses exactly the graph-edge/polygon intersection helper us
 
 Demo catalogue entries contain `id`, `title`, `description`, `enabled`, `closureIds`, `coordinates`, `timing`, `startsAt`, and `endsAt`. `coordinates` is a contiguous chain of actual named OSM road segments. Four scenarios start 30 minutes before the supplied instant and end two hours after it; the Aabpara scenario starts 45 minutes after it, and Zero Point ended one hour before it. These relative schedules are chosen on enable and then remain fixed, so inspecting another map time changes visibility rather than silently moving the closure. `enabled` means the owned record is still published, including when it is future or expired. Disable/re-enable resets that demo's schedule around the supplied instant and reuses its record ID. All demo evidence is explicitly synthetic. [Demo guide](DEMOS.md) lists IDs and example workflows.
 
-Enabled commutes are checked after relevant saves and once a minute while the server is running. Alerts appear in the local app; **external push, email, SMS, and closed-server notification delivery are not implemented**. Duplicate impact alerts for the same next occurrence and closure revisions are suppressed. Route estimates use the imported OSM graph and speed assumptions, with no live traffic. Graph coverage and routing limitations are included in `AppState.graph` and each plan.
+Enabled commutes are checked after relevant saves and once a minute while the server is running. Alerts appear in the local app; **external push, email, SMS, and closed-server notification delivery are not implemented**. Duplicate impact alerts for the same next occurrence and closure revisions are suppressed. Route estimates use the local imported OSM graph or the online OSRM provider, with ordinary speed assumptions and no live traffic. Graph coverage and routing limitations are included in `AppState.graph` and each plan.
+
+## Pakistan routing and online search (16 October)
+
+`GET /api/places?q=...` awaits local + Pakistan-filtered Photon lookup. Both the provider country code and independent Pakistan coordinate boundary are checked; foreign/mislabeled results are discarded. Up to 160 query characters. Empty/one-character search remains local; typed latitude/longitude suggestions work without this endpoint. An unavailable online lookup with no local result returns a clear service error.
+
+`POST /api/plan` accepts the same GeoJSON-coordinate request and up to five ordered stops. All endpoint/stop coordinates must be within Pakistan. Covered Islamabad requests use local routing; other Pakistan requests await the OSRM adapter. `PlanResponse.source` is `local-osm` or `osrm`; `graphVersion` identifies the actual provider/data snapshot, while `GraphStatus.bounds` still describes only the bundled **local** extract. Provider outages/unverifiable routes return an explicit empty plan with `unavailableReason`. Closure revisions changed during an asynchronous request are rechecked once; repeated concurrent edits return HTTP 409 for a fresh plan. Saved-commute checks also await planning and avoid overlapping background sweeps.
+
+Toll/checkpost POIs, prices and waiting times are not API fields and are not provided. See [routing](ROUTING.md) for online-provider behavior, country-boundary provenance and limitations.
 
 ## Local profile and usual-journey consent
+
+This section describes the standalone SQLite profile and retention rules. Firebase modes instead scope personal profiles/records to the verified UID as described above. National saved/consented inferred journey checks send endpoint/stop coordinates to the online router; raw GPS trace arrays are not sent to the search/routing provider.
 
 There is one profile per local SQLite database, shared by browsers opening this installation. It is a preferences record, **not an account, login, identity boundary, or separate person's protected storage**. Its ID is always `local`; defaults are `displayName: Traveller`, `theme: system`, `mapDetail: clean`, `mapStyle: streets`, `browserNotifications: false`, `inferFrequentRoutes: false`, and `transport: car`. The server controls `createdAt` and `updatedAt`. Display names must be 1–60 nonblank characters; theme is `light`, `dark`, or `system`; map detail is `clean` or `standard`. Other transport modes are not implemented.
 

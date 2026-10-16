@@ -17,6 +17,7 @@ data/
 .playwright/
 test-results/
 .firebase/
+.local-tools/
 *-debug.log
 *.sqlite
 *.sqlite-wal

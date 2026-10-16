@@ -2,12 +2,14 @@
 
 **17 October deployment:** the core prototype is live at **[manzil-app-v1.web.app](https://manzil-app-v1.web.app)**, using Firebase Hosting, Cloud Run and Firestore in Singapore (`asia-southeast1`). Gemini, cloud speech and scheduled workers are not active. See the [deployment procedure](docs/FIRST_DEPLOYMENT.md) and [verified status](docs/IMPLEMENTATION_STATUS.md). Local SQLite and Firebase emulator development remain available; use `npm.cmd run dev:firebase` for isolated dev accounts. Node **24.12+** and Java **21+** are required for emulator development.
 
+**17 October branch integration:** the local codebase also contains Pakistan-wide search/routing and authorization fixes from the incoming branch. Islamabad journeys use the bundled graph; other Pakistan journeys use closure-validated OSRM candidates and Photon search. These incoming changes have not been deployed to the live release above. `npm.cmd run dev:local` is an optional Windows helper for portable Node/Android Studio Java; this machine already has Node 24.22.0 and Java 25. See [current verification](docs/IMPLEMENTATION_STATUS.md) and [provider limits/privacy](docs/ROUTING.md).
+
 
 English/Urdu interface and voice controls, a target-aware tutorial, Firebase accounts, automatic foreground GPS rerouting (including remaining stops), and reduced map redraws are implemented. Google Cloud TTS uses server-side ADC, cached audio and bounded usage; it remains disabled in the first release. Firebase email/password authentication and isolated records are configured in the hosted project; production users register real accounts, with no dummy passwords seeded. Standalone development retains [dummy normal/admin sign-ins](docs/DEV_ACCOUNTS_AND_TOUR.md). The [admin dashboard](docs/ADMIN_INTERFACE_PROPOSAL.md) is proposed, not implemented. Core guest planning also works locally without Cloud credentials. See [feature/setup guide](docs/BILINGUAL_NAVIGATION_AND_CLOUD.md) and [environment guide](docs/ENVIRONMENTS.md).
 
 Primary tabs are **Map, Closures, Saved and Profile**, with **Activity** added after sign-in. **Try street detour** and **Demo closures** are directly available in the planner; route results expose **Block a point on this route**, and the map always shows **Add restriction**. Guests see the skippable tutorial on every fresh visit and after sign-out, even if previously completed. Signed-in users retain remembered first-use behavior; everyone can replay it from Help or Profile.
 
-Manzil is an Islamabad closure-aware commute planner proposed for the Google Cloud AI Builder Cup 2026. It evaluates scheduled road restrictions against planned journeys and offers detours or departure-time recommendations. The future Gemini agent will turn source notices into reviewable closure proposals; the current app provides manual editing and the notice queue.
+Manzil is a Pakistan closure-aware commute planner proposed for the Google Cloud AI Builder Cup 2026, starting with a detailed local Islamabad road graph. It evaluates scheduled road restrictions against planned journeys and offers detours or departure-time recommendations. The future Gemini agent will turn source notices into reviewable closure proposals; the current app provides manual editing and the notice queue.
 
 The repository now contains a working **localhost application**, a real Islamabad OSM road graph, tests, research and branding. No deployment or Google account is required for this local edition.
 
@@ -67,7 +69,7 @@ npm run test:firebase
 npm run build
 ```
 
-Verification totals **165 passing tests**: 158 standard cases plus seven real Auth/Firestore emulator cases across 24 files. The normal command intentionally skips those seven without emulator hosts; run `test:firebase` to execute them. Coverage includes routing/API/UI regressions, user isolation, admin access, GPS retention, concurrent revisions, shared speech accounting and Hosting's pinned Cloud Run hostnames. The cloud build passes with this project's configuration. Cloud Build/container startup, Firestore access and live API checks through the website are verified. The previous runtime dependency audit was clean; seven Firebase CLI development advisories remained. See implementation status for browser evidence and limits. Real-device GPS/audio, OS notification delivery and successful live X retrieval remain unverified; Gemini and cloud speech are not active.
+The merged checkout passes **241 tests** (229 standard + twelve real Auth/Firestore emulator cases across 30 files) and the cloud TypeScript/frontend/backend build. Both Hosting tagged-host protection and case/trailing-slash authorization regressions are retained. Default tests skip emulator cases; `test:firebase` executes them. The first hosted release separately passed 165 cases and live API/browser checks; those checks do not establish deployment of the incoming Pakistan-wide feature. See [implementation status](docs/IMPLEMENTATION_STATUS.md) for evidence. Real-device GPS/audio, OS notification delivery and successful live X retrieval remain unverified; Gemini and cloud speech are not active.
 
 Use the prominent top clock to view closures and routes at **Now** or a chosen PKT date/time. Add up to five intermediate stops. Open **Demo closures** for six test scenarios. See [map time and stops](docs/MAP_TIME_AND_STOPS.md) and [demo guide](docs/DEMOS.md). Map browsing is worldwide; the routing graph remains bounded to central Islamabad.
 
@@ -88,3 +90,7 @@ Two developers aim to finish and polish the prototype by **17 October 2026**. Th
 ## Credentials and dependencies
 
 Keep API keys and local environment files out of Git. Future setup examples should use placeholders in an .env.example file. Routing/map libraries, hosted services, map data, and generated route results have separate license and attribution requirements documented in the plan.
+
+## Pakistan routing coverage
+
+Plan origins, destinations and stops across Pakistan. Islamabad keeps its local OSM graph; other Pakistan journeys and named-place searches use online OSRM/Photon services, without bundling national road data. Internet is required for those lookups. Tolls/checkposts, charges and queue times are not currently listed. See [routing and provider setup](docs/ROUTING.md).

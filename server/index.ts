@@ -7,7 +7,14 @@ const { config, store } = bootstrap();
 // Do not accept traffic with unusable cloud storage/credentials.
 if (config.mode !== 'local') await store.routingSnapshot();
 const { app, source } = createApp(store, { config });
-const tick = async () => { await applyRetention(store); await checkEnabledCommutes(store); };
+let closing = false;
+let activeTick: Promise<void> | undefined;
+function tick(): Promise<void> {
+  if (closing) return Promise.resolve();
+  if (activeTick) return activeTick;
+  activeTick = (async () => { await applyRetention(store); await checkEnabledCommutes(store); })().finally(() => { activeTick = undefined; });
+  return activeTick;
+}
 const server = app.listen(config.port, config.host, () => {
   console.log(`Manzil ${config.mode} ${config.role}: ${config.host}:${config.port} (${store.backend})`);
   if (config.mode === 'local') source.start();
@@ -15,11 +22,14 @@ const server = app.listen(config.port, config.host, () => {
 });
 const commuteTimer = config.mode === 'local' ? setInterval(() => { void tick().catch(() => console.error('Local journey check failed.')); }, 60_000) : undefined;
 commuteTimer?.unref();
-let closing = false;
 function shutdown() {
   if (closing) return;
   closing = true; source.stop(); if (commuteTimer) clearInterval(commuteTimer);
-  server.close(() => { store.close(); process.exit(0); });
+  server.close(() => {
+    // HTTP requests have drained; also finish any local online commute check
+    // before closing its SQLite adapter. Cloud workers have no local timer.
+    void (async () => { await activeTick?.catch(() => {}); store.close(); process.exit(0); })();
+  });
   setTimeout(() => process.exit(0), 5000).unref();
 }
 process.on('SIGINT', shutdown); process.on('SIGTERM', shutdown);

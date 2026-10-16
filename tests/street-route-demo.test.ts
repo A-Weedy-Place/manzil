@@ -23,9 +23,9 @@ describe('real F-8 residential street detour demo', () => {
   it('reroutes a blocked Park Road through original OSM-tagged residential streets', async () => {
     const demo = streetRouteDemo(graph, at);
     const request = { origin: demo.origin, destination: demo.destination, departureAt: at, compareDepartures: false };
-    const direct = planJourney(request, [], 0).baseline!;
+    const direct = (await planJourney(request, [], 0)).baseline!;
     const closure: Closure = { ...demo.closure, id: 'test-only', revision: 1, createdAt: at, updatedAt: at };
-    const plan = planJourney(request, [closure], 1);
+    const plan = await planJourney(request, [closure], 1);
     expect(plan.conflicts.map(item => item.closureId)).toEqual(['test-only']);
     const route = plan.options[0]; expect(route.kind).toBe('detour');
     expect(route.durationSeconds).toBeGreaterThan(direct.durationSeconds);
@@ -77,7 +77,7 @@ describe('real F-8 residential street detour demo', () => {
     const store = createStore();
     for (const scenario of (await demoCatalogue(store, graph, at)).scenarios) (await toggleDemo(store, graph, scenario.id, at, true));
     const demo = (await loadStreetRouteDemo(store, graph, at));
-    const result = planJourney({ origin: demo.origin, destination: demo.destination, departureAt: at, compareDepartures: false }, store.routingClosures(), store.eventRevision);
+    const result = await planJourney({ origin: demo.origin, destination: demo.destination, departureAt: at, compareDepartures: false }, store.routingClosures(), store.eventRevision);
     expect(store.routingClosures()).toHaveLength(7);
     expect(result.options[0]?.kind).toBe('detour');
     expect(result.conflicts.map(conflict => conflict.closureId)).toEqual([demo.closureId]);

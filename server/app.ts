@@ -25,7 +25,7 @@ interface AppOptions {
   verifyToken?: (token: string) => Promise<{ uid: string; admin?: boolean }>;
   speech?: SpeechService;
   source?: SourceService; planner?: Planner;
-  graph?: () => GraphStatus; places?: (query: string) => Place[];
+  graph?: () => GraphStatus; places?: (query: string) => Place[] | Promise<Place[]>;
   roadGraph?: () => RoutingGraph | null;
 }
 const id = (request: Request) => z.string().min(1).max(180).parse(request.params.id);
@@ -50,6 +50,16 @@ export async function applyRetention(store: Repository, now = Date.now()) {
 export function createApp(rootStore: Repository, options: AppOptions = {}) {
   const config = options.config ?? readConfig();
   const context = new AsyncLocalStorage<Repository>();
+  // Reuse a bounded set of personal scopes so overlapping checks for one UID
+  // coalesce without ever sharing a sweep with another UID. Tokens and claims
+  // are still verified on every request; no authorization is cached here.
+  const scopes = new Map<string | null, Repository>();
+  const scopeFor = (uid: string | null) => {
+    const scoped = scopes.get(uid) ?? rootStore.forUser(uid);
+    scopes.delete(uid); scopes.set(uid, scoped);
+    if (scopes.size > 256) scopes.delete(scopes.keys().next().value!);
+    return scoped;
+  };
   // Each async request sees only its own repository scope. The worker/source/speech
   // services deliberately use the root repository and never acquire personal scope.
   const store = new Proxy(rootStore, { get(_target, key) { const scoped = context.getStore() ?? rootStore; const value = Reflect.get(scoped, key); return typeof value === 'function' ? value.bind(scoped) : value; } });
@@ -87,7 +97,8 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
   app.use(express.json({ limit: '4mb', strict: true }));
   mountWorker(app, config, rootStore, source);
   // Finish writes/checks before responding in cloud mode; no untracked work after HTTP success.
-  const recheck = () => checkEnabledCommutes(store, planner);
+  // Capture the actual scope, not the proxy's process-wide object identity.
+  const recheck = () => checkEnabledCommutes(context.getStore() ?? rootStore, planner, Date.now(), true);
   const routes = express.Router();
   routes.use(async (request, response, next) => {
     if (config.role === 'worker') throw new HttpError(404, 'API is unavailable on the worker service.');
@@ -98,14 +109,16 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
       try { user = await verifyToken(match[1]); } catch { throw new HttpError(401, 'Sign in again. Your session could not be verified.'); }
     }
     if (config.mode !== 'local') {
-      const path = request.path, write = !['GET', 'HEAD', 'OPTIONS'].includes(request.method);
+      // Express defaults to case-insensitive paths and optional trailing slashes.
+      // Apply the same normalization before classifying authorization needs.
+      const path = request.path.toLowerCase().replace(/\/+$/, '') || '/', write = !['GET', 'HEAD', 'OPTIONS'].includes(request.method);
       const admin = path.startsWith('/notices') || path.startsWith('/agent/') || path.startsWith('/source/') && path !== '/source/status' || write && (path.startsWith('/closures') || path.startsWith('/demos'));
       const personal = /^\/(commutes|trips|alerts|frequent-routes)(\/|$)/.test(path) || path === '/profile' && write;
       if ((admin || personal || path === '/speech' && !config.speechPublic) && !user) throw new HttpError(401, 'Sign in to use this feature.');
       if (admin && !user?.admin) throw new HttpError(403, 'Administrator access is required for shared closure/source changes.');
     }
     response.locals.user = user;
-    context.run(rootStore.forUser(user?.uid ?? null), next);
+    context.run(scopeFor(user?.uid ?? null), next);
   });
   routes.get('/speech/status', async (_request, response) => response.json(await speech.status()));
   routes.post('/speech', async (request, response) => {
@@ -135,14 +148,25 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
   routes.get('/frequent-routes', async (_request, response) => {
     await applyRetention(store); response.json(await frequentRouteProposals(store));
   });
-  routes.get('/places', (request, response) => {
-    const query = z.string().max(160).parse(request.query.q ?? ''); response.json(places(query));
+  routes.get('/places', async (request, response) => {
+    const query = z.string().max(160).parse(request.query.q ?? ''); response.json(await places(query));
   });
   routes.post('/geometry', (request, response) => response.json(polygonSchema.parse(drawingToPolygon(drawingSchema.parse(request.body)))));
   routes.post('/plan', async (request, response, next) => {
     const body = planSchema.parse(request.body);
-    try { const snapshot = await store.routingSnapshot(); response.json(planner(body, snapshot.closures, snapshot.revision)); }
-    catch (error) { next(new HttpError(400, error instanceof HttpError ? error.message : 'This journey could not be calculated. Check the endpoints and departure time.')); }
+    try {
+      // Online planning can await a remote provider. Never return its advice
+      // against restrictions replaced in the meantime (including Firestore).
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const snapshot = await store.routingSnapshot();
+        const plan = await planner(body, snapshot.closures, snapshot.revision);
+        if ((await store.routingSnapshot()).revision === snapshot.revision) {
+          response.json({ ...plan, eventRevision: snapshot.revision }); return;
+        }
+      }
+      throw new HttpError(409, 'Restrictions changed while planning. Find routes again.');
+    }
+    catch (error) { next(error instanceof HttpError ? error : new HttpError(400, 'This journey could not be calculated. Check the endpoints and departure time.')); }
   });
   routes.post('/closures', async (request, response) => {
     const closure = await store.saveClosure(closureDraftSchema.parse(request.body)); if (config.mode === 'local') await recheck(); response.status(201).json(closure);

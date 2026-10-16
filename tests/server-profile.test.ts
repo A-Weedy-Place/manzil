@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ClosureDraft, Commute, Coordinate, PlanResponse, Trip } from '../shared/types';
 import { Store } from '../server/store';
 import { frequentRouteProposals, coveredBySavedCommute } from '../server/frequent-routes';
-import { checkEnabledCommutes } from '../server/commutes';
+import { checkCommute, checkEnabledCommutes, type Planner } from '../server/commutes';
 import { summarizeTrace } from '../server/geometry';
 
 const NOW = Date.parse('2026-10-15T12:00:00Z');
@@ -23,6 +23,188 @@ const closure: ClosureDraft = { title: 'Scheduled closure', description: 'Test e
   startsAt: new Date(NOW - 3600_000).toISOString(), endsAt: null, status: 'published',
   geometry: { type: 'Polygon', coordinates: [[[73.04, 33.69], [73.05, 33.69], [73.05, 33.70], [73.04, 33.69]]] } };
 const emptyPlan: PlanResponse = { options: [], baseline: null, conflicts: [], warnings: [], evaluatedAt: new Date(NOW).toISOString(), graphVersion: 'fixture', eventRevision: 0, source: 'local-osm' };
+
+function savedJourney(store: Store, id = 'async-office'): Commute {
+  const commute: Commute = { id, name: 'Office', origin: { name: 'Home', coordinate: [73.03, 33.69] },
+    destination: { name: 'Office', coordinate: [73.07, 33.71] }, departureTime: '08:30', days: [1, 2, 3, 4, 5], enabled: true,
+    createdAt: new Date(NOW).toISOString(), updatedAt: new Date(NOW).toISOString() };
+  store.put('commute', commute);
+  return commute;
+}
+
+describe('asynchronous recurring-journey checks', () => {
+  it('waits for an online planner before calculating alerts and keeps repeat checks deduplicated', async () => {
+    const store = database(); const commute = savedJourney(store); const event = store.saveClosure(closure);
+    let complete!: (plan: PlanResponse) => void;
+    const pending = new Promise<PlanResponse>(resolve => { complete = resolve; });
+    const planner = vi.fn<Planner>().mockReturnValue(pending);
+    const checking = checkCommute(store, commute, planner, NOW);
+    expect(store.list('alert')).toHaveLength(0);
+    const plan = { ...emptyPlan, eventRevision: store.eventRevision, conflicts: [{ closureId: event.id, title: event.title,
+      entryAt: event.startsAt, exitAt: new Date(NOW + 3600_000).toISOString() }] };
+    complete(plan);
+    expect((await checking).plan).toEqual(plan);
+    expect(store.list('alert')).toHaveLength(1);
+    await checkCommute(store, commute, planner, NOW);
+    expect(store.list('alert')).toHaveLength(1);
+  });
+
+  it('shares overlapping background sweeps and permits a fresh sweep after completion', async () => {
+    const store = database(); savedJourney(store);
+    let complete!: (plan: PlanResponse) => void;
+    const pending = new Promise<PlanResponse>(resolve => { complete = resolve; });
+    const planner = vi.fn<Planner>().mockReturnValueOnce(pending).mockReturnValue(emptyPlan);
+    const first = checkEnabledCommutes(store, planner, NOW);
+    const overlapping = checkEnabledCommutes(store, planner, NOW);
+    expect(overlapping).toBe(first);
+    await vi.waitFor(() => expect(planner).toHaveBeenCalledTimes(1));
+    complete(emptyPlan);
+    await Promise.all([first, overlapping]);
+    await checkEnabledCommutes(store, planner, NOW);
+    expect(planner).toHaveBeenCalledTimes(2);
+  });
+
+  it('checks the newest saved journey in one trailing sweep before coalesced mutation callers finish', async () => {
+    const store = database(); savedJourney(store, 'first'); const event = store.saveClosure(closure);
+    let completeFirst!: (plan: PlanResponse) => void, completeLatest!: (plan: PlanResponse) => void;
+    const firstPending = new Promise<PlanResponse>(resolve => { completeFirst = resolve; });
+    const latestPending = new Promise<PlanResponse>(resolve => { completeLatest = resolve; });
+    const planner = vi.fn<Planner>().mockImplementation((input, _closures, eventRevision) => {
+      if (planner.mock.calls.length === 1) return firstPending;
+      if (input.destination.name === 'Updated B') return latestPending;
+      return { ...emptyPlan, eventRevision };
+    });
+    const first = checkEnabledCommutes(store, planner, NOW);
+    await vi.waitFor(() => expect(planner).toHaveBeenCalledTimes(1));
+    const added = { ...savedJourney(store, 'second'), destination: { name: 'Original B', coordinate: [73.075, 33.715] as Coordinate } };
+    store.put('commute', added);
+    const savedCheck = checkEnabledCommutes(store, planner, NOW, true);
+    const latest = { ...added, destination: { ...added.destination, name: 'Updated B' }, waypoints: [{ name: 'New stop', coordinate: [73.06, 33.705] as Coordinate }] };
+    store.put('commute', latest);
+    const updatedCheck = checkEnabledCommutes(store, planner, NOW, true);
+    expect(savedCheck).toBe(first); expect(updatedCheck).toBe(first);
+    const completed = vi.fn();
+    const completions = [first, savedCheck, updatedCheck].map(check => check.then(() => completed(store.list<{ commuteId: string }>('alert').filter(alert => alert.commuteId === latest.id).length)));
+    completeFirst({ ...emptyPlan, eventRevision: store.eventRevision });
+    await vi.waitFor(() => expect(planner.mock.calls.some(([input]) => input.destination.name === 'Updated B')).toBe(true));
+    expect(completed).not.toHaveBeenCalled();
+    const latestRequest = planner.mock.calls.find(([input]) => input.destination.name === 'Updated B')![0];
+    expect(latestRequest.destination).toEqual(latest.destination); expect(latestRequest.waypoints).toEqual(latest.waypoints);
+    expect(planner.mock.calls.some(([input]) => input.destination.name === 'Original B')).toBe(false);
+    completeLatest({ ...emptyPlan, eventRevision: store.eventRevision, conflicts: [{ closureId: event.id, title: event.title,
+      entryAt: event.startsAt, exitAt: new Date(NOW + 3600_000).toISOString() }] });
+    await Promise.all(completions);
+    expect(completed.mock.calls).toEqual([[1], [1], [1]]);
+    expect(planner).toHaveBeenCalledTimes(3); // A once initially; A and the latest B in one trailing batch.
+    expect(store.list('alert')).toEqual([expect.objectContaining({ commuteId: latest.id, closureId: event.id })]);
+  });
+
+  it('continues checking other journeys after one online planner rejects', async () => {
+    const store = database(); savedJourney(store, 'first'); savedJourney(store, 'second');
+    const event = store.saveClosure(closure);
+    const planner = vi.fn<Planner>().mockRejectedValueOnce(new Error('Online routing unavailable.')).mockImplementation(async (_request, _closures, eventRevision) => ({
+      ...emptyPlan, eventRevision, conflicts: [{ closureId: event.id, title: event.title, entryAt: event.startsAt, exitAt: new Date(NOW + 3600_000).toISOString() }],
+    }));
+    await expect(checkEnabledCommutes(store, planner, NOW)).resolves.toBeUndefined();
+    expect(planner).toHaveBeenCalledTimes(2);
+    expect(store.list('alert')).toHaveLength(1);
+  });
+
+  it('replans changed closure snapshots before writing an alert', async () => {
+    const store = database(); const commute = savedJourney(store); const event = store.saveClosure(closure);
+    let complete!: (plan: PlanResponse) => void;
+    const pending = new Promise<PlanResponse>(resolve => { complete = resolve; });
+    const planner = vi.fn<Planner>().mockReturnValueOnce(pending).mockImplementation((_request, _closures, eventRevision) => ({ ...emptyPlan, eventRevision }));
+    const checking = checkCommute(store, commute, planner, NOW);
+    await vi.waitFor(() => expect(planner).toHaveBeenCalledTimes(1));
+    store.saveClosure({ ...closure, status: 'cancelled' }, event.id, event.revision);
+    complete({ ...emptyPlan, eventRevision: 1, conflicts: [{ closureId: event.id, title: event.title, entryAt: event.startsAt,
+      exitAt: new Date(NOW + 3600_000).toISOString() }] });
+    expect((await checking).plan.eventRevision).toBe(2);
+    expect(planner).toHaveBeenCalledTimes(2);
+    expect(planner.mock.calls[1][1]).toEqual([]);
+    expect(store.list('alert')).toHaveLength(0);
+  });
+
+  it('rejects repeatedly changing snapshots without writing stale alerts', async () => {
+    const store = database(); const commute = savedJourney(store); const event = store.saveClosure(closure);
+    const planner = vi.fn<Planner>().mockImplementation(async (_request, _closures, eventRevision) => {
+      const current = store.get<{ revision: number }>('closure', event.id)!;
+      store.saveClosure({ ...closure, title: `Revision ${eventRevision + 1}` }, event.id, current.revision);
+      return { ...emptyPlan, eventRevision, conflicts: [{ closureId: event.id, title: event.title,
+        entryAt: event.startsAt, exitAt: new Date(NOW + 3600_000).toISOString() }] };
+    });
+    await expect(checkCommute(store, commute, planner, NOW)).rejects.toMatchObject({ status: 409 });
+    expect(planner).toHaveBeenCalledTimes(2);
+    expect(store.list('alert')).toHaveLength(0);
+  });
+
+  it('does not suppress an updated learned-route conflict using an older saved-route check', async () => {
+    const store = database(); addRepeated(store); store.updateProfile({ inferFrequentRoutes: true });
+    const proposal = (await frequentRouteProposals(store, NOW))[0];
+    store.put('commute', { ...proposal, id: 'saved-office', name: 'Office', enabled: true, createdAt: '', updatedAt: '' });
+    const event = store.saveClosure(closure);
+    const conflict = { closureId: event.id, title: event.title, entryAt: event.startsAt, exitAt: new Date(NOW + 3600_000).toISOString() };
+    let complete!: (plan: PlanResponse) => void;
+    let learnedStarted!: () => void;
+    const learnedWaiting = new Promise<void>(resolve => { learnedStarted = resolve; });
+    const pending = new Promise<PlanResponse>(resolve => { complete = resolve; });
+    const planner = vi.fn<Planner>()
+      .mockImplementationOnce((_request, _closures, eventRevision) => ({ ...emptyPlan, eventRevision, conflicts: [conflict] }))
+      .mockImplementationOnce(() => { learnedStarted(); return pending; })
+      .mockImplementation((_request, _closures, eventRevision) => ({ ...emptyPlan, eventRevision, conflicts: [conflict] }));
+    const checking = checkEnabledCommutes(store, planner, NOW);
+    await learnedWaiting;
+    store.saveClosure({ ...closure, title: 'Updated restriction' }, event.id, event.revision);
+    complete({ ...emptyPlan, eventRevision: 1, conflicts: [conflict] });
+    await checking;
+    expect(planner).toHaveBeenCalledTimes(3);
+    expect(store.list('alert')).toHaveLength(2);
+    expect(store.list('alert')).toEqual(expect.arrayContaining([expect.objectContaining({ frequentRouteId: proposal.id })]));
+  });
+
+  it('does not publish a learned-route alert or check metadata after consent is withdrawn during online planning', async () => {
+    const store = database(); addRepeated(store);
+    for (const day of [3, 2, 1]) store.put('trip', recordedTrip(day, 8 * 60 + 30, true));
+    store.updateProfile({ inferFrequentRoutes: true });
+    const proposals = await frequentRouteProposals(store, NOW); expect(proposals).toHaveLength(2);
+    const proposal = proposals[0];
+    const event = store.saveClosure(closure);
+    let complete!: (plan: PlanResponse) => void;
+    const pending = new Promise<PlanResponse>(resolve => { complete = resolve; });
+    const planner = vi.fn<Planner>().mockReturnValue(pending);
+    const checking = checkEnabledCommutes(store, planner, NOW);
+    await vi.waitFor(() => expect(planner).toHaveBeenCalledTimes(1));
+    const input = planner.mock.calls[0][0];
+    // The optional online adapter receives route endpoints/timing, never raw
+    // private traces, contribution preferences, trip IDs or profile records.
+    expect(Object.keys(input).every(key => ['origin', 'destination', 'waypoints', 'departureAt', 'compareDepartures'].includes(key))).toBe(true);
+    expect(input.origin).toEqual(proposal.origin); expect(input.destination).toEqual(proposal.destination);
+    expect(input).not.toHaveProperty('points'); expect(input).not.toHaveProperty('trips');
+    expect(JSON.stringify(planner.mock.calls)).not.toContain('Unit-test recorded trace');
+    store.updateProfile({ inferFrequentRoutes: false });
+    complete({ ...emptyPlan, eventRevision: store.eventRevision, conflicts: [{ closureId: event.id, title: event.title,
+      entryAt: event.startsAt, exitAt: new Date(NOW + 3600_000).toISOString() }] });
+    await expect(checking).resolves.toBeUndefined();
+    expect(planner).toHaveBeenCalledTimes(1);
+    expect(store.list('alert')).toEqual([]);
+    for (const learned of proposals) expect(store.meta(`frequent-route-check:${learned.id}:${input.departureAt}`)).toBeUndefined();
+    expect(store.list('trip')).toHaveLength(6);
+  });
+
+  it('finishes a background sweep safely when shutdown closes its store during planning', async () => {
+    const store = database(); savedJourney(store, 'first'); savedJourney(store, 'second');
+    let complete!: (plan: PlanResponse) => void;
+    const pending = new Promise<PlanResponse>(resolve => { complete = resolve; });
+    const planner = vi.fn<Planner>().mockReturnValue(pending);
+    const checking = checkEnabledCommutes(store, planner, NOW);
+    await vi.waitFor(() => expect(planner).toHaveBeenCalledTimes(1));
+    store.close(); stores.splice(stores.indexOf(store), 1);
+    complete(emptyPlan);
+    await expect(checking).resolves.toBeUndefined();
+    expect(planner).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('consented local usual-journey learning', () => {
   it('does nothing without explicit consent and returns proposals without raw traces after consent', async () => {
@@ -72,7 +254,7 @@ describe('consented local usual-journey learning', () => {
   });
   it('alerts on consented learned journeys without inventing a saved commute and stops after opt-out', async () => {
     const store = database(); addRepeated(store); const event = store.saveClosure(closure);
-    const planner = vi.fn(() => ({ ...emptyPlan, conflicts: [{ closureId: event.id, title: event.title, entryAt: event.startsAt, exitAt: new Date(NOW + 3600_000).toISOString() }] }));
+    const planner = vi.fn<Planner>((_request, _closures, eventRevision) => ({ ...emptyPlan, eventRevision, conflicts: [{ closureId: event.id, title: event.title, entryAt: event.startsAt, exitAt: new Date(NOW + 3600_000).toISOString() }] }));
     (await checkEnabledCommutes(store, planner, NOW)); expect(planner).not.toHaveBeenCalled();
     store.updateProfile({ inferFrequentRoutes: true }); (await checkEnabledCommutes(store, planner, NOW)); (await checkEnabledCommutes(store, planner, NOW));
     expect(store.list('alert')).toHaveLength(1);
@@ -91,7 +273,7 @@ describe('consented local usual-journey learning', () => {
     expect(coveredBySavedCommute(proposal, { ...commute, days: [1] })).toBe(false);
     expect(coveredBySavedCommute(proposal, { ...commute, origin: commute.destination, destination: commute.origin })).toBe(false);
     store.put('commute', commute); const event = store.saveClosure(closure);
-    const planner = vi.fn(() => ({ ...emptyPlan, conflicts: [{ closureId: event.id, title: event.title, entryAt: event.startsAt, exitAt: new Date(NOW + 3600_000).toISOString() }] }));
+    const planner = vi.fn<Planner>((_request, _closures, eventRevision) => ({ ...emptyPlan, eventRevision, conflicts: [{ closureId: event.id, title: event.title, entryAt: event.startsAt, exitAt: new Date(NOW + 3600_000).toISOString() }] }));
     (await checkEnabledCommutes(store, planner, NOW)); expect(planner).toHaveBeenCalledTimes(2); expect(store.list('alert')).toHaveLength(1);
     expect(store.list('alert')[0]).toMatchObject({ commuteId: commute.id });
     store.put('commute', { ...commute, departureTime: '18:00' }); (await checkEnabledCommutes(store, planner, NOW));
@@ -101,8 +283,8 @@ describe('consented local usual-journey learning', () => {
     const store = database(); addRepeated(store); store.updateProfile({ inferFrequentRoutes: true }); const proposal = (await frequentRouteProposals(store, NOW))[0];
     store.put('commute', { ...proposal, id: 'later-commute', name: 'Later departure', departureTime: '09:00', enabled: true, createdAt: '', updatedAt: '' });
     const event = store.saveClosure(closure);
-    const planner = vi.fn((request) => new Date(Date.parse(request.departureAt) + 5 * 3600_000).getUTCHours() === 9 ? emptyPlan : {
-      ...emptyPlan, conflicts: [{ closureId: event.id, title: event.title, entryAt: event.startsAt, exitAt: new Date(NOW + 3600_000).toISOString() }] });
+    const planner = vi.fn<Planner>((request, _closures, eventRevision) => new Date(Date.parse(request.departureAt) + 5 * 3600_000).getUTCHours() === 9 ? { ...emptyPlan, eventRevision } : {
+      ...emptyPlan, eventRevision, conflicts: [{ closureId: event.id, title: event.title, entryAt: event.startsAt, exitAt: new Date(NOW + 3600_000).toISOString() }] });
     (await checkEnabledCommutes(store, planner, NOW));
     expect(store.list('alert')).toHaveLength(1); expect(store.list('alert')[0]).toMatchObject({ frequentRouteId: proposal.id });
   });

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,8 +7,9 @@ import type { ClosureDraft, Commute, GraphStatus, PlanResponse, Trip } from '../
 import { Store } from '../server/store';
 import { createApp, applyRetention } from '../server/app';
 import { SourceService } from '../server/source';
+import { SpeechService } from '../server/speech';
+import { readConfig } from '../server/config';
 import { nextOccurrence, checkCommute } from '../server/commutes';
-import { readConfig, type RuntimeConfig } from '../server/config';
 
 const cleanup: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); });
@@ -20,11 +21,11 @@ const closure: ClosureDraft = { title: 'Test closure', description: 'Verified te
   startsAt: '2026-10-14T11:00:00Z', endsAt: '2026-10-14T13:00:00Z', status: 'published',
   geometry: { type: 'Polygon', coordinates: [[[73, 33], [73.01, 33], [73.01, 33.01], [73, 33]]] } };
 
-async function setup(config?: RuntimeConfig) {
+async function setup(options: Parameters<typeof createApp>[1] = {}) {
   const store = new Store(':memory:'); cleanup.push(() => store.close());
   const source = new SourceService(store, async () => ({ state: 'blocked', posts: [], observedCount: 0, message: 'Signed-out fixture unavailable.' }));
-  const { app } = createApp(store, { config, source, graph: () => graph, planner: () => emptyPlan,
-    places: query => [{ name: query || 'Local landmark', coordinate: [73, 33] }] });
+  const { app } = createApp(store, { source, graph: () => graph, planner: () => emptyPlan,
+    places: query => [{ name: query || 'Local landmark', coordinate: [73, 33] }], ...options });
   const server = await new Promise<Server>(resolve => { const instance = app.listen(0, '127.0.0.1', () => resolve(instance)); });
   cleanup.push(() => new Promise<void>(resolve => { server.closeAllConnections(); server.close(() => resolve()); }));
   const address = server.address(); if (!address || typeof address === 'string') throw new Error('No test port');
@@ -38,8 +39,8 @@ async function setup(config?: RuntimeConfig) {
 describe('local API', () => {
   it('serves Hosting pinned hosts without bypassing origin or account authorization', async () => {
     const service = 'manzil-api-abc123-as.a.run.app';
-    const { port } = await setup(readConfig({ NODE_ENV: 'production', FIREBASE_PROJECT_ID: 'manzil-example',
-      ALLOWED_HOSTS: service, ALLOWED_ORIGINS: 'https://manzil-example.web.app', FIREBASE_HOSTING_SERVICE_HOST: service }));
+    const { port } = await setup({ config: readConfig({ NODE_ENV: 'production', FIREBASE_PROJECT_ID: 'manzil-example',
+      ALLOWED_HOSTS: service, ALLOWED_ORIGINS: 'https://manzil-example.web.app', FIREBASE_HOSTING_SERVICE_HOST: service }) });
     const get = (path: string, host: string, origin = 'https://manzil-example.web.app') => new Promise<number | undefined>((resolve, reject) => {
       const req = httpRequest({ hostname: '127.0.0.1', port, path: `/api${path}`, headers: { Host: host, Origin: origin } }, response => {
         response.resume(); response.on('end', () => resolve(response.statusCode));
@@ -49,6 +50,24 @@ describe('local API', () => {
     expect(await get('/commutes', `fh-080ad782a75264ae---${service}`)).toBe(401);
     expect(await get('/health', `fh-080ad782a75264ae---${service}`, 'https://attacker.example')).toBe(403);
     expect(await get('/health', 'fh-080ad782a75264ae---other-abc123-as.a.run.app')).toBe(403);
+  });
+  it('protects case-variant and trailing-slash routes before storage or speech synthesis', async () => {
+    const config = readConfig({ MANZIL_MODE: 'emulator', FIREBASE_PROJECT_ID: 'demo-manzil-unit', FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080', FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099' });
+    const audio = vi.spyOn(SpeechService.prototype, 'audio').mockResolvedValue(Buffer.from('Offline speech authorization fixture'));
+    try {
+      const { request } = await setup({ config, verifyToken: async () => ({ uid: 'unit-user', admin: false }) });
+      for (const path of ['/speech/', '/SpEeCh/']) expect((await request(path, 'POST', { language: 'en', prompt: { kind: 'test' } })).status).toBe(401);
+      expect((await request('/PrOfIlE/', 'PATCH', { displayName: 'Guest fixture' })).status).toBe(401);
+      expect((await request('/COMMUTES/')).status).toBe(401);
+      const shared: [string, string, unknown][] = [['/CLOSURES/', 'POST', closure], ['/NoTiCeS/', 'POST', { text: 'Offline fixture' }], ['/SoUrCe/settings/', 'PATCH', { enabled: false }]];
+      for (const [path, method, body] of shared) {
+        expect((await request(path, method, body)).status).toBe(401);
+        expect((await request(path, method, body, { Authorization: 'Bearer offline-unit-token' })).status).toBe(403);
+      }
+      expect(audio).not.toHaveBeenCalled();
+      expect((await request('/SpEeCh/', 'POST', { language: 'en', prompt: { kind: 'test' } }, { Authorization: 'Bearer offline-unit-token' })).status).toBe(200);
+      expect(audio).toHaveBeenCalledTimes(1);
+    } finally { audio.mockRestore(); }
   });
   it('keeps one local profile, validates partial preferences, and exposes consent-gated proposals', async () => {
     const { request } = await setup();

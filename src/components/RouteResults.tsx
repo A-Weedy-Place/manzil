@@ -19,7 +19,7 @@ export default function RouteResults({ updating = false, showDemo = false, plan,
     {onReopenDemo && <button className="text-button" onClick={onReopenDemo}>{t("Reopen demo road")}<ArrowRight size={15} aria-hidden="true" /></button>}
     {plan.conflicts.length > 0 && <div className="notice-box closure-impact"><TriangleAlert size={20} /><div><strong>{plan.conflicts.length} {t("closure")}{plan.conflicts.length !== 1 ? t("s") : t("")} {t("on the original route")}</strong><p>{plan.conflicts.map(c => c.title).join(' · ')}</p></div></div>}
     {!!plan.upcoming?.length && <div className="upcoming-route-notice"><Clock3 size={17} /><span>{t("Original route: ")}{plan.upcoming.map(item => `${item.title} · closes ${dateTime(item.startsAt)}`).join(' / ')}</span></div>}
-    {!driving.length && <div className="error-box">{plan.unavailableReason ?? 'No clear route at this time. Choose another departure.'}</div>}
+    {!driving.length && <div className="error-box">{t(plan.unavailableReason ?? 'No clear route at this time. Choose another departure.')}</div>}
     <div className="route-options">{driving.map(card)}</div>
     {!!plan.conflicts.length && plan.baseline && <div className="blocked-route-card" aria-label={t("Original route blocked")}><TriangleAlert size={18} /><span><strong>{t("Original route · Blocked")}</strong><small>{duration(plan.baseline.durationSeconds)} {t("· ")}{distance(plan.baseline.distanceMeters)}</small></span></div>}
     {departures.length > 0 && <details className="departure-alternatives"><summary><Clock3 size={17} />{t("Compare departure times")}<span>{departures.length}</span><ChevronDown size={16} /></summary><div className="route-options">{departures.map(card)}</div></details>}
@@ -27,6 +27,7 @@ export default function RouteResults({ updating = false, showDemo = false, plan,
       <details className="road-sequence"><summary>{t("Road sequence ")}<ChevronDown size={16} /></summary><ol>{selected.steps.map((step, index) => <li key={index}><span>{t(step.instruction || step.roadName || 'Continue on local road')}</span><small>{distance(step.distanceMeters)}</small></li>)}</ol></details>
     </>}
     <p className="estimate-note">{t("Time estimates use road speeds, without live traffic.")}</p>
+    <p className="estimate-note">{t("Tolls and checkposts are not listed; charges and waiting times are not included.")}</p>
     {plan.warnings.length > 0 && <details className="planning-notes"><summary>{t("Route details")}</summary>{[...new Set([...plan.warnings, ...selected?.warnings ?? []])].map((warning, i) => <p key={i}>{t(warning)}</p>)}</details>}
     {showDemo && <button className="text-button full centered" disabled={!plan.baseline || demoBusy} onClick={onDemo}><PlusDemo />{demoBusy ? t("Adding…") : t("Block a point on this route")}</button>}
   </fieldset></section>;

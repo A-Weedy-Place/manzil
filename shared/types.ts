@@ -29,7 +29,7 @@ export interface PlanResponse {
   options: RouteOption[]; baseline: RoutePath | null; conflicts: RouteConflict[];
   upcoming?: UpcomingClosure[];
   warnings: string[]; unavailableReason?: string; evaluatedAt: string;
-  graphVersion: string; eventRevision: number; source: 'local-osm';
+  graphVersion: string; eventRevision: number; source: 'local-osm' | 'osrm';
 }
 export interface GraphStatus {
   ready: boolean; source: string; version: string;
