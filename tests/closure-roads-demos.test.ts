@@ -120,7 +120,7 @@ describe('active road display and independently toggled demos', () => {
     for (const scenario of (await demoCatalogue(store, realGraph, at)).scenarios.filter(s => s.timing === 'active')) (await toggleDemo(store, realGraph, scenario.id, at, true));
     const request = { origin: { name: 'Faisal Mosque', coordinate: [73.0376503, 33.7314163] as Coordinate },
       destination: { name: 'Centaurus', coordinate: [73.0492744, 33.7081776] as Coordinate }, departureAt: at };
-    const closures = store.routingClosures(), result = planJourney(request, closures, store.eventRevision);
+    const closures = store.routingClosures(), result = await planJourney(request, closures, store.eventRevision);
     expect(result.conflicts.length).toBeGreaterThan(0); expect(result.options.length).toBeGreaterThan(0);
     expect(result.options[0].kind).toBe('detour');
     for (const option of result.options) for (const closure of closures) expect(booleanIntersects(option.geometry, closure.geometry)).toBe(false);

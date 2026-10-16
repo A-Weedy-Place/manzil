@@ -19,6 +19,8 @@ Closure/time validation, OSM graph routing, demo geometry, commute checks, infer
 
 ## Environment requirements
 
+**17 October workstation check:** this checkout's default PATH has Node 22.20.0 and Java 17, unlike the earlier machine observations below. A checksum-verified official portable Node **24.22.0 / npm 11.19.1** is now in ignored `.local-tools/`; installed Android Studio supplies Java **21.0.8** at `C:\Program Files\Android\Android Studio\jbr`. No system installation or global PATH was changed. On this Windows workstation, `npm.cmd run dev:local` selects those runtimes for its child process and starts the Firebase development stack. `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/with-local-runtime.ps1 run config:check` runs another npm script with the same runtime selection; the execution policy applies only to that process. The helper downloads nothing and requires an installed compatible Node/runtime. Emulator downloads are cached under ignored `.local-tools/firebase-emulators` when this helper is used. Portable tools are not shipped or committed.
+
 - **Node 24.12.0 or newer**: required by the current Firebase SDK dependency set. On 16 October, this machine was rechecked with **Node 24.22.0 / npm 11.19.1**; `npm.cmd run config:check` passes with `nodeSupported: true`. The earlier Node upgrade prerequisite is complete. The checker reports the selected mode and returns nonzero on an unsupported Node version. It prints no credentials and creates no resources.
 - **Java 21+** for the Firestore Emulator. Java 25 is installed on the inspected machine.
 - Dependencies are in `package-lock.json`; use `npm.cmd ci` on a new checkout. The Firebase CLI is a project development dependency, not a required global install.
@@ -87,6 +89,8 @@ No deployment command/script is invoked here. A successful configured build does
 
 ## Worker and roles
 
+National online planning can make a 20-user saved-journey batch substantially slower than local graph checks. The current worker has no durable per-journey continuation or bounded wall-clock batch budget, so large national workloads can exceed a deployed HTTP timeout. Verify provider capacity and add resumable bounded jobs before enabling larger hosted schedules. Local mutation-triggered rechecks coalesce a trailing sweep so saved/updated journeys arriving during a previous check are included; continuous edits can extend that wait. Periodic timer calls do not request extra trailing sweeps.
+
 Deploy the same image separately with `MANZIL_SERVICE_ROLE=worker` only after agreeing on the deployment plan. It exposes `POST /internal/tick` with `{ "job": "source" }` or `{ "job": "commutes" }`; the public API service does not expose worker operations, and the worker does not expose personal API routes. Production requires Google-signed OIDC tokens matching `WORKER_AUDIENCE` and `WORKER_SERVICE_ACCOUNT_EMAIL`, plus private Cloud Run IAM. Commute runs check at most 20 users and persist a pagination cursor for the next invocation. Schedule source checks and user checks at the agreed frequency; no cloud timers or Scheduler resources are automatically created.
 
 For an existing Firebase user, the operator-only `npm.cmd run auth:admin -- USER_UID` sets a custom admin claim using explicitly selected emulator/production configuration and existing Admin credentials. It is not called during startup or deployment; production users are never seeded with dummy credentials. Sign out/in to refresh a changed role.
@@ -94,6 +98,8 @@ For an existing Firebase user, the operator-only `npm.cmd run auth:admin -- USER
 `PUBLIC_CLOUD_SPEECH=false` is the default: cloud synthesis requires sign-in, while guest guidance can use an available matching device voice. If guest cloud voice is required, explicitly enable public speech only after deciding its usage limits and abuse controls. `TTS_ENABLED=false` remains the default. Gemini extraction/provider activation is not implemented by this infrastructure change and still belongs to the next integration plan.
 
 ## Verification
+
+**17 October merged version:** 226 standard cases and 12 real emulator cases pass (238 across 30 files), along with standalone/cloud-configured and compiled-server builds. The full Windows `dev:local` launcher and live Auth/API/private saved-stop/national route/street-detour/worker checks pass. The current workstation uses portable Node 24.22 and Android Studio Java 21.0.8, as described above. Earlier counts and installed-machine observations below are historical. See [implementation evidence](IMPLEMENTATION_STATUS.md#pakistan-routing-and-firebase-integration--17-october) for browser and provider limits.
 
 ```powershell
 npm.cmd test

@@ -8,7 +8,9 @@ import { FirestoreStore } from '../server/firestore-store';
 import { createApp } from '../server/app';
 import { readConfig } from '../server/config';
 import { SpeechService } from '../server/speech';
-import type { Closure, ClosureDraft, Commute, Trip } from '../shared/types';
+import { createJourneyPlanner } from '../server/routing';
+import type { Planner } from '../server/commutes';
+import type { Alert, Closure, ClosureDraft, Commute, PlanRequest, PlanResponse, Trip } from '../shared/types';
 
 const enabled = !!process.env.FIRESTORE_EMULATOR_HOST && !!process.env.FIREBASE_AUTH_EMULATOR_HOST;
 describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
@@ -34,6 +36,23 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
   async function request(path: string, token?: string, body?: unknown, method = body === undefined ? 'GET' : 'POST') {
     return fetch(`${base}/api${path}`, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
   }
+  /** Real auth/storage, injected offline provider: no external routing or paid service. */
+  async function plannerServer(online: Planner) {
+    const config = readConfig({ MANZIL_MODE: 'emulator', FIREBASE_PROJECT_ID: projectId, FIRESTORE_EMULATOR_HOST: process.env.FIRESTORE_EMULATOR_HOST, FIREBASE_AUTH_EMULATOR_HOST: process.env.FIREBASE_AUTH_EMULATOR_HOST });
+    const places = [{ name: 'Lahore, Pakistan', coordinate: [74.35, 31.52] as [number, number] }];
+    const { app } = createApp(store, { config, planner: createJourneyPlanner(null, async (...args) => online(...args)), places: async () => places });
+    const instance = await new Promise<Server>(resolve => { const running = app.listen(0, '127.0.0.1', () => resolve(running)); });
+    const url = `http://127.0.0.1:${(instance.address() as { port: number }).port}/api`;
+    return {
+      places,
+      request: (path: string, token?: string, body?: unknown, method = body === undefined ? 'GET' : 'POST') => fetch(`${url}${path}`, { method,
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) }),
+      close: () => new Promise<void>(resolve => { instance.closeAllConnections(); instance.close(() => resolve()); }),
+    };
+  }
+  const nationalRequest: PlanRequest = { origin: { name: 'Lahore fixture', coordinate: [74.35, 31.52] }, destination: { name: 'Karachi fixture', coordinate: [67.01, 24.86] },
+    waypoints: [{ name: 'Multan fixture', coordinate: [71.5249, 30.1575] }, { name: 'Sukkur fixture', coordinate: [68.8574, 27.7244] }], departureAt: '2027-01-15T11:00:00.000Z', compareDepartures: false };
+  const onlineResult = (revision: number): PlanResponse => ({ options: [], baseline: null, conflicts: [], warnings: [], evaluatedAt: start, eventRevision: revision, graphVersion: 'offline-provider-fixture', source: 'osrm' });
   beforeAll(async () => {
     const config = readConfig({ MANZIL_MODE: 'emulator', FIREBASE_PROJECT_ID: projectId, FIRESTORE_EMULATOR_HOST: process.env.FIRESTORE_EMULATOR_HOST, FIREBASE_AUTH_EMULATOR_HOST: process.env.FIREBASE_AUTH_EMULATOR_HOST });
     services = firebaseServices(config.projectId); store = new FirestoreStore(services.db);
@@ -62,6 +81,37 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
     expect((await request('/notices', alice)).status).toBe(403);
     expect((await request('/state', 'forged-token')).status).toBe(401);
   });
+  it('enforces administrator and personal access checks on case-variant API paths', async () => {
+    const revision = (await store.routingSnapshot()).revision;
+    const notices = (await store.listNotices()).length;
+    const sharedWrites: [string, unknown, string][] = [
+      ['/CLOSURES', draft, 'POST'],
+      ['/CLOSURES/', draft, 'POST'],
+      ['/NoTiCeS', { text: 'Case-variant authorization fixture', url: 'https://example.test/case-variant-notice' }, 'POST'],
+      ['/SoUrCe/settings', { enabled: false }, 'PATCH'],
+    ];
+    for (const [path, body, method] of sharedWrites) {
+      expect((await request(path, undefined, body, method)).status, `${path} requires sign-in`).toBe(401);
+      expect((await request(path, alice, body, method)).status, `${path} requires admin`).toBe(403);
+    }
+    expect((await store.routingSnapshot()).revision).toBe(revision);
+    expect(await store.listNotices()).toHaveLength(notices);
+    expect((await request('/COMMUTES')).status).toBe(401);
+    expect((await request('/PrOfIlE', undefined, { displayName: 'Unauthenticated fixture' }, 'PATCH')).status).toBe(401);
+    expect((await request('/PrOfIlE/', undefined, { displayName: 'Trailing-slash fixture' }, 'PATCH')).status).toBe(401);
+    for (const path of ['/speech/', '/SpEeCh/']) expect((await request(path, undefined, { language: 'en', prompt: { kind: 'test' } })).status).toBe(401);
+    expect((await request('/PrOfIlE', alice, { displayName: 'Alice case fixture' }, 'PATCH')).status).toBe(200);
+    expect((await request('/PrOfIlE', bob, { displayName: 'Bob case fixture' }, 'PATCH')).status).toBe(200);
+    expect(await (await request('/PROFILE', alice)).json()).toMatchObject({ displayName: 'Alice case fixture' });
+    expect(await (await request('/PROFILE', bob)).json()).toMatchObject({ displayName: 'Bob case fixture' });
+    const response = await request('/CoMmUtEs', alice, { name: 'Case-variant private fixture', origin: nationalRequest.origin, destination: nationalRequest.destination,
+      days: [1,2,3,4,5], departureTime: '09:00', enabled: false });
+    expect(response.status).toBe(201);
+    const commute = await response.json() as Commute;
+    expect((await (await request('/COMMUTES', bob)).json() as Commute[]).some(item => item.id === commute.id)).toBe(false);
+    expect((await request(`/COMMUTES/${commute.id}`, bob, undefined, 'DELETE')).status).toBe(404);
+    expect((await request(`/COMMUTES/${commute.id}`, alice, undefined, 'DELETE')).status).toBe(200);
+  });
   it('isolates simultaneous users, profiles and saved records and persists across repository instances', async () => {
     await Promise.all([request('/profile', alice, { displayName: 'Alice' }, 'PATCH'), request('/profile', bob, { displayName: 'Bob' }, 'PATCH')]);
     const [a, b] = await Promise.all([request('/state', alice).then(r => r.json()), request('/state', bob).then(r => r.json())]);
@@ -71,6 +121,101 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
     expect((await request(`/commutes/${commute.id}`, bob, undefined, 'DELETE')).status).toBe(404);
     expect(await (await request('/commutes', bob)).json()).toEqual([]);
     expect((await new FirestoreStore(services.db).forUser('alice').list<Commute>('commute')).some(item => item.id === commute.id)).toBe(true);
+  });
+  it('awaits national place and route providers for guests, preserves stops, and rejects foreign pins before provider access', async () => {
+    const online = vi.fn<Planner>().mockImplementation(async (_input, _closures, revision) => onlineResult(revision));
+    const fixture = await plannerServer(online);
+    try {
+      expect(await (await fixture.request('/places?q=Lahore')).json()).toEqual(fixture.places);
+      const response = await fixture.request('/plan', undefined, nationalRequest);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ source: 'osrm', graphVersion: 'offline-provider-fixture', eventRevision: (await store.routingSnapshot()).revision });
+      expect(online).toHaveBeenCalledTimes(1);
+      expect(online.mock.calls[0][0]).toEqual(nationalRequest);
+      const foreign = await fixture.request('/plan', undefined, { ...nationalRequest, destination: { name: 'Delhi', coordinate: [77.209, 28.6139] } });
+      expect(foreign.status).toBe(200);
+      expect(await foreign.json()).toMatchObject({ options: [], unavailableReason: expect.stringContaining('within Pakistan') });
+      expect(online).toHaveBeenCalledTimes(1);
+    } finally { await fixture.close(); }
+  });
+  it('replans an online request against a newly committed Firestore closure revision', async () => {
+    let release!: () => void;
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    const online = vi.fn<Planner>().mockImplementation(async (_input, _closures, revision) => { if (online.mock.calls.length === 1) await pending; return onlineResult(revision); });
+    const fixture = await plannerServer(online);
+    try {
+      const response = fixture.request('/plan', alice, nationalRequest);
+      await vi.waitFor(() => expect(online).toHaveBeenCalledTimes(1), { timeout: 10_000 });
+      const event = await new FirestoreStore(services.db).saveClosure({ ...draft, title: 'Committed during online planning' });
+      release();
+      const result = await response;
+      expect(result.status).toBe(200);
+      expect(await result.json()).toMatchObject({ eventRevision: (await store.routingSnapshot()).revision, source: 'osrm' });
+      expect(online).toHaveBeenCalledTimes(2);
+      expect(online.mock.calls[1][1].some(item => item.id === event.id)).toBe(true);
+      expect(online.mock.calls[1][2]).toBeGreaterThan(online.mock.calls[0][2]);
+    } finally { release(); await fixture.close(); }
+  });
+  it('returns a conflict response instead of an online plan if both Firestore snapshots become stale', async () => {
+    const online = vi.fn<Planner>().mockImplementation(async (_input, _closures, revision) => {
+      await new FirestoreStore(services.db).saveClosure({ ...draft, title: `Concurrent restriction ${revision}` });
+      return onlineResult(revision);
+    });
+    const fixture = await plannerServer(online);
+    try {
+      const response = await fixture.request('/plan', alice, nationalRequest);
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({ error: expect.stringContaining('changed') });
+      expect(online).toHaveBeenCalledTimes(2);
+    } finally { await fixture.close(); }
+  });
+  it('awaits concurrent national commute checks for each UID and keeps ordered stops and alerts private', async () => {
+    const aliceEvent = await store.saveClosure({ ...draft, title: 'Alice national route fixture' });
+    const bobEvent = await store.saveClosure({ ...draft, title: 'Bob national route fixture' });
+    let release!: () => void;
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    const online = vi.fn<Planner>().mockImplementation(async (input, _closures, revision) => {
+      await pending;
+      const event = input.origin.name.startsWith('Alice') ? aliceEvent : bobEvent;
+      return { ...onlineResult(revision), conflicts: [{ closureId: event.id, title: event.title, entryAt: input.departureAt, exitAt: new Date(Date.parse(input.departureAt) + 60_000).toISOString() }] };
+    });
+    const fixture = await plannerServer(online);
+    try {
+      const journey = (name: string) => ({ name: `${name} national commute`, origin: { ...nationalRequest.origin, name: `${name} Lahore` }, destination: nationalRequest.destination,
+        waypoints: nationalRequest.waypoints, days: [0,1,2,3,4,5,6], departureTime: '09:00', enabled: true });
+      const creatingAlice = fixture.request('/commutes', alice, journey('Alice'));
+      const creatingBob = fixture.request('/commutes', bob, journey('Bob'));
+      await vi.waitFor(() => expect(online).toHaveBeenCalledTimes(2), { timeout: 10_000 });
+      release();
+      const [aResponse, bResponse] = await Promise.all([creatingAlice, creatingBob]);
+      expect(aResponse.status).toBe(201); expect(bResponse.status).toBe(201);
+      const [a, b] = await Promise.all([aResponse.json(), bResponse.json()]) as [Commute, Commute];
+      expect(a.waypoints).toEqual(nationalRequest.waypoints); expect(b.waypoints).toEqual(nationalRequest.waypoints);
+      for (const [input] of online.mock.calls) {
+        expect(input.waypoints).toEqual(nationalRequest.waypoints);
+        expect(new Date(Date.parse(input.departureAt) + 5 * 3600_000).getUTCHours()).toBe(9);
+      }
+      const alertFor = async (token: string, commuteId: string) => (await (await fixture.request('/state', token)).json()).alerts.filter((alert: Alert) => alert.commuteId === commuteId) as Alert[];
+      expect(await alertFor(alice, a.id)).toEqual([expect.objectContaining({ closureId: aliceEvent.id, commuteId: a.id })]);
+      expect(await alertFor(alice, b.id)).toEqual([]);
+      expect(await alertFor(bob, b.id)).toEqual([expect.objectContaining({ closureId: bobEvent.id, commuteId: b.id })]);
+      expect(await alertFor(bob, a.id)).toEqual([]);
+      expect((await fixture.request(`/commutes/${a.id}/check`, bob, {})).status).toBe(404);
+      const checked = await fixture.request(`/commutes/${a.id}/check`, alice, {});
+      expect(checked.status).toBe(200);
+      expect(await checked.json()).toMatchObject({ commuteId: a.id, plan: { source: 'osrm', eventRevision: (await store.routingSnapshot()).revision } });
+      expect(await alertFor(alice, a.id)).toHaveLength(1);
+      expect((await new FirestoreStore(services.db).forUser('alice').get<Commute>('commute', a.id))?.waypoints).toEqual(nationalRequest.waypoints);
+      await Promise.all([fixture.request(`/commutes/${a.id}`, alice, undefined, 'DELETE'), fixture.request(`/commutes/${b.id}`, bob, undefined, 'DELETE')]);
+    } finally {
+      release(); await fixture.close();
+      // Failed assertions must not leave enabled fixtures for the compiled worker
+      // smoke test, which deliberately boots the normal (non-mocked) planner.
+      for (const uid of ['alice', 'bob']) {
+        const personal = store.forUser(uid);
+        for (const commute of await personal.list<Commute>('commute')) if (commute.name.endsWith('national commute')) await personal.delete('commute', commute.id);
+      }
+    }
   });
   it('increments shared routing revisions atomically and rejects concurrent stale closure edits', async () => {
     const reader = new FirestoreStore(services.db); await reader.routingSnapshot();

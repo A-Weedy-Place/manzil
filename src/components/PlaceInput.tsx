@@ -23,14 +23,21 @@ export default function PlaceInput({ label, letter, value, onChange, onPick, act
     if (!open) return;
     const controller = new AbortController();
     setPlaces([]); setResultsFor(null); setActiveIndex(-1); setLoading(true);
+    // Coordinates are a local input mode: they must keep working without geocoding or internet.
+    const coord = query.trim().match(/^([+-]?(?:\d+(?:\.\d*)?|\.\d+))\s*,\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))$/);
+    if (coord) {
+      const latitude = Number(coord[1]), longitude = Number(coord[2]);
+      const valid = Number.isFinite(latitude) && Number.isFinite(longitude) && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180;
+      setPlaces(valid ? [{ name: `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`, coordinate: [longitude, latitude] }] : []);
+      setSearchError(valid ? '' : 'Enter latitude from -90 to 90 and longitude from -180 to 180.');
+      setResultsFor(query); setLoading(false);
+      return () => controller.abort();
+    }
     const timer = setTimeout(async () => {
       setLoading(true); setSearchError('');
       try {
         const result = await api<Place[]>(`/places?q=${encodeURIComponent(query)}`, { signal: controller.signal });
-        const coord = query.trim().match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
-        if (coord && Math.abs(+coord[1]) <= 90 && Math.abs(+coord[2]) <= 180) {
-          result.unshift({ name: `${(+coord[1]).toFixed(5)}, ${(+coord[2]).toFixed(5)}`, coordinate: [+coord[2], +coord[1]] });
-        }
+        if (controller.signal.aborted) return;
         setPlaces(result.slice(0, 7)); setResultsFor(query);
       } catch (error) { if (!controller.signal.aborted) { setPlaces([]); setSearchError(error instanceof Error ? error.message : 'Search unavailable.'); } }
       finally { if (!controller.signal.aborted) setLoading(false); }
@@ -42,7 +49,7 @@ export default function PlaceInput({ label, letter, value, onChange, onPick, act
   return <div className={`place-field ${active ? 'picking' : ''}`}>
     <label htmlFor={id}><span className={`endpoint-letter ${letter === 'B' ? 'destination' : ''}`}>{letter}</span>{t(label)}</label>
     <div className="place-input-row">
-      <input id={id} value={query} placeholder={t("Search a place or enter lat, lng")} autoComplete="off" role="combobox" aria-expanded={open} aria-controls={`${id}-options`} aria-activedescendant={open && activeIndex >= 0 ? `${id}-option-${activeIndex}` : undefined}
+      <input id={id} value={query} placeholder={t("Search Pakistan or enter lat, lng")} autoComplete="off" role="combobox" aria-expanded={open} aria-controls={`${id}-options`} aria-activedescendant={open && activeIndex >= 0 ? `${id}-option-${activeIndex}` : undefined}
         onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 140)}
         onChange={e => { editing.current = true; setQuery(e.target.value); setPlaces([]); setResultsFor(null); setActiveIndex(-1); setLoading(true); if (value) onChange(null); setOpen(true); }}
         onKeyDown={e => {
@@ -55,7 +62,7 @@ export default function PlaceInput({ label, letter, value, onChange, onPick, act
     </div>
     {value && <small className="coordinates">{value.coordinate[1].toFixed(5)}{t(", ")}{value.coordinate[0].toFixed(5)}</small>}
     {open && <div className="place-options" id={`${id}-options`} role="listbox" aria-label={`${label} suggestions`}>
-      {loading ? <div className="place-hint">{t("Searching local places…")}</div> : places.length ? places.map((place, index) => <button type="button" id={`${id}-option-${index}`} role="option" aria-selected={activeIndex === index} className={activeIndex === index ? 'keyboard-active' : ''} disabled={!canSelect} key={`${place.id ?? place.name}-${index}`} onMouseDown={e => e.preventDefault()} onClick={() => { if (canSelect) select(place); }}>
+      {loading ? <div className="place-hint">{t("Searching places…")}</div> : places.length ? places.map((place, index) => <button type="button" id={`${id}-option-${index}`} role="option" aria-selected={activeIndex === index} className={activeIndex === index ? 'keyboard-active' : ''} disabled={!canSelect} key={`${place.id ?? place.name}-${index}`} onMouseDown={e => e.preventDefault()} onClick={() => { if (canSelect) select(place); }}>
         <MapPin size={16} aria-hidden="true" /><span>{place.name}<small>{place.coordinate[1].toFixed(4)}{t(", ")}{place.coordinate[0].toFixed(4)}</small></span>
       </button>) : <div className="place-hint"><Search size={16} />{t(searchError || 'No match. Pick a point on the map or enter lat, lng.')}</div>}
     </div>}

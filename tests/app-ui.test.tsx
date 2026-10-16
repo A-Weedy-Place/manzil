@@ -23,6 +23,25 @@ beforeEach(() => {
   Element.prototype.scrollTo = vi.fn();
 });
 afterEach(() => { cleanup(); signOut(); vi.restoreAllMocks(); vi.unstubAllGlobals(); setLanguage('en'); document.documentElement.dir = 'ltr'; });
+it('can request and display online routes when the bundled local graph is unavailable', async () => {
+  const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === '/api/plan') {
+      const request = JSON.parse(init!.body as string);
+      return new Response(JSON.stringify({ options: [{ ...option, departureAt: request.departureAt }], baseline: null, conflicts: [], warnings: [], evaluatedAt: date, graphVersion: 'osrm', eventRevision: 0, source: 'osrm' }));
+    }
+    if (url === '/api/state') return new Response(JSON.stringify({ ...state, graph: { ...state.graph, ready: false } }));
+    return responseFor(url);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<App />); await screen.findByRole('button', { name: 'Skip tour' });
+  fireEvent.click(screen.getByRole('button', { name: 'Skip tour' }));
+  const plan = screen.getByRole('button', { name: 'Find routes' });
+  expect(plan.matches(':disabled')).toBe(false);
+  fireEvent.click(plan);
+  await waitFor(() => expect(capture.props?.routeOptions).toHaveLength(1));
+  expect(fetcher.mock.calls.some(([url]) => url === '/api/plan')).toBe(true);
+});
+
 it('unlocks existing personal screens with a dummy account and returns to guest planning on sign-out', async () => {
   vi.stubGlobal('fetch', vi.fn(async (url: string) => responseFor(url)));
   render(<App />); await screen.findByRole('button', { name: 'Find routes' });

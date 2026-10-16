@@ -1,5 +1,9 @@
 # Manzil منزل
 
+**17 October integration:** Pakistan-wide search/routing and the Firebase account/storage version now share one codebase. Islamabad journeys use the bundled road graph; other Pakistan journeys use closure-validated online OSRM candidates and Photon search. On the configured Windows workstation, `npm.cmd run dev:local` selects the ignored portable Node runtime and installed Android Studio Java, then starts Firebase emulators, API, worker and web app. See [current verification](docs/IMPLEMENTATION_STATUS.md) and [provider limits/privacy](docs/ROUTING.md).
+
+Current verification: **238 passing tests** (226 standard + 12 real Firebase emulator cases), production type/build checks, and live localhost national routing, closure, sign-in and private saved-stop workflows. The app is running in local Firebase emulator mode; see the environment guide for test accounts and emulator data lifetime.
+
 **16 October environment update:** one codebase now supports standalone SQLite development, Firebase Auth/Firestore emulators, and explicitly configured production Firebase/Cloud Run builds. Run `npm.cmd run dev:firebase` for isolated local user/admin accounts and production-style token/ownership checks. **Node 24.12+ and Java 21+ are required for this workflow.** No deployment or paid model activation has occurred. Start with [environment setup and verification](docs/ENVIRONMENTS.md); the deployment procedure will be agreed separately.
 
 
@@ -7,7 +11,7 @@ English/Urdu interface and voice controls, a target-aware tutorial, Firebase-rea
 
 Primary tabs are **Map, Closures, Saved and Profile**, with **Activity** added after sign-in. **Try street detour** and **Demo closures** are directly available in the planner; route results expose **Block a point on this route**, and the map always shows **Add restriction**. Guests see the skippable tutorial on every fresh visit and after sign-out, even if previously completed. Signed-in users retain remembered first-use behavior; everyone can replay it from Help or Profile.
 
-Manzil is an Islamabad closure-aware commute planner proposed for the Google Cloud AI Builder Cup 2026. It evaluates scheduled road restrictions against planned journeys and offers detours or departure-time recommendations. The future Gemini agent will turn source notices into reviewable closure proposals; the current app provides manual editing and the notice queue.
+Manzil is a Pakistan closure-aware commute planner proposed for the Google Cloud AI Builder Cup 2026, starting with a detailed local Islamabad road graph. It evaluates scheduled road restrictions against planned journeys and offers detours or departure-time recommendations. The future Gemini agent will turn source notices into reviewable closure proposals; the current app provides manual editing and the notice queue.
 
 The repository now contains a working **localhost application**, a real Islamabad OSM road graph, tests, research and branding. No deployment or Google account is required for this local edition.
 
@@ -66,7 +70,7 @@ npm run test:firebase
 npm run build
 ```
 
-Verification totals **162 passing tests**: 155 standard cases plus seven real Auth/Firestore emulator cases across 24 files. The normal command intentionally skips those seven without emulator hosts; run `test:firebase` to execute them. Coverage includes the retained routing/API/UI regressions plus user isolation, admin access, large GPS chunks/retention, concurrent revisions, shared speech accounting and compiled API/worker startup. Standalone and cloud-configured builds pass; the cloud build used public placeholder configuration only. Production dependencies audit clean; seven development-tool advisories remain in the Firebase CLI dependency tree. Browser evidence and verification boundaries are in the implementation status. Live Cloud deployment, real-device GPS, OS notification delivery and successful live X retrieval remain unverified.
+Historical Firebase foundation verification totaled **162 passing tests**: 155 standard cases plus seven real Auth/Firestore emulator cases across 24 files. The normal command intentionally skips those seven without emulator hosts; run `test:firebase` to execute them. Coverage includes the retained routing/API/UI regressions plus user isolation, admin access, large GPS chunks/retention, concurrent revisions, shared speech accounting and compiled API/worker startup. Standalone and cloud-configured builds pass; the cloud build used public placeholder configuration only. Production dependencies audit clean; seven development-tool advisories remain in the Firebase CLI dependency tree. Browser evidence and verification boundaries are in the implementation status. Live Cloud deployment, real-device GPS, OS notification delivery and successful live X retrieval remain unverified.
 
 Use the prominent top clock to view closures and routes at **Now** or a chosen PKT date/time. Add up to five intermediate stops. Open **Demo closures** for six test scenarios. See [map time and stops](docs/MAP_TIME_AND_STOPS.md) and [demo guide](docs/DEMOS.md). Map browsing is worldwide; the routing graph remains bounded to central Islamabad.
 
@@ -87,3 +91,7 @@ Two developers aim to finish and polish the prototype by **17 October 2026**. Th
 ## Credentials and dependencies
 
 Keep API keys and local environment files out of Git. Future setup examples should use placeholders in an .env.example file. Routing/map libraries, hosted services, map data, and generated route results have separate license and attribution requirements documented in the plan.
+
+## Pakistan routing coverage
+
+Plan origins, destinations and stops across Pakistan. Islamabad keeps its local OSM graph; other Pakistan journeys and named-place searches use online OSRM/Photon services, without bundling national road data. Internet is required for those lookups. Tolls/checkposts, charges and queue times are not currently listed. See [routing and provider setup](docs/ROUTING.md).

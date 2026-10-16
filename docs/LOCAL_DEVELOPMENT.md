@@ -8,6 +8,8 @@ English/Urdu controls, guest account screens, onboarding and automatic GPS recov
 
 ## Start
 
+On the 17 October Windows checkout, use **`npm.cmd run dev:local`** to select the configured portable Node 24 and installed Android Studio Java 21 for Firebase emulator mode. This helper changes only its child-process environment. Other machines with compatible runtimes on PATH can use `npm.cmd run dev:firebase` directly. See [runtime details](ENVIRONMENTS.md#environment-requirements).
+
 Use **Node 24.12+**; this machine now has **Node 24.22.0 / npm 11.19.1**, with a passing configuration check. See [Windows Node upgrade instructions](ENVIRONMENTS.md#upgrading-node-on-windows) for another machine. Standalone SQLite mode needs no Docker, Java, paid routing account or Google credential. The recommended Firebase emulator mode additionally needs Java 21+.
 
 ```sh
@@ -50,7 +52,7 @@ The collector can use an installed browser. An optional official Playwright Chro
 
 ## Routing data and coverage
 
-The tracked `assets/routing/` contains real OSM source/graph snapshots and provenance under ODbL 1.0. The current extent is west 72.97, south 33.60, east 73.16, north 33.75. Outside-area endpoints return unavailable; the map itself can pan elsewhere. Pins snap only within a bounded distance, and the dashed pin-to-road connector is not a routed access path.
+The tracked `assets/routing/` contains real OSM source/graph snapshots and provenance under ODbL 1.0. The local graph extent is west 72.97, south 33.60, east 73.16, north 33.75. Other Pakistan endpoints use online OSRM routing; named search also uses Photon. Both require internet and return explicit unavailable errors when providers fail. Foreign endpoints/stops are rejected before routing. Pins snap only within a bounded distance, and the dashed pin-to-road connector is not a routed access path. Red road coating remains limited to the bundled Islamabad graph; national closures are still checked against returned route candidates. See [coverage and privacy](ROUTING.md).
 
 ```sh
 npm run data:import

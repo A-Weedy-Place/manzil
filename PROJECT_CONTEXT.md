@@ -1,12 +1,15 @@
 # Manzil: product context to retain
 
-Owner's instructions, updated 16 October 2026. Team of two; usable prototype target October 17, leaving time for UI polish. Project/team name **Manzil (منزل)**, Urdu for destination. Brand artwork is in assets/brand. Keep the private GitHub repository private. Run locally now; the owner will arrange deployment later.
+Owner's instructions, updated 17 October 2026. Team of two; usable prototype target October 17, leaving time for UI polish. Project/team name **Manzil (منزل)**, Urdu for destination. Brand artwork is in assets/brand. Keep the private GitHub repository private. Run locally now; the owner will arrange deployment later.
 
 ## Current build request
+
+**Integration (17 October):** merge the saved Pakistan-wide routing/search work with the latest Firebase repository version, preserve asynchronous per-user storage and verified authorization, run meaningful local/Firestore emulator checks and production builds, and leave the integrated app running on localhost. Keep the saved Git stash until the integration is verified. Deployment and paid provider activation remain outside this request.
 
 **Environment follow-up (16 October):** Node has been upgraded from 24.11.1 to **24.22.0**, with npm **11.19.1**; the configuration checker confirms the Node requirement is satisfied. Use `npm.cmd` in Windows PowerShell when `npm.ps1` is blocked. The recommended local authentication/storage workflow is `npm.cmd run dev:firebase`; standalone `npm.cmd run dev` remains available. Keep the [environment guide](docs/ENVIRONMENTS.md) and [implementation status](docs/IMPLEMENTATION_STATUS.md) current. Discuss the initial deployment procedure next; no deployment or paid model activation is authorized by this documentation update.
 
 **Local/production parity (16 October):** owner authorized implementing one codebase for local development and future production; do not deploy yet. Preserve standalone SQLite mode. Add recommended Auth/Firestore emulator development and the same Firestore adapter for production, verified Firebase tokens/custom admin claims, private user records, validated environment configuration, durable speech cache/budgets, compiled backend/container/Hosting configuration, and an authenticated external worker boundary. Cloud startup must reject local/emulator fallback. Gemini extraction remains future integration work; the admin dashboard/audit/override proposal remains unimplemented. Costs must be bounded without assuming trial credits. See [environment guide](docs/ENVIRONMENTS.md). After implementation, report required environment setup, then discuss the initial deployment plan separately.
+**Pakistan coverage follow-up (16 October):** replace the Islamabad-only origin/destination/stop limit with **Pakistan-wide** planning, explicitly superseding the earlier bounded-city-only scope. Keep this lightweight: retain the local Islamabad graph and use online Photon place search / OSRM car-route lookup elsewhere in Pakistan; do not bundle a national or worldwide road network. Country filtering applies to named search and all planning coordinates, including map pins, stops and GPS rerouting. Preserve published closure geometry/time validation and clear unavailable states. Tolls and checkposts currently have no dedicated route POI, price or delay data; disclose that honestly instead of implying they are included. See [routing](docs/ROUTING.md).
 
 **Restore direct controls (15 October):** keep Closures in primary navigation for everyone and Activity there for signed-in users. Restore the visible street-detour action, demo catalogue, route block-point action and always-visible map Add restriction button. Guests receive the skippable spotlight tutorial on each app visit and after sign-out, even if previously completed; signed-in users retain first-use/replay behavior.
 
@@ -53,7 +56,7 @@ The local edition should run without paid services or API keys. A real, bounded 
 | Detect repeatedly used missing/off-road paths | Retain separate contribution consent/schema; later review candidates and owned graph import |
 | Add a discovered path to routable graph | Future, after access/surface/connectivity review; a drawn line alone is not a road |
 | Camera/privacy avoidance inspired by DeFlock/FlockHopper | Separate future direction; no promise of an undetected journey |
-| Extensible beyond Islamabad | Adapters/contracts now; initial graph deliberately bounded to Islamabad |
+| Pakistan-wide routes | Local Islamabad graph plus online car routing and Pakistan-only search/endpoint validation |
 | Google/Gemini integration useful for the Cup | Cloud architecture documented; local phase needs no Cloud credentials |
 
 ## Product invariants

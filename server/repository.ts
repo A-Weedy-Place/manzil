@@ -7,6 +7,8 @@ export interface RoutingSnapshot { closures: Closure[]; revision: number }
 /** Infrastructure boundary. SQLite remains synchronous; callers await both adapters. */
 export interface Repository {
   readonly backend: 'sqlite' | 'firestore';
+  /** False after a local adapter closes; async work must stop before touching its data. */
+  readonly isOpen?: boolean;
   forUser(uid: string | null): Repository;
   close(): void;
   meta<T>(key: string): Awaitable<T | undefined>;

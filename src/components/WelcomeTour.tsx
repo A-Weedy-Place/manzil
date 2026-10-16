@@ -7,7 +7,7 @@ import { placeTourCard, type TourPlacement } from '../lib/tourLayout';
 
 export const TOUR_KEY = 'manzil-tour-v1';
 const steps = [
-  { title: 'Welcome to Manzil', text: 'Find a clearer way through Islamabad. This short tour shows the essentials.', target: '' },
+  { title: 'Welcome to Manzil', text: 'Find a clearer way through Pakistan. This short tour shows the essentials.', target: '' },
   { title: 'Choose your journey', text: 'Search for a destination, choose your start, and add stops if needed.', target: '[data-tour="search"] .place-field:last-child' },
   { title: 'Choose when to leave', text: 'Use Now for today, or pick a date and time to check scheduled closures.', target: '.map-time-trigger' },
   { title: 'Read the map', text: 'Blue lines are route choices. Red roads are closed at the selected time; amber markers are upcoming closures.', target: '.map-legend' },
