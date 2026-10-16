@@ -13,7 +13,7 @@ The repository now contains a working **localhost application**, a real Islamaba
 
 ## Run locally
 
-Requires Node.js **24.12+** for the current Firebase SDKs; Firebase emulator development also requires Java **21+**. The inspected machine has Node 24.11.1 and needs a patch upgrade. From this repository:
+Requires Node.js **24.12+** for the current Firebase SDKs; Firebase emulator development also requires Java **21+**. This machine now has **Node 24.22.0 / npm 11.19.1**, and `npm.cmd run config:check` confirms the Node requirement is satisfied. From this repository:
 
 ```sh
 npm ci
@@ -21,6 +21,8 @@ npm run dev
 ```
 
 Open **http://127.0.0.1:5173/**. The API runs at http://127.0.0.1:3001. Keep the local server running for source and commute checks. The bundled road graph needs no API key; ordinary basemap tiles need internet. Optional settings are listed in `.env.example`.
+
+For Firebase authentication and per-user storage development, stop the standalone server and run `npm.cmd run dev:firebase` instead. Use `npm.cmd` in PowerShell if `npm.ps1` is blocked. Windows upgrade instructions and the full emulator workflow are in the [environment guide](docs/ENVIRONMENTS.md).
 
 Try **Find routes**, then **Block a point on this route** to see a connected detour, or use **Try street detour** for the preset street example. Demo restrictions are explicitly synthetic and can be cancelled from Closures. Use **Closures → Add closure** or the map's **Add restriction** plus button to draw your own point, road corridor or area and schedule its start/end in Pakistan time.
 

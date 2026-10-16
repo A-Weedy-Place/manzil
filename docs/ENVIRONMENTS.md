@@ -19,11 +19,26 @@ Closure/time validation, OSM graph routing, demo geometry, commute checks, infer
 
 ## Environment requirements
 
-- **Node 24.12.0 or newer**: required by the current Firebase SDK dependency set. The inspected machine has 24.11.1; upgrade that patch before regular use. `npm.cmd run config:check` reports the selected mode and returns nonzero on an unsupported Node version. It prints no credentials and creates no resources.
+- **Node 24.12.0 or newer**: required by the current Firebase SDK dependency set. On 16 October, this machine was rechecked with **Node 24.22.0 / npm 11.19.1**; `npm.cmd run config:check` passes with `nodeSupported: true`. The earlier Node upgrade prerequisite is complete. The checker reports the selected mode and returns nonzero on an unsupported Node version. It prints no credentials and creates no resources.
 - **Java 21+** for the Firestore Emulator. Java 25 is installed on the inspected machine.
 - Dependencies are in `package-lock.json`; use `npm.cmd ci` on a new checkout. The Firebase CLI is a project development dependency, not a required global install.
 - Google Cloud CLI is **not on PATH** on the inspected machine. It is needed later for deployment/ADC setup, not for emulator development.
 - Docker Desktop is installed but its Linux engine is not running. It is optional for local development; container verification requires starting it, or a later Cloud Build run.
+
+### Upgrading Node on Windows
+
+This machine uses the direct Windows installation at `C:\Program Files\nodejs`, without an identified Node version manager. Stop development servers, download the latest **Node 24 LTS Windows Installer (.msi)** for the machine's architecture from the [official download page](https://nodejs.org/en/download), and run it with the default settings to upgrade the existing installation. Close and reopen VS Code and all terminals afterward.
+
+From `D:\Manzil\manzil` in a new PowerShell terminal:
+
+```powershell
+node --version
+npm.cmd --version
+npm.cmd ci
+npm.cmd run config:check
+```
+
+Use `npm.cmd` if PowerShell blocks `npm.ps1`; changing the execution policy is unnecessary. `.nvmrc` selects the Node 24 major for developers who already use a version manager; it does not upgrade a direct Windows installation. Run `npm.cmd ci` after upgrading to restore the locked dependencies. The recorded installed version is an environment observation, not a claim about the latest available release.
 
 ## Recommended everyday workflow
 
@@ -91,4 +106,4 @@ The normal suite skips integration cases without emulator hosts; `test:firebase`
 
 Live Cloud Run/Firebase deployment, real Cloud ADC/IAM, email delivery, browser Firebase persistence, real-device GPS/Urdu pronunciation and successful X collection remain separate verification tasks. Docker image execution cannot be claimed while Docker Desktop is stopped. The implementation-status document records exact final test/build results and dependency-audit limitations.
 
-Current verification: **155 standard + seven emulator cases pass (162 total)**, standalone/cloud frontend builds and compiled backend pass, and the full emulator development launcher passed its alternate-port smoke run. The cloud frontend build used placeholder public identifiers only. Tests/builds ran on installed Node 24.11.1 despite dependency engine warnings; use the required updated Node version for the release. Production dependency audit is clean; the Firebase CLI's development tree still has seven advisories (four moderate, three high). No paid provider request occurred.
+Recorded foundation verification: **155 standard + seven emulator cases pass (162 total)**, standalone/cloud frontend builds and compiled backend pass, and the full emulator development launcher passed its alternate-port smoke run. The cloud frontend build used placeholder public identifiers only. That original verification ran on Node 24.11.1 despite dependency engine warnings. On Node **24.22.0**, the configuration check, **155 standard tests** and standalone TypeScript/Vite build have now been rerun successfully; the seven emulator cases were skipped in this follow-up. The earlier emulator/cloud/launcher/audit results were not rerun. See [implementation status](IMPLEMENTATION_STATUS.md) for the verification scope. The previous production dependency audit was clean; the Firebase CLI's development tree had seven advisories (four moderate, three high). No paid provider request occurred.

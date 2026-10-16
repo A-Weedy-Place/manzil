@@ -4,11 +4,11 @@
 
 For the local dummy normal/admin credentials and updated spotlight tour, see [Development accounts and tour](DEV_ACCOUNTS_AND_TOUR.md). The admin dashboard is still a [proposal for discussion](ADMIN_INTERFACE_PROPOSAL.md), not an implemented feature.
 
-English/Urdu controls, guest account screens, onboarding and automatic GPS recovery are described in [Bilingual navigation and Cloud speech](BILINGUAL_NAVIGATION_AND_CLOUD.md). Core planning still needs no Cloud credentials. Optional speech uses server-side ADC and `TTS_ENABLED=true`; Firebase and public deployment remain future work. In PowerShell, use `npm.cmd` if execution policy blocks `npm.ps1`.
+English/Urdu controls, guest account screens, onboarding and automatic GPS recovery are described in [Bilingual navigation and Cloud speech](BILINGUAL_NAVIGATION_AND_CLOUD.md). Core planning still needs no Cloud credentials. Optional speech uses server-side ADC and `TTS_ENABLED=true`. Firebase authentication/storage adapters are implemented; hosted project configuration and public deployment remain future work. In PowerShell, use `npm.cmd` if execution policy blocks `npm.ps1`.
 
 ## Start
 
-Use Node 22.13 or newer (verified Node 22.20.0 / npm 10.9.3). No Docker, Java, paid routing account or Google credential is required.
+Use **Node 24.12+**; this machine now has **Node 24.22.0 / npm 11.19.1**, with a passing configuration check. See [Windows Node upgrade instructions](ENVIRONMENTS.md#upgrading-node-on-windows) for another machine. Standalone SQLite mode needs no Docker, Java, paid routing account or Google credential. The recommended Firebase emulator mode additionally needs Java 21+.
 
 ```sh
 npm ci
@@ -17,7 +17,7 @@ npm run dev
 
 Open http://127.0.0.1:5173/. Vite proxies `/api` to the Express API at http://127.0.0.1:3001. Both listen only on loopback. Stop the retained terminal with Ctrl+C when finished. The API process and machine must remain running for automatic checks; closing the browser alone does not stop the server.
 
-`npm run dev:api` and `npm run dev:web` start either process separately. `npm run build` type-checks all source and creates `dist/`. `npm start` starts the API only; it is not a production deployment or a static frontend server. Deployment and production authentication are deliberately deferred.
+`npm run dev:api` and `npm run dev:web` start either process separately. `npm run build` type-checks all source and creates `dist/`. `npm start` starts the standalone API only; it is not a production deployment or a static frontend server. For production-style development, stop the standalone processes and run `npm.cmd run dev:firebase`; it launches the local Auth/Firestore emulators, API, frontend and worker with seeded accounts. Hosted authentication setup and deployment are deferred; the authentication integration itself is implemented.
 
 ## First useful workflow
 
@@ -28,7 +28,9 @@ Open http://127.0.0.1:5173/. Vite proxies `/api` to the Express API at http://12
 5. In Profile → Source updates & collector, inspect source status or import an advisory if automatic access fails.
 6. Use Profile for language/themes/map detail; signed-in users can also configure browser alerts and optional learned-journey alerts. Select **Navigate** on a route for preview or foreground GPS guidance. On phones, expand controls with the sheet handle button.
 
-## Configuration
+Shared closure/demo/source mutations require an admin in emulator/production modes; use the seeded admin account for the editing/demo steps above. Standalone mode retains trusted-local editing. The full admin correction dashboard is still a proposal.
+
+## Standalone configuration
 
 Copy `.env.example` to `.env` if overrides are needed. Never commit `.env`. Defaults work without one.
 
@@ -58,11 +60,11 @@ This rebuilds the runtime graph from bundled OSM source, downloading a bounded s
 
 ## Local data and privacy
 
-`data/manzil.sqlite` and its WAL/SHM files store restrictions, commutes, alerts, notice revisions, pending jobs and personal trips. They are ignored by Git. Closing and reopening the server preserves them. Keep backups private if you choose to make them.
+In standalone mode, `data/manzil.sqlite` and its WAL/SHM files store restrictions, commutes, alerts, notice revisions, pending jobs and personal trips. They are ignored by Git. Closing and reopening the server preserves them. Emulator mode uses separate local Firestore records and starts fresh by default; it never migrates SQLite data. Keep backups private if you choose to make them.
 
 Foreground GPS recording requires an explicit action and consent. Another checkbox controls future road-discovery contribution; it currently uploads nothing. Points older than 30 days are removed, summaries after 90 days. List responses contain summaries only; raw traces are fetched on demand. The source collector keeps original evidence separate from interpreted road events. No Gemini call or closure extraction is performed yet.
 
-Do not expose this single-user API or the Vite server over a LAN/public tunnel. Loopback/origin checks are useful development guards, not authentication. Production requires accounts, per-user data access, secure deployment, durable hosted jobs and the user's chosen provider credentials.
+Keep the standalone single-user API, Vite server and Firebase emulators on loopback. Standalone origin checks and dummy roles are development guards. Firebase modes verify identity and enforce per-user data access; live production still requires configured service identities, secure deployment, externally scheduled worker jobs and the chosen provider setup. See [environment guide](ENVIRONMENTS.md).
 
 ## Checks and troubleshooting
 
@@ -78,6 +80,7 @@ npm run source:check
 - **Tiles missing:** routing is local but OpenFreeMap styles/tiles/fonts require internet and the renderer needs WebGL. The app shows a failure state and retains fields/coordinate editing. Do not bulk-download or proxy public tiles to work around restrictions.
 - **X status is error/blocked:** inspect the source state, test the configured browser/network and use deliberate notice import. Actual smoke checks here launched Chromium but X navigation failed; no reliable live retrieval is claimed.
 - **GPS has no samples:** permission, device accuracy, a visible active page and location services matter. No synthetic points are generated. Location fixes older than recording start or worse than the accuracy threshold are ignored.
-- **SQLite warning:** Node 22 labels its built-in SQLite module experimental; this is a runtime warning, not a failed API health check.
+- **Unsupported Node / blocked npm script:** use Node 24.12+ and run `npm.cmd run config:check`; after upgrading, restart VS Code/terminals and restore dependencies with `npm.cmd ci`. Use `npm.cmd` if PowerShell blocks `npm.ps1`.
+- **SQLite warning:** the built-in SQLite module can emit an experimental warning; this alone is not a failed API health check.
 
 Meaningful tests and browser evidence are recorded in [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md). The complete original roadmap remains [PROJECT_CONTEXT.md](../PROJECT_CONTEXT.md).

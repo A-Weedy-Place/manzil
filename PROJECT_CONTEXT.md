@@ -1,8 +1,10 @@
 # Manzil: product context to retain
 
-Owner's instructions, updated 15 October 2026. Team of two; usable prototype target October 17, leaving time for UI polish. Project/team name **Manzil (منزل)**, Urdu for destination. Brand artwork is in assets/brand. Keep the private GitHub repository private. Run locally now; the owner will arrange deployment later.
+Owner's instructions, updated 16 October 2026. Team of two; usable prototype target October 17, leaving time for UI polish. Project/team name **Manzil (منزل)**, Urdu for destination. Brand artwork is in assets/brand. Keep the private GitHub repository private. Run locally now; the owner will arrange deployment later.
 
 ## Current build request
+
+**Environment follow-up (16 October):** Node has been upgraded from 24.11.1 to **24.22.0**, with npm **11.19.1**; the configuration checker confirms the Node requirement is satisfied. Use `npm.cmd` in Windows PowerShell when `npm.ps1` is blocked. The recommended local authentication/storage workflow is `npm.cmd run dev:firebase`; standalone `npm.cmd run dev` remains available. Keep the [environment guide](docs/ENVIRONMENTS.md) and [implementation status](docs/IMPLEMENTATION_STATUS.md) current. Discuss the initial deployment procedure next; no deployment or paid model activation is authorized by this documentation update.
 
 **Local/production parity (16 October):** owner authorized implementing one codebase for local development and future production; do not deploy yet. Preserve standalone SQLite mode. Add recommended Auth/Firestore emulator development and the same Firestore adapter for production, verified Firebase tokens/custom admin claims, private user records, validated environment configuration, durable speech cache/budgets, compiled backend/container/Hosting configuration, and an authenticated external worker boundary. Cloud startup must reject local/emulator fallback. Gemini extraction remains future integration work; the admin dashboard/audit/override proposal remains unimplemented. Costs must be bounded without assuming trial credits. See [environment guide](docs/ENVIRONMENTS.md). After implementation, report required environment setup, then discuss the initial deployment plan separately.
 
