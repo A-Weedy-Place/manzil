@@ -10,12 +10,12 @@ const post = (changes: Partial<PublicPost> = {}): PublicPost => ({ sourceId: '12
   publishedAt: new Date().toISOString(), mediaUrls: [], ...changes });
 
 describe('bounded public source intake', () => {
-  it('only accepts canonical posts by the configured author', () => {
+  it('only accepts canonical posts by the configured author', async () => {
     expect(canonicalPostUrl('https://twitter.com/shaheryarhassan/status/123456789?s=20')).toEqual({ sourceId: '123456789', url: post().url });
     expect(canonicalPostUrl('https://x.com/other/status/123456789')).toBeNull();
     expect(canonicalPostUrl('https://x.com.evil.test/shaheryarhassan/status/123456789')).toBeNull();
   });
-  it('accepts current evidence and keeps bounded older dated announcements for agent review', () => {
+  it('accepts current evidence and keeps bounded older dated announcements for agent review', async () => {
     const now = Date.now();
     expect(eligiblePost(post(), now)).toBe(true);
     expect(eligiblePost(post({ publishedAt: new Date(now - 3 * 86400_000).toISOString() }), now)).toBe(false);
@@ -34,7 +34,7 @@ describe('bounded public source intake', () => {
     const edited = db.listNotices()[0]; expect(edited.id).toBe(first.id); expect(edited.revision).toBe(2); expect(edited.publishedAt).toBe(originalTime);
     expect(db.pendingAgentCount()).toBe(1); expect(db.db.prepare('SELECT COUNT(*) AS n FROM notice_versions').get()?.n).toBe(2);
     expect(db.sourceStatus().coverage).toBe('partial'); expect(db.sourceStatus().nextCheckAt).not.toBeNull();
-    expect(service.due()).toBe(false);
+    expect((await service.due())).toBe(false);
   });
   it('does not pretend login walls collected data and respects durable leases', async () => {
     const db = store(); let calls = 0;
@@ -42,7 +42,7 @@ describe('bounded public source intake', () => {
     expect(db.acquireSourceLease(Date.now())).toBe(true);
     await service.check(); expect(calls).toBe(0); db.releaseSourceLease();
     const status = await service.check(); expect(status.state).toBe('blocked'); expect(status.lastSuccessAt).toBeNull(); expect(status.noticesCollected).toBe(0);
-    expect(service.settings(false).state).toBe('disabled'); expect(service.due()).toBe(false);
+    expect((await service.settings(false)).state).toBe('disabled'); expect((await service.due())).toBe(false);
   });
   it('preserves empty original text and media references for a media-only public notice', async () => {
     const db = store();
@@ -56,9 +56,9 @@ describe('bounded public source intake', () => {
     const db = store(); let finish!: () => void;
     const wait = new Promise<void>(resolve => { finish = resolve; }); let calls = 0;
     const service = new SourceService(db, async () => { calls++; await wait; return { posts: [], state: 'partial', observedCount: 0, message: 'No visible posts.' }; });
-    db.updateSourceStatus({ nextCheckAt: '2000-01-01T00:00:00Z' }); expect(service.due()).toBe(true);
-    const a = service.check(), b = service.check(); finish(); await Promise.all([a, b]); expect(calls).toBe(1); expect(service.due()).toBe(false);
+    db.updateSourceStatus({ nextCheckAt: '2000-01-01T00:00:00Z' }); expect((await service.due())).toBe(true);
+    const a = service.check(), b = service.check(); finish(); await Promise.all([a, b]); expect(calls).toBe(1); expect((await service.due())).toBe(false);
     db.updateSourceStatus({ state: 'checking', nextCheckAt: new Date(Date.now() + 15 * 60_000).toISOString() });
-    db.setMeta('sourceLeaseUntil', Date.now() - 1); expect(service.due()).toBe(true);
+    db.setMeta('sourceLeaseUntil', Date.now() - 1); expect((await service.due())).toBe(true);
   });
 });

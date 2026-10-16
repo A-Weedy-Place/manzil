@@ -1,5 +1,6 @@
 import { speechText, type Language, type SpeechPrompt } from '../../shared/speech';
 import { t } from './language';
+import { authorizationHeaders } from './auth';
 
 /** A cancelled route/session can never play late audio. Cache audio, never route positions. */
 export class NavigationSpeaker {
@@ -18,7 +19,7 @@ export class NavigationSpeaker {
     const key = JSON.stringify([language, prompt]);
     const cached = this.cache.get(key); if (cached) return cached;
     if (Date.now() < this.cloudUnavailableUntil) return Promise.reject(new Error('Cloud speech unavailable.'));
-    const request = fetch('/api/speech', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ language, prompt }), signal: AbortSignal.timeout(10000) })
+    const request = authorizationHeaders().then(headers => fetch('/api/speech', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ language, prompt }), signal: AbortSignal.timeout(10000) }))
       .then(response => { if (!response.ok || !response.headers.get('Content-Type')?.startsWith('audio/')) throw new Error('Cloud speech unavailable.'); return response.blob(); })
       .catch(error => { this.cache.delete(key); this.cloudUnavailableUntil = Date.now() + 60000; throw error; });
     this.cache.set(key, request);

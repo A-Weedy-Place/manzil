@@ -1,0 +1,8 @@
+{ "indexes": [{ "collectionGroup": "trip", "queryScope": "COLLECTION", "fields": [
+  { "fieldPath": "hasPoints", "order": "ASCENDING" }, { "fieldPath": "endedAt", "order": "ASCENDING" }
+] }], "fieldOverrides": [
+  { "collectionGroup": "closure", "fieldPath": "json", "indexes": [] },
+  { "collectionGroup": "trip", "fieldPath": "json", "indexes": [] },
+  { "collectionGroup": "points", "fieldPath": "json", "indexes": [] },
+  { "collectionGroup": "speech", "fieldPath": "audio", "indexes": [] }
+] }

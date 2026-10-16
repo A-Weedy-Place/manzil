@@ -2,6 +2,18 @@
 
 Local core delivered 14 October 2026; map/routing/profile/navigation redesign implemented 15 October. This document records tested behavior and limitations. Full retained scope: [PROJECT_CONTEXT](../PROJECT_CONTEXT.md). Current UX and integration details: [15 October redesign](REDESIGN_2026-10-15.md).
 
+## Local and production environments — 16 October
+
+Implemented a shared awaitable repository boundary, retained standalone SQLite mode, and added a Firestore adapter used by both local emulators and future production. Firebase browser email/password sign-in/registration/reset are wired; the API verifies tokens/revocation and custom admin claims, isolates personal records by UID, and denies direct browser database access through declared rules. Guest planning/appearance preferences remain available; shared closure/demo/source writes require admin in Firebase modes. The separate admin dashboard, correction audit and anti-republication overrides remain unimplemented.
+
+Firestore provides transactional closure/revision snapshots, durable notice revisions/current pending work, chunked private GPS traces, paginated retention, atomic speech usage reservations and shared cached audio. Published geometry is cached only while its durable revision agrees. Existing local SQLite/private data is not automatically migrated or uploaded.
+
+Added fail-closed environment validation, emulator launcher/seed accounts, private worker entry points and local scheduled runner, cloud frontend validation, compiled backend build, Dockerfile and Firebase Hosting/rules/index configuration. No deployment or cloud resources/billing/paid synthesis/Gemini calls occurred. Production configuration and actual service identities still need the owner's project setup and a separate deployment plan. [Setup and boundaries](ENVIRONMENTS.md).
+
+Environment inspection: Node **24.11.1**, below the new SDK requirement **24.12+**; Java **25** is installed; Google Cloud CLI is not on PATH; Docker Desktop's engine is stopped. Build/runtime fixtures can be tested locally, but the container and live Cloud services are not yet verified. Earlier test counts and localhost-only descriptions below record historical phases.
+
+Validation: **155 standard tests pass** across 23 files; the default run intentionally skips the seven emulator cases. The separate **seven real Firebase emulator tests pass**, including more than one retention page, direct browser database denial, and compiled API/worker startup with the actual road graph. Combined coverage is **162 cases across 24 files**. The full emulator development launcher also passed an end-to-end smoke check (Vite, API, worker, seeded login and authenticated job) on alternate ports without interrupting the existing standalone server. Production/standalone builds and backend compilation pass; cloud frontend validation used public placeholder identifiers, not actual credentials. Production-bundle inspection finds none of the seeded dummy emails/passwords. `npm audit --omit=dev` reports **zero vulnerabilities**; the full audit retains **seven Firebase CLI development-tool advisories (four moderate, three high)**, excluded from the pruned runtime image. No force-downgrade or unverified major dependency overrides were applied; the gRPC override is a patched compatible 1.x release. The existing large map-chunk warning remains. These checks ran on the inspected 24.11.1 runtime despite SDK engine warnings; upgrade Node and rerun before the release.
+
 ## Initial analysis and implementation sequence (14 October)
 
 1. **Shared contracts and local shell:** React/TypeScript/Vite, Leaflet, Express, Node 22.13+, local persistent storage. Defined GeoJSON coordinate order and domain models.
@@ -42,19 +54,19 @@ Validation: **136 tests pass across 19 files**, including all existing real-road
 | Repository research, brand and full feature context | Present |
 | Shared types / npm scaffolding | Implemented and installed; Node 22.20.0 |
 | Local graph and routing | Real bounded OSM graph, ordered stops, precise red-road clipping; routing/cache/junction regressions pass |
-| Local API/storage/source/profile | Persistent SQLite; source/profile/API/demo and real F-8 street-detour tests pass |
+| API/storage/source/profile | Shared async repository/API; standalone SQLite and Firebase emulator/production Firestore adapter; local data not migrated |
 | Map/editor/interface | Five map styles, shared timeline, red road coating without enclosing polygons, cached/deduplicated overlays; restored Closures/demo/edit controls and signed-in Activity tab |
-| Accounts and tutorial | Local dummy normal/admin sign-in; personal UI gates; target-aware skippable guide each guest visit/after sign-out; signed-in first-use/replay; Firebase/admin dashboard deferred |
+| Accounts and tutorial | Standalone dummy identities or Firebase SDK/Auth emulator; verified token/admin claims and private records in Firebase modes; guest tour behavior retained; full admin dashboard deferred |
 | Personal notifications | Saved + consented inferred journeys; opt-in browser delivery; six notification guard tests pass |
 | Navigation | Bilingual preview/voice controls; automatic foreground recovery, remaining stops, closure revisions and bounded retries |
 | Browser verification | New renderer inspected at 1280×800 and small-phone size; workflow evidence below |
-| Build and tests | Type/build passes; 149/149 tests pass across 21 files; dependency installation audit reports zero vulnerabilities |
+| Build and tests | 155 standard + 7 emulator cases pass; standalone/cloud builds and compiled backend pass; runtime audit clean, 7 dev-tool advisories; see current verification above |
 | Live X collection | Scheduler and collector implemented; this network rejected navigation, so live retrieval is unverified |
-| Gemini, Cloud deployment and external push | Deferred to the owner as requested |
+| Gemini, live Cloud deployment and external push | Not implemented/deployed; configuration/build foundation is present; deployment plan and actual project setup are next |
 
 ## Local versus planned Cloud adapters
 
-The localhost request takes precedence over the earlier deployment proposal. The local router uses the bundled OSM graph without an ORS key. SQLite avoids requiring Firebase credentials. Since 15 October, MapLibre/OpenFreeMap vector tiles replace Leaflet/MapTiler; no map key is required. The 15-minute X choice supersedes the earlier RSS/WhatsApp priority. The Cloud/agent design in MANZIL_ARCHITECTURE.md remains a future target.
+The local router uses the bundled OSM graph without an ORS key. Standalone SQLite and Firebase emulators both avoid cloud credentials for local development. Hosted Firestore/Auth adapters and build configuration now exist; live deployment and the Gemini agent still require the next plan. Since 15 October, MapLibre/OpenFreeMap vector tiles replace Leaflet/MapTiler; no map key is required. The 15-minute X choice supersedes the earlier RSS/WhatsApp priority. Older provider selections in MANZIL_ARCHITECTURE.md are historical proposals.
 
 ## Initial evidence log (14 October)
 

@@ -1,5 +1,18 @@
 /** App-owned copy only. User notices, names and original source evidence remain verbatim. */
 export const urdu: Record<string, string> = {
+  'Local Firebase emulators': 'مقامی فائر بیس ایمولیٹرز',
+  'Personal profile · your account': 'ذاتی پروفائل · آپ کا اکاؤنٹ', 'Cloud': 'کلاؤڈ',
+  'Alerts update when your saved journeys are checked.': 'آپ کے محفوظ سفر کی جانچ ہونے پر اطلاعات تازہ ہوتی ہیں۔',
+  'Needs at least 3 matching trips on separate days. Learning uses your recorded trips and does not add roads to the map.': 'الگ دنوں میں کم از کم 3 ملتے جلتے سفر درکار ہیں۔ سیکھنے کے لیے آپ کے ریکارڈ شدہ سفر استعمال ہوتے ہیں، نقشے میں سڑکیں شامل نہیں کی جاتیں۔',
+  'This development session stores records in local Firebase emulators.': 'اس ڈویلپمنٹ سیشن کے ریکارڈ مقامی فائر بیس ایمولیٹرز میں محفوظ ہوتے ہیں۔',
+  'Personal records are stored in your account. GPS recording remains optional.': 'ذاتی ریکارڈ آپ کے اکاؤنٹ میں محفوظ ہوتے ہیں۔ مقام کے سفر کی ریکارڈنگ اختیاری ہے۔',
+  'Test accounts use local authentication and isolated user records.': 'آزمائشی اکاؤنٹس مقامی تصدیق اور الگ ذاتی ریکارڈ استعمال کرتے ہیں۔',
+  'Your account protects saved journeys and personal history.': 'آپ کا اکاؤنٹ محفوظ سفر اور ذاتی تاریخ کی حفاظت کرتا ہے۔',
+  'Firebase sign-in is not configured in this build.': 'اس ورژن میں فائر بیس سائن اِن کی ترتیب مکمل نہیں ہے۔',
+  'Could not complete account action. Check your details and connection.': 'اکاؤنٹ کی کارروائی مکمل نہیں ہو سکی۔ اپنی تفصیلات اور رابطہ چیک کریں۔',
+  'Check your email for password reset instructions.': 'پاس ورڈ تبدیل کرنے کی ہدایات کے لیے اپنی ای میل دیکھیں۔',
+  'Sign in to access your saved journeys, trip history and personal alerts.': 'اپنے محفوظ سفر، سفر کی تاریخ اور ذاتی اطلاعات کے لیے سائن اِن کریں۔',
+  'Personal records are scoped to your signed-in account. Admin tools are being planned.': 'ذاتی ریکارڈ آپ کے اکاؤنٹ کے لیے الگ ہیں۔ منتظم کی سہولتوں کی منصوبہ بندی جاری ہے۔',
   'Development sign-in': 'ڈویلپمنٹ سائن ان', 'Dummy accounts unlock local testing. They share this local workspace and do not use Firebase.': 'آزمائشی اکاؤنٹس مقامی جانچ کے لیے ہیں۔ یہ مشترکہ مقامی ڈیٹا استعمال کرتے ہیں، فائر بیس نہیں۔',
   'Choose a development account': 'آزمائشی اکاؤنٹ منتخب کریں', 'Normal user': 'عام صارف', 'Admin user': 'منتظم', 'Sign out': 'سائن آؤٹ',
   'Demo traveller': 'آزمائشی مسافر', 'Demo administrator': 'آزمائشی منتظم', 'Use one of the development accounts shown below.': 'نیچے دیے گئے آزمائشی اکاؤنٹس میں سے ایک استعمال کریں۔',

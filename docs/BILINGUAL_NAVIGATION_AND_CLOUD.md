@@ -1,5 +1,7 @@
 # English/Urdu journeys and Cloud speech
 
+**16 October:** [local/production environments](ENVIRONMENTS.md) now provide Firebase browser authentication, server token/role verification, private records and a Firestore adapter for emulators or hosted use. Standalone SQLite remains available. Speech caching/character reservations use the selected repository and remain durable across instances in Firestore mode. No cloud deployment/paid synthesis occurred. Production and emulator cloud synthesis require sign-in by default; guest cloud speech requires explicit `PUBLIC_CLOUD_SPEECH=true` after agreeing on usage controls. Device voice fallback remains available when the selected language is supported.
+
 Implemented locally on 15 October 2026. The agreed sequence is in [FEATURE_PLAN_2026-10-15.md](FEATURE_PLAN_2026-10-15.md).
 
 Follow-up: [localhost dummy normal/admin sign-ins and target-aware tour positioning](DEV_ACCOUNTS_AND_TOUR.md) are now implemented. The [admin interface proposal](ADMIN_INTERFACE_PROPOSAL.md) awaits owner approval.
@@ -10,7 +12,7 @@ Follow-up: [localhost dummy normal/admin sign-ins and target-aware tour position
 - Guest navigation is **Map, Closures, Saved and Profile**; **Activity** appears after sign-in. Saved journeys, trip recording/history, personal alerts and personal settings require sign-in. The clock says Now rather than implying live traffic.
 - **Try street detour** is directly below the planner heading, and **Demo closures** is directly available in the planner and Closures view. Route results expose **Block a point on this route** without opening Help. The map's **Add restriction** plus button stays visible. **Help & demos** retains Replay tour and closure/source shortcuts; Profile also offers source tools.
 - The spotlight tour highlights journey search, time, map legend, route planning, language and Help. Previous/Next/Skip/Finish/Escape and a focus-contained dialog are supported. Guests see it on every fresh app visit/reload and after sign-out, regardless of earlier completion. Dismissing it lasts for the current visit; ordinary navigation and polling do not reopen it. Signed-in users use the device-local completion flag for first-use behavior. Everyone can replay it from Help or Profile. The tour never creates a closure or requests location.
-- Firebase remains unconnected in production; credential actions there remain disabled. Local development offers explicitly dummy normal/admin identities to test existing personal screens; sign-up/reset remain disabled and Google sign-in is removed. Continue as guest preserves the map. Existing records/APIs remain intact and shared; UI identity is not server authorization.
+- Firebase SDK sign-in/registration/reset are active in emulator mode and correctly configured cloud builds; the real hosted project is not yet configured/deployed. Standalone SQLite retains dummy UI identities and disabled signup/reset. Google sign-in remains removed. In Firebase modes the server verifies identity and scopes private records; shared closure/source changes require admin. Existing standalone data remains intact and shared only in that trusted-local mode.
 
 ## Foreground GPS and speech
 
@@ -56,7 +58,7 @@ The browser caches recent audio, prefetches a next prompt while voice is enabled
 
 ## Eventual Google Cloud deployment
 
-Use an attached Cloud Run service identity for ADC, without an exported service-account key. Keep synthesis behind the backend. Before public deployment, implement production host/origin handling, Firebase token verification and personal-record ownership, then migrate local state to the chosen hosted database/storage.
+Use an attached Cloud Run service identity for ADC, without an exported service-account key. Keep synthesis behind the backend. Production host/origin validation, Firebase token verification and personal-record ownership are now implemented through the environment foundation; they still require actual project configuration, IAM and live verification before public deployment. Existing local state is not migrated automatically.
 
 Ephemeral Cloud Run SQLite is not durable shared accounting or a global spending cap. Multiple instances need hosted audio storage, atomic global usage reservations, client abuse limits, provider quotas and monitoring. Budget notifications alone do not cap spending. No deployment, billing settings or Cloud resources were changed.
 

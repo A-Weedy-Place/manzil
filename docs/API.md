@@ -1,6 +1,10 @@
-# Local API
+# Manzil API
 
-This API implements the local Manzil prototype. It binds to **127.0.0.1:3001**, uses one durable SQLite database, and has **no account or tenant authentication**. The Vite development server proxies `/api` here. Do not expose this server to a network. Loopback host and origin checks reject ordinary cross-site browser access; they do not authenticate other processes on your computer.
+The shared Express API supports three explicit modes. Standalone `local` binds to **127.0.0.1:3001**, retains the shared SQLite database and trusted-local behavior, and must not be exposed publicly. `emulator` uses loopback Auth/Firestore emulators and real token/ownership checks. `production` uses hosted Firebase/Firestore, exact allowed hosts/HTTPS origins and the Cloud Run port contract. No production deployment is running. See [environment configuration](ENVIRONMENTS.md).
+
+In Firebase modes send `Authorization: Bearer FIREBASE_ID_TOKEN` for personal endpoints (commutes/trips/alerts/inference and profile changes). Shared closure/demo writes, notice/outbox access and source changes require a verified `admin: true` claim. Invalid tokens return 401; authenticated users without the required role get 403. Owner IDs/roles supplied in bodies are not authority. Public state contains published closures and empty personal lists for guests; signed-in state is scoped to that UID, and raw notices are admin-only. Guest appearance is stored in the browser. Speech synthesis requires identity unless explicitly enabled for guests; enabled speech still observes the global application character budget. Direct browser Firestore access is denied by rules.
+
+`GET /api/runtime` returns public mode/project/auth/storage/scheduling identifiers; the configured frontend checks these before using the backend. `GET /healthz` is a minimal health check. A separately configured worker accepts authenticated `POST /internal/tick` jobs; the ordinary API service returns 404 there. Worker mode returns 404 for personal API routes. Cloud writes/checks complete before HTTP success; it does not rely on timers or untracked post-response work.
 
 Responses are the domain objects in [`shared/types.ts`](../shared/types.ts), without an envelope. All coordinates are `[longitude, latitude]`. Send `Content-Type: application/json` for every POST, PUT, or PATCH, including an empty `{}` for check operations. API times are ISO 8601 instants with an offset; responses normalize supplied instants to UTC. Commute wall-clock times and weekdays use Pakistan Standard Time, UTC+05:00.
 
@@ -10,9 +14,9 @@ Responses are the domain objects in [`shared/types.ts`](../shared/types.ts), wit
 | --- | --- | --- |
 | `GET /api/speech/status` | — | Configuration flag, UTC-month reserved character count and application limit; enabled does not assert credentials work |
 | `POST /api/speech` | `{language: "en" or "ur", prompt: SpeechPrompt}` | Binary `audio/mpeg`; 400 invalid prompt, 429 busy/limit, 503 disabled/provider unavailable. No arbitrary text/SSML. [Speech guide](BILINGUAL_NAVIGATION_AND_CLOUD.md). |
-| `GET /api/health` | — | Storage, graph readiness, pending-agent count; no private content |
+| `GET /api/health` | — | Storage and graph readiness; no private content or queue counts |
 | `GET /api/state` | — | `AppState`: closures, commutes, alerts, notices, trips, source state, graph state, event revision |
-| `GET /api/profile` | — | The single persisted `LocalProfile` |
+| `GET /api/profile` | — | Standalone shared profile, signed-in user's profile, or guest defaults depending on mode |
 | `PATCH /api/profile` | Any nonempty subset of `displayName`, `theme`, `mapDetail`, `mapStyle`, `browserNotifications`, `inferFrequentRoutes`, `transport` | Updated `LocalProfile`; unknown properties and edits to ID/timestamps are rejected |
 | `GET /api/frequent-routes` | — | `FrequentRouteProposal[]` learned from consented local trip analysis; empty while consent is off; no raw traces |
 | `GET /api/places?q=...` | Optional local name query, at most 160 characters | Up to 12 local landmarks or imported OSM road names; this is not a global geocoder |

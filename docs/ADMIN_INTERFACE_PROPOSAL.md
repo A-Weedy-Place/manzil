@@ -1,6 +1,6 @@
 # Admin interface proposal — awaiting owner approval
 
-This document is a discussion draft. **No new admin interface, correction workflow, publication agent or production authorization has been implemented.** The requested localhost dummy accounts only unlock existing screens and demonstrate user/admin identity.
+This document is a discussion draft. **No new admin dashboard, correction/audit workflow or publication agent has been implemented.** The 16 October [environment foundation](ENVIRONMENTS.md) adds Firebase token verification, custom admin claims and protected shared-data mutations in emulator/production modes. The original standalone dummy identities still only unlock local screens and do not secure that shared SQLite API. No production deployment exists.
 
 ## Decisions confirmed by the owner
 
@@ -47,9 +47,9 @@ Reprocessing the same rejected notice revision cannot create a replacement activ
 
 Production permissions must be enforced by the API using verified Firebase identity and a server-managed admin role. Hiding a button or editing browser role state is not authorization. Normal users must not grant themselves admin status. Admin access to shared closures does not imply access to users' private GPS traces.
 
-The development accounts share the current local database, with no multi-user isolation or server authorization. Existing manual closure/source tools remain the pre-existing localhost tools; the two demo roles do not yet restrict those APIs. Dummy login is absent from production builds.
+Standalone dummy development accounts share the SQLite database, with no multi-user isolation or server authorization. In Firebase emulator/production modes, accounts have private records and shared closure/source mutations require verified custom admin claims. An emulator launcher seeds local test accounts; production startup never seeds them. Dummy UI login is absent from production builds.
 
-The latest UI restoration keeps the **Closures** tab and always-visible map **Add restriction** button available to guests as local development tools, alongside direct demo and route block-point controls. **Activity** appears only after sign-in. This does not implement the proposed production role boundary in the table above; that boundary still requires agreement and API enforcement before deployment.
+The UI restoration keeps the **Closures** tab and always-visible map **Add restriction** button visible, alongside direct demo and route block-point controls. **Activity** appears only after sign-in. Standalone tools retain their trusted-local behavior; Firebase modes reject guest/normal-user shared mutations at the API. A separate guest demo sandbox is not implemented. The correction/history/override workflow in this proposal still needs agreement and implementation before automatic agent publication.
 
 ## Suggested delivery order after approval
 

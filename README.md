@@ -1,7 +1,9 @@
 # Manzil منزل
 
+**16 October environment update:** one codebase now supports standalone SQLite development, Firebase Auth/Firestore emulators, and explicitly configured production Firebase/Cloud Run builds. Run `npm.cmd run dev:firebase` for isolated local user/admin accounts and production-style token/ownership checks. **Node 24.12+ and Java 21+ are required for this workflow.** No deployment or paid model activation has occurred. Start with [environment setup and verification](docs/ENVIRONMENTS.md); the deployment procedure will be agreed separately.
 
-**Current update:** English/Urdu interface and voice controls, a target-aware tutorial, guest account screens ready for Firebase, automatic foreground GPS rerouting (including remaining stops), and reduced map redraws. Google Cloud TTS is prepared with server-side ADC, cached audio and bounded usage; enable it only after Cloud configuration. Real Firebase sign-in remains unconnected; localhost development now offers [dummy normal/admin sign-ins](docs/DEV_ACCOUNTS_AND_TOUR.md) for testing personal screens. The [admin dashboard](docs/ADMIN_INTERFACE_PROPOSAL.md) is proposed, not implemented. Core guest planning works locally without Cloud credentials. See [feature/setup guide](docs/BILINGUAL_NAVIGATION_AND_CLOUD.md) and [implementation plan](docs/FEATURE_PLAN_2026-10-15.md).
+
+English/Urdu interface and voice controls, a target-aware tutorial, Firebase-ready accounts, automatic foreground GPS rerouting (including remaining stops), and reduced map redraws are implemented. Google Cloud TTS uses server-side ADC, cached audio and bounded usage; enable it only after Cloud configuration. Firebase SDK authentication and isolated records are wired for emulators/production configuration; a real hosted project is not configured or deployed. Standalone development retains [dummy normal/admin sign-ins](docs/DEV_ACCOUNTS_AND_TOUR.md). The [admin dashboard](docs/ADMIN_INTERFACE_PROPOSAL.md) is proposed, not implemented. Core guest planning works locally without Cloud credentials. See [feature/setup guide](docs/BILINGUAL_NAVIGATION_AND_CLOUD.md) and [environment guide](docs/ENVIRONMENTS.md).
 
 Primary tabs are **Map, Closures, Saved and Profile**, with **Activity** added after sign-in. **Try street detour** and **Demo closures** are directly available in the planner; route results expose **Block a point on this route**, and the map always shows **Add restriction**. Guests see the skippable tutorial on every fresh visit and after sign-out, even if previously completed. Signed-in users retain remembered first-use behavior; everyone can replay it from Help or Profile.
 
@@ -11,7 +13,7 @@ The repository now contains a working **localhost application**, a real Islamaba
 
 ## Run locally
 
-Requires Node.js **22.13+**; verified with 22.20.0. From this repository:
+Requires Node.js **24.12+** for the current Firebase SDKs; Firebase emulator development also requires Java **21+**. The inspected machine has Node 24.11.1 and needs a patch upgrade. From this repository:
 
 ```sh
 npm ci
@@ -52,16 +54,17 @@ Try **Find routes**, then **Block a point on this route** to see a connected det
 7. A persistent local profile, preferences, opt-in browser notifications and separately consented learning/closure alerts for usual recorded journeys.
 8. Route-step preview, foreground GPS guidance, optional voice prompts and recalculation from a fresh position. No background/Google-equivalent navigation claim.
 
-The implemented stack is React/TypeScript/Vite, MapLibre GL JS, OpenFreeMap, a local OSM routing engine, Express and SQLite. The flat vector map needs internet and WebGL but no map API key; it removes POIs/building detail in Clean mode and retains attribution. Google Cloud/Gemini, Firestore, ORS and FCM remain deployment/integration targets. Live traffic, transit routing, crowd verification, automatic learned-road publication and camera avoidance remain on the explicit roadmap. Read the [15 October redesign guide](docs/REDESIGN_2026-10-15.md) for profiles, notifications, navigation and their practical boundaries.
+The implemented stack is React/TypeScript/Vite, MapLibre GL JS, OpenFreeMap, a local OSM routing engine, Express and a shared SQLite/Firestore repository boundary. Firebase emulators exercise the same Firestore/token integration intended for production. The flat vector map needs internet and WebGL but no map API key; it removes POIs/building detail in Clean mode and retains attribution. Live Google Cloud deployment, Gemini interpretation and FCM remain future work. Live traffic, transit routing, crowd verification, automatic learned-road publication and camera avoidance remain on the explicit roadmap. Read the [environment guide](docs/ENVIRONMENTS.md) for current configuration and the [15 October redesign guide](docs/REDESIGN_2026-10-15.md) for historical UI decisions.
 
 ## Validation
 
 ```sh
 npm test
+npm run test:firebase
 npm run build
 ```
 
-The current suite has **149 passing tests across 21 files**, including diverse real-road alternatives, ordered stops with turn/time continuity, actual residential-street detours, precise red-road clipping/open-junction regression, snapshot agreement, geometry-cache invalidation/isolation, efficient worker updates, demo ownership, topology/access/direction, unavailable routes, persistence, revisions, source deduplication/outbox, consented journey inference/alerts, notification delivery guards, navigation failure/progression logic, restored UI controls and guest/sign-in/sign-out tutorial behavior. Type checking and the production build pass. Browser evidence and verification boundaries are in the implementation status. Real-device GPS, OS notification delivery and successful live X retrieval remain unverified.
+Verification totals **162 passing tests**: 155 standard cases plus seven real Auth/Firestore emulator cases across 24 files. The normal command intentionally skips those seven without emulator hosts; run `test:firebase` to execute them. Coverage includes the retained routing/API/UI regressions plus user isolation, admin access, large GPS chunks/retention, concurrent revisions, shared speech accounting and compiled API/worker startup. Standalone and cloud-configured builds pass; the cloud build used public placeholder configuration only. Production dependencies audit clean; seven development-tool advisories remain in the Firebase CLI dependency tree. Browser evidence and verification boundaries are in the implementation status. Live Cloud deployment, real-device GPS, OS notification delivery and successful live X retrieval remain unverified.
 
 Use the prominent top clock to view closures and routes at **Now** or a chosen PKT date/time. Add up to five intermediate stops. Open **Demo closures** for six test scenarios. See [map time and stops](docs/MAP_TIME_AND_STOPS.md) and [demo guide](docs/DEMOS.md). Map browsing is worldwide; the routing graph remains bounded to central Islamabad.
 

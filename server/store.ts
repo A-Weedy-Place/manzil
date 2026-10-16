@@ -10,6 +10,9 @@ const PROFILE_URL = 'https://x.com/shaheryarhassan';
 
 /** A single-user, local database. All SQL values are bound parameters. */
 export class Store {
+  readonly backend = 'sqlite' as const;
+  forUser(_uid: string | null) { return this; }
+  routingSnapshot(includeUnpublished = false) { return { closures: includeUnpublished ? this.list<Closure>('closure', 2000) : this.routingClosures(), revision: this.eventRevision }; }
   readonly db: DatabaseSync;
   constructor(path: string) {
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
@@ -38,6 +41,7 @@ export class Store {
       CREATE TABLE IF NOT EXISTS source_runs (
         id TEXT PRIMARY KEY, data TEXT NOT NULL, created_at TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS speech_cache (key TEXT PRIMARY KEY, audio BLOB NOT NULL, accessed_at INTEGER NOT NULL);
     `);
     if (this.meta<number>('eventRevision') === undefined) this.setMeta('eventRevision', 0);
     this.transaction(() => {
@@ -205,5 +209,14 @@ export class Store {
   }
   addAlertOnce(id: string, alert: Omit<Alert, 'id'>) {
     if (!this.get<Alert>('alert', id)) this.put('alert', { ...alert, id });
+  }
+  speechUsage(month: string) { return this.meta<number>(`speech:${month}`) ?? 0; }
+  reserveSpeech(month: string, characters: number, limit: number) {
+    this.transaction(() => { const used = this.speechUsage(month); if (used + characters > limit) throw new HttpError(429, 'The configured monthly voice allowance has been reached.'); this.setMeta(`speech:${month}`, used + characters); });
+  }
+  cachedSpeech(key: string) { const row = this.db.prepare('SELECT audio FROM speech_cache WHERE key=?').get(key); return row ? Buffer.from(row.audio as Uint8Array) : undefined; }
+  cacheSpeech(key: string, audio: Buffer) {
+    this.db.prepare('INSERT OR REPLACE INTO speech_cache(key,audio,accessed_at) VALUES(?,?,?)').run(key, audio, Date.now());
+    this.db.exec('DELETE FROM speech_cache WHERE key NOT IN (SELECT key FROM speech_cache ORDER BY accessed_at DESC LIMIT 256)');
   }
 }

@@ -1,9 +1,9 @@
 import 'dotenv/config';
-import { resolve } from 'node:path';
-import { Store } from '../server/store.js';
+import { bootstrap } from '../server/bootstrap.js';
 import { SourceService } from '../server/source.js';
 
-const store = new Store(resolve(process.env.MANZIL_DB_PATH ?? resolve(process.env.MANZIL_DATA_DIR ?? 'data', 'manzil.sqlite')));
+const { config, store } = bootstrap();
+if (config.mode === 'production') throw new Error('Use the authenticated worker for production collection.');
 try {
   const status = await new SourceService(store).check();
   console.log(JSON.stringify({ state: status.state, message: status.message, lastAttemptAt: status.lastAttemptAt,

@@ -1,0 +1,10 @@
+import 'dotenv/config';
+import { readConfig } from '../server/config.js';
+import { firebaseServices } from '../server/firebase.js';
+const config = readConfig();
+if (config.mode === 'local') throw new Error('Use Firebase emulator or explicitly configured production mode.');
+const uid = process.argv[2];
+if (!uid || uid.length > 128) throw new Error('Provide the Firebase UID of an existing user.');
+const { auth } = firebaseServices(config.projectId), user = await auth.getUser(uid);
+await auth.setCustomUserClaims(uid, { ...user.customClaims, admin: true });
+console.log('Administrator claim set. Sign out and sign in again to refresh the token.');

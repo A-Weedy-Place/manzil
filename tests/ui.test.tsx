@@ -28,15 +28,16 @@ describe('bilingual first-use and account surfaces', () => {
     fireEvent.click(screen.getByText('Continue as guest', { selector: 'button' }));
     expect(close).toHaveBeenCalled();
   });
-  it('signs in the selected normal/admin dummy account without persisting a password', () => {
+  it('signs in the selected normal/admin dummy account without persisting a password', async () => {
     const close = vi.fn(); render(<AccountPanel onClose={close} />);
     fireEvent.click(screen.getByRole('button', { name: /Normal user/ }));
     fireEvent.submit(screen.getByRole('form', { name: 'Sign in' }));
     expect(getAuthSession().user).toMatchObject({ uid: 'dev-user', role: 'user' });
     expect(sessionStorage.getItem('manzil-dev-session')).toBe('dev-user');
+    await waitFor(() => expect(close).toHaveBeenCalledOnce());
     signOut(); fireEvent.click(screen.getByRole('button', { name: /Admin user/ }));
     fireEvent.submit(screen.getByRole('form', { name: 'Sign in' }));
-    expect(getAuthSession().user).toMatchObject({ uid: 'dev-admin', role: 'admin' }); expect(close).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(getAuthSession().user).toMatchObject({ uid: 'dev-admin', role: 'admin' })); await waitFor(() => expect(close).toHaveBeenCalledTimes(2));
     expect(JSON.stringify(sessionStorage)).not.toContain('ManzilAdmin123!');
   });
   it('renders Urdu account and tour copy, remembers skipping and never asks for GPS', async () => {
@@ -122,7 +123,7 @@ describe('navigation audio lifetime', () => {
     vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(value => { resolve = value; })));
     const audio = vi.fn(); vi.stubGlobal('Audio', audio);
     const speaker = new NavigationSpeaker(); const request = speaker.speak({ kind: 'test' }, 'ur');
-    speaker.cancel(); resolve(new Response(new Blob(['fixture'], { type: 'audio/mpeg' }))); await request;
+    speaker.cancel(); await Promise.resolve(); resolve(new Response(new Blob(['fixture'], { type: 'audio/mpeg' }))); await request;
     expect(audio).not.toHaveBeenCalled();
   });
 });

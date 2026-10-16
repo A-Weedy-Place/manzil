@@ -1,5 +1,7 @@
 # Local development
 
+**16 October:** the recommended production-parity workflow is now `npm.cmd run dev:firebase`, with local Auth/Firestore emulators, seeded accounts and user-isolated records. Node **24.12+** and Java **21+** are required; the project Firebase CLI is installed as a development dependency. Plain `npm.cmd run dev` retains the standalone shared SQLite mode described below. See [environment guide](ENVIRONMENTS.md) for switching modes, test ports, production configuration and verification limits. No deployment has occurred.
+
 For the local dummy normal/admin credentials and updated spotlight tour, see [Development accounts and tour](DEV_ACCOUNTS_AND_TOUR.md). The admin dashboard is still a [proposal for discussion](ADMIN_INTERFACE_PROPOSAL.md), not an implemented feature.
 
 English/Urdu controls, guest account screens, onboarding and automatic GPS recovery are described in [Bilingual navigation and Cloud speech](BILINGUAL_NAVIGATION_AND_CLOUD.md). Core planning still needs no Cloud credentials. Optional speech uses server-side ADC and `TTS_ENABLED=true`; Firebase and public deployment remain future work. In PowerShell, use `npm.cmd` if execution policy blocks `npm.ps1`.

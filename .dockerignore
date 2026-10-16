@@ -1,0 +1,12 @@
+*
+!package.json
+!package-lock.json
+!server/
+!server/**
+!shared/
+!shared/**
+!scripts/
+!scripts/build-server.mjs
+!assets/
+!assets/routing/
+!assets/routing/**

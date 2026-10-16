@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { Commute, Coordinate, FrequentRouteProposal, Trip } from '../shared/types.js';
 import { distanceMeters, summarizeTrace } from './geometry.js';
-import { Store } from './store.js';
+import type { Repository } from './repository.js';
 
 const PKT = 5 * 3600_000;
 interface Sample { origin: Coordinate; destination: Coordinate; minutes: number; day: number; date: string; startedAt: string; endedAt: string }
@@ -35,10 +35,10 @@ function representative(samples: Sample[], key: 'origin' | 'destination'): Coord
 }
 
 /** Consent-gated endpoint/time patterns, never inferred home/work labels or road edits. */
-export function frequentRouteProposals(store: Store, now = Date.now()): FrequentRouteProposal[] {
-  if (!store.profile().inferFrequentRoutes) return [];
+export async function frequentRouteProposals(store: Repository, now = Date.now()): Promise<FrequentRouteProposal[]> {
+  if (!(await store.profile()).inferFrequentRoutes) return [];
   const samples: Sample[] = [];
-  for (const trip of store.recentInferenceTrips(now)) {
+  for (const trip of await store.recentInferenceTrips(now)) {
     const sample = usableSample(trip); if (sample) samples.push(sample);
   }
   samples.sort((a, b) => a.startedAt.localeCompare(b.startedAt));

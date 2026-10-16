@@ -2,7 +2,7 @@ import type { Closure, ClosureDraft, Coordinate, Place } from '../shared/types';
 import { drawingToPolygon } from './geometry';
 import { HttpError } from './errors';
 import type { RoutingGraph } from './routing/graph';
-import type { Store } from './store';
+import type { Repository } from './repository';
 
 export interface StreetRouteDemo {
   id: string; title: string; origin: Place; destination: Place;
@@ -48,13 +48,13 @@ export function streetRouteDemo(graph: RoutingGraph, at: string): StreetRouteDem
 }
 
 /** Explicit loading affects only this owned synthetic closure. */
-export function loadStreetRouteDemo(store: Store, graph: RoutingGraph, at: string): StreetRouteDemo {
+export async function loadStreetRouteDemo(store: Repository, graph: RoutingGraph, at: string): Promise<StreetRouteDemo> {
   const demo = streetRouteDemo(graph, at);
-  const previousId = store.meta<string>(META_KEY);
-  const candidate = previousId ? store.get<Closure>('closure', previousId) : undefined;
+  const previousId = await store.meta<string>(META_KEY);
+  const candidate = previousId ? await store.get<Closure>('closure', previousId) : undefined;
   const previous = candidate?.title.startsWith('Demo · ') && candidate.description.includes(TAG) ? candidate : undefined;
   const sameDraft = previous && Object.entries(demo.closure).every(([key, value]) => JSON.stringify(previous[key as keyof ClosureDraft]) === JSON.stringify(value));
-  const saved = sameDraft ? previous : store.saveClosure(demo.closure, previous?.id, previous?.revision);
-  store.setMeta(META_KEY, saved.id);
+  const saved = sameDraft ? previous : await store.saveClosure(demo.closure, previous?.id, previous?.revision);
+  await store.setMeta(META_KEY, saved.id);
   return { ...demo, closureId: saved.id };
 }

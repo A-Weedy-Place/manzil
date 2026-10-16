@@ -1,5 +1,7 @@
 # Manzil: Final Architecture and Implementation Plan
 
+**16 October update:** local/production configuration and Auth/Firestore adapters are now implemented, with standalone SQLite retained. The same API/domain code runs against local emulators or explicitly configured cloud services; verified tokens, user-owned records, admin mutation permissions, durable speech accounting, worker entry points and container/Hosting build files are present. **Nothing is deployed and Gemini extraction remains unimplemented.** The [environment guide](docs/ENVIRONMENTS.md) is authoritative for current behavior. Earlier provider/model/Google-sign-in/source selections below remain historical proposals and must not override current user decisions.
+
 Original decision: 14 October 2026, Asia/Karachi; two developers aiming for 17 October. **Current implementation, updated 15 October:** localhost only; MapLibre GL JS/OpenFreeMap flat vector map, a real local OSM road graph, three-route comparisons, Express/SQLite, local profile/preferences, consented journey alerts and approximate foreground navigation. X public collection attempts run every 15 minutes; Gemini comes later. Read [the redesign guide](docs/REDESIGN_2026-10-15.md), [implementation status](docs/IMPLEMENTATION_STATUS.md) and [retained context](PROJECT_CONTEXT.md). The Leaflet/MapTiler rendering sections below are superseded research history. Cloud/ORS/Firebase sections remain future integration proposals, not services currently running.
 
 ## 1 The decision in one page

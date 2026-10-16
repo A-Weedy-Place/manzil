@@ -1,7 +1,7 @@
 import type { Closure, ClosureDraft, Coordinate } from '../shared/types';
 import { drawingToPolygon } from './geometry';
 import { HttpError } from './errors';
-import type { Store } from './store';
+import type { Repository } from './repository';
 import type { RoutingGraph } from './routing/graph';
 import { distanceMeters } from './routing/graph';
 
@@ -65,30 +65,30 @@ function schedule(timing: Timing, at: string) {
   const offsets = timing === 'active' ? [-30, 120] : timing === 'future' ? [45, 150] : [-120, -60];
   return { startsAt: new Date(Date.parse(at) + offsets[0] * 60_000).toISOString(), endsAt: new Date(Date.parse(at) + offsets[1] * 60_000).toISOString() };
 }
-function ownedClosure(store: Store, definition: Definition): Closure | undefined {
-  const closureId = store.meta<string>(metaKey(definition.id));
-  const closure = closureId ? store.get<Closure>('closure', closureId) : undefined;
+async function ownedClosure(store: Repository, definition: Definition): Promise<Closure | undefined> {
+  const closureId = await store.meta<string>(metaKey(definition.id));
+  const closure = closureId ? await store.get<Closure>('closure', closureId) : undefined;
   // Never cancel an ordinary record merely because it has a similar road/title.
   return closure?.title.startsWith('Demo · ') && closure.description.includes(tag(definition.id)) ? closure : undefined;
 }
-export function demoCatalogue(store: Store, graph: RoutingGraph, at: string): DemoCatalogue {
-  return { at, scenarios: definitions.map(definition => {
-    const closure = ownedClosure(store, definition), period = closure?.status === 'published' ? closure : schedule(definition.timing, at);
+export async function demoCatalogue(store: Repository, graph: RoutingGraph, at: string): Promise<DemoCatalogue> {
+  return { at, scenarios: await Promise.all(definitions.map(async definition => {
+    const closure = await ownedClosure(store, definition), period = closure?.status === 'published' ? closure : schedule(definition.timing, at);
     return { id: definition.id, title: definition.title, description: `Synthetic ${definition.timing} road closure for local testing.`,
       enabled: closure?.status === 'published', closureIds: closure ? [closure.id] : [], coordinates: roadCoordinates(graph, definition),
       timing: definition.timing, startsAt: period.startsAt, endsAt: period.endsAt ?? '' };
-  }) };
+  })) };
 }
-export function toggleDemo(store: Store, graph: RoutingGraph, scenario: string, at: string, enabled: boolean): DemoCatalogue {
+export async function toggleDemo(store: Repository, graph: RoutingGraph, scenario: string, at: string, enabled: boolean): Promise<DemoCatalogue> {
   const definition = definitions.find(item => item.id === scenario);
   if (!definition) throw new HttpError(400, 'Unknown demo scenario.');
-  const previous = ownedClosure(store, definition);
+  const previous = await ownedClosure(store, definition);
   if (enabled && previous?.status !== 'published') {
     const coordinates = roadCoordinates(graph, definition), drawing = { kind: 'line' as const, coordinates, widthMeters: 60 };
     const draft: ClosureDraft = { title: definition.title, description: `${tag(scenario)} Synthetic demo only; not a real traffic advisory.`, reason: 'other', status: 'published',
       ...schedule(definition.timing, at), drawing, geometry: drawingToPolygon(drawing) };
-    const saved = store.saveClosure(draft, previous?.id, previous?.revision);
-    store.setMeta(metaKey(scenario), saved.id);
-  } else if (!enabled && previous?.status === 'published') store.saveClosure({ ...previous, status: 'cancelled' }, previous.id, previous.revision);
+    const saved = await store.saveClosure(draft, previous?.id, previous?.revision);
+    await store.setMeta(metaKey(scenario), saved.id);
+  } else if (!enabled && previous?.status === 'published') await store.saveClosure({ ...previous, status: 'cancelled' }, previous.id, previous.revision);
   return demoCatalogue(store, graph, at);
 }

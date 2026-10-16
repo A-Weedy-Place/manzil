@@ -1,5 +1,7 @@
 # Source ingestion implementation
 
+**16 October:** collection/domain code now accepts the shared repository interface. Standalone uses SQLite/timers; recommended emulator development uses a local authenticated worker/runner, and production configuration uses a separately invoked private worker with durable Firestore leases/notices/revisions. Source/notice/outbox mutations require verified admin access in Firebase modes. The container currently excludes Chromium, source collection defaults off in the new modes, live X access is still unverified, and Gemini extraction remains unimplemented. No cloud worker or Scheduler job has been deployed. [Environment guide](ENVIRONMENTS.md).
+
 The implemented source is the signed-out public profile **[Champ Alerts on X](https://x.com/shaheryarhassan)**. This is a best-effort, zero-paid-API browser collector. **It cannot promise all posts or continuous real-time coverage.** X may show a login wall, error, rate limit, unsupported-browser page, or incomplete history to an ordinary visitor. The app displays that state. A failed check never means there are no closures.
 
 ## What runs

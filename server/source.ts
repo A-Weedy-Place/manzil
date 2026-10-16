@@ -3,7 +3,7 @@ import { existsSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { chromium, type Browser, type Page } from 'playwright-core';
 import type { SourceStatus } from '../shared/types.js';
-import { Store } from './store.js';
+import type { Repository } from './repository.js';
 
 export const PROFILE_URL = 'https://x.com/shaheryarhassan';
 const AUTHOR = 'shaheryarhassan';
@@ -139,24 +139,24 @@ export async function collectPublicPosts(): Promise<CollectionResult> {
 export class SourceService {
   private running: Promise<SourceStatus> | null = null;
   private timer?: ReturnType<typeof setInterval>;
-  constructor(private store: Store, private collector: Collector = collectPublicPosts) {}
-  settings(enabled: boolean): SourceStatus {
+  constructor(private store: Repository, private collector: Collector = collectPublicPosts) {}
+  async settings(enabled: boolean): Promise<SourceStatus> {
     return this.store.updateSourceStatus({ enabled, intervalMinutes: 15,
       state: enabled ? (this.running ? 'checking' : 'idle') : 'disabled',
       nextCheckAt: enabled ? new Date().toISOString() : null,
       message: enabled ? 'Automatic signed-out public checks enabled. Coverage remains partial.' : 'Automatic source checks disabled. Manual import is available.' });
   }
-  due(now = Date.now()) {
-    const status = this.store.sourceStatus();
-    const abandonedCheck = status.state === 'checking' && (this.store.meta<number>('sourceLeaseUntil') ?? 0) <= now;
+  async due(now = Date.now()) {
+    const status = await this.store.sourceStatus();
+    const abandonedCheck = status.state === 'checking' && ((await this.store.meta<number>('sourceLeaseUntil')) ?? 0) <= now;
     return status.enabled && (abandonedCheck || !status.nextCheckAt || Date.parse(status.nextCheckAt) <= now);
   }
   start() {
     if (this.timer) return;
     // API startup never waits for a browser. A missed deadline is caught up once after restart.
-    this.timer = setInterval(() => { if (this.due()) void this.check().catch(() => {}); }, 30_000);
+    this.timer = setInterval(() => { void this.due().then(due => due ? this.check() : undefined).catch(() => {}); }, 30_000);
     this.timer.unref();
-    if (this.due()) setImmediate(() => { void this.check().catch(() => {}); });
+    setImmediate(() => { void this.due().then(due => due ? this.check() : undefined).catch(() => {}); });
   }
   stop() { if (this.timer) clearInterval(this.timer); this.timer = undefined; }
   check(): Promise<SourceStatus> {
@@ -166,8 +166,8 @@ export class SourceService {
   }
   private async run(): Promise<SourceStatus> {
     const now = Date.now();
-    if (!this.store.acquireSourceLease(now)) return this.store.sourceStatus();
-    this.store.updateSourceStatus({ lastAttemptAt: new Date(now).toISOString(), state: 'checking',
+    if (!await this.store.acquireSourceLease(now)) return this.store.sourceStatus();
+    await this.store.updateSourceStatus({ lastAttemptAt: new Date(now).toISOString(), state: 'checking',
       nextCheckAt: new Date(now + INTERVAL_MS).toISOString(), message: 'Checking the signed-out public profile. Coverage is partial.' });
     try {
       const result = await this.collector();
@@ -178,21 +178,21 @@ export class SourceService {
         const input = { source: 'x' as const, ...canonical, text: post.text.slice(0, 20_000), publishedAt: new Date(post.publishedAt).toISOString(),
           mediaUrls: post.mediaUrls.filter(value => /^https:\/\/pbs\.twimg\.com\/(?:media|ext_tw_video_thumb|amplify_video_thumb)\//.test(value)).slice(0, 4),
           contentState: post.contentState ?? (!post.text.trim() ? 'media_only' : 'text') };
-        if (this.store.upsertNotice({ ...input, contentHash: contentHash(input) }).changed) changed++;
+        if ((await this.store.upsertNotice({ ...input, contentHash: contentHash(input) })).changed) changed++;
       }
-      this.store.setMeta('sourceCoverage', { checkedAt: new Date(now).toISOString(), observedCount: result.observedCount,
+      await this.store.setMeta('sourceCoverage', { checkedAt: new Date(now).toISOString(), observedCount: result.observedCount,
         latestObservedId: result.posts.map(post => post.sourceId).sort((a, b) => a.length - b.length || a.localeCompare(b)).at(-1) ?? null,
         skipped, changed, completeHistory: false });
-      const current = this.store.sourceStatus();
-      const status = this.store.updateSourceStatus({ state: current.enabled ? result.state : 'disabled',
+      const current = await this.store.sourceStatus();
+      const status = await this.store.updateSourceStatus({ state: current.enabled ? result.state : 'disabled',
         lastSuccessAt: result.posts.length ? new Date().toISOString() : current.lastSuccessAt,
         message: `${result.message} ${changed} new or edited notices queued; ${skipped} outside the date/author window skipped.` });
-      this.store.addSourceRun({ startedAt: new Date(now).toISOString(), finishedAt: new Date().toISOString(),
+      await this.store.addSourceRun({ startedAt: new Date(now).toISOString(), finishedAt: new Date().toISOString(),
         state: status.state, observedCount: result.observedCount, changed, skipped, coverage: 'partial' });
       return status;
     } catch {
-      return this.store.updateSourceStatus({ state: this.store.sourceStatus().enabled ? 'error' : 'disabled',
+      return this.store.updateSourceStatus({ state: (await this.store.sourceStatus()).enabled ? 'error' : 'disabled',
         message: 'Source collection failed. Existing data is retained; the next scheduled check will retry. Manual import remains available.' });
-    } finally { this.store.releaseSourceLease(); }
+    } finally { await this.store.releaseSourceLease(); }
   }
 }

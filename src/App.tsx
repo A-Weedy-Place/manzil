@@ -44,6 +44,7 @@ export default function App() {
   const [tourOpen, setTourOpen] = useState(() => !user || needsTour());
   useEffect(() => { if (!user) setTourOpen(true); }, [user]);
   const visitedStops = useRef(0);
+  const previousAccount = useRef(user?.uid);
   useEffect(() => { document.documentElement.lang = language; document.documentElement.dir = language === 'ur' ? 'rtl' : 'ltr'; }, [language]);
   const [state, setState] = useState<AppState | null>(null);
   const [view, setView] = useState<View>(window.location.hash === '#alerts' ? 'alerts' : 'journey');
@@ -109,7 +110,17 @@ export default function App() {
     try { const next = await api<AppState>('/state'); if (sequence !== reloadSequence.current) return; lastLoadedState.current = next; setState(current => current && current.closures.length === next.closures.length && current.closures.every((item, index) => item.id === next.closures[index].id && item.revision === next.closures[index].revision) ? JSON.stringify(current) === JSON.stringify(next) ? current : { ...next, closures: current.closures } : next); setOnline(true); setStartupError(''); }
     catch (e) { if (sequence !== reloadSequence.current) return; setOnline(false); setStartupError(e instanceof Error ? e.message : 'The local API is unavailable. Start the server and retry.'); throw e; }
   }, []);
-  useEffect(() => { reload().catch(() => {}); const timer = setInterval(() => reload().catch(() => {}), 20000); return () => clearInterval(timer); }, [reload]);
+  useEffect(() => {
+    if (previousAccount.current && previousAccount.current !== user?.uid) {
+      planSequence.current++; setPlan(null); setPlanWanted(false); setSelectedRouteId(null);
+      setOrigin(EXAMPLE_ORIGIN); setDestination(EXAMPLE_DESTINATION); setWaypoints([]); setNavigationPosition(null); setFocus(null); setView('journey');
+    }
+    previousAccount.current = user?.uid;
+    setState(null); lastLoadedState.current = null; setRecordedPoints([]); setHistoryTrace([]);
+    reload().catch(() => {});
+    const timer = setInterval(() => { if (!document.hidden) void reload().catch(() => {}); }, 20000);
+    return () => { clearInterval(timer); reloadSequence.current++; };
+  }, [reload, user?.uid]);
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(''), 6500); return () => clearTimeout(timer); }, [toast]);
   useEffect(() => { panelRef.current?.scrollTo({ top: 0 }); }, [view, editorOpen]);
   useEffect(() => {

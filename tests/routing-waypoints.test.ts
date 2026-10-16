@@ -24,7 +24,7 @@ const event = (overrides: Partial<Closure> = {}): Closure => ({ id: 'test-later-
   geometry: { type: 'Polygon', coordinates: [[[73.014, 33.6798], [73.016, 33.6798], [73.016, 33.6802], [73.014, 33.6802], [73.014, 33.6798]]] }, ...overrides });
 
 describe('ordered intermediate stops', () => {
-  it('visits every stop in the requested order in one connected journey', () => {
+  it('visits every stop in the requested order in one connected journey', async () => {
     const router = new LocalRouter(graph([[0, 1, 20], [0, 3, 40], [3, 1, 40], [1, 2, 20]]));
     const result = router.plan(request([place(3), place(1)]), [], 0);
     expect(result.options[0].geometry.coordinates).toEqual([coordinates[0], coordinates[3], coordinates[1], coordinates[2]]);
@@ -33,7 +33,7 @@ describe('ordered intermediate stops', () => {
     expect(result.options[0].steps.reduce((sum, step) => sum + step.durationSeconds, 0)).toBe(106);
   });
 
-  it('carries elapsed travel time and turn delay into closure checks after a stop', () => {
+  it('carries elapsed travel time and turn delay into closure checks after a stop', async () => {
     const router = new LocalRouter(graph([[0, 1, 90], [1, 2, 60], [1, 3, 90], [3, 4, 90], [4, 2, 90]]));
     const closure = event(), result = router.plan(request([place(1)]), [closure], 1);
     expect(result.baseline?.durationSeconds).toBe(153);
@@ -48,7 +48,7 @@ describe('ordered intermediate stops', () => {
     }
   });
 
-  it('allows a later leg once its closure has ended before the traversal margin', () => {
+  it('allows a later leg once its closure has ended before the traversal margin', async () => {
     const router = new LocalRouter(graph([[0, 1, 90], [1, 2, 60]]));
     const result = router.plan(request([place(1)]), [event({ startsAt: '2027-01-15T10:00:00Z', endsAt: '2027-01-15T11:01:20Z' })], 1);
     expect(result.conflicts).toHaveLength(0);
@@ -56,7 +56,7 @@ describe('ordered intermediate stops', () => {
     expect(result.options[0].durationSeconds).toBe(153);
   });
 
-  it('preserves the incoming edge at a stop and finds another legal approach', () => {
+  it('preserves the incoming edge at a stop and finds another legal approach', async () => {
     const fixture = graph([[0, 1, 10], [0, 3, 20], [3, 1, 20], [1, 2, 10]]);
     fixture.restrictions = [{ via: 1, fromWay: '0', toWay: '3', only: false, uTurn: false }];
     const result = new LocalRouter(fixture).plan(request([place(1)]), [], 0);
@@ -65,7 +65,7 @@ describe('ordered intermediate stops', () => {
     expect(result.options[0].durationSeconds).toBe(56);
   });
 
-  it('returns unavailable when the only exit from a required stop is prohibited', () => {
+  it('returns unavailable when the only exit from a required stop is prohibited', async () => {
     const fixture = graph([[0, 1, 10], [1, 2, 10]]);
     fixture.restrictions = [{ via: 1, fromWay: '0', toWay: '1', only: false, uTurn: false }];
     const result = new LocalRouter(fixture).plan(request([place(1)]), [], 0);
@@ -74,14 +74,14 @@ describe('ordered intermediate stops', () => {
     expect(result.unavailableReason).toMatch(/No connected public car route/);
   });
 
-  it('handles consecutive stops on the same snapped node without creating fake edges', () => {
+  it('handles consecutive stops on the same snapped node without creating fake edges', async () => {
     const result = new LocalRouter(graph([[0, 1, 10], [1, 2, 10]])).plan(request([place(0), place(1), place(1)]), [], 0);
     expect(result.options[0].geometry.coordinates).toEqual([coordinates[0], coordinates[1], coordinates[2]]);
     expect(result.options[0].snappedWaypoints).toEqual([coordinates[0], coordinates[1], coordinates[1]]);
     expect(result.options[0].durationSeconds).toBe(23);
   });
 
-  it('returns unavailable for an unsupported or disconnected intermediate stop', () => {
+  it('returns unavailable for an unsupported or disconnected intermediate stop', async () => {
     const router = new LocalRouter(graph([[0, 1, 10], [1, 2, 10], [3, 4, 10]]));
     expect(router.plan(request([place(3)]), [], 0).options).toHaveLength(0);
     const outside = router.plan(request([{ name: 'Outside', coordinate: [74, 34] }]), [], 0);
@@ -90,7 +90,7 @@ describe('ordered intermediate stops', () => {
     expect(distant.options).toHaveLength(0); expect(distant.unavailableReason).toMatch(/within 220 metres/);
   });
 
-  it('validates at most five stops and retains them in saved-commute inputs', () => {
+  it('validates at most five stops and retains them in saved-commute inputs', async () => {
     expect(planSchema.parse(request([place(1)] )).waypoints).toEqual([place(1)]);
     expect(planSchema.safeParse(request(Array.from({ length: 5 }, () => place(1)))).success).toBe(true);
     expect(planSchema.safeParse(request(Array.from({ length: 6 }, () => place(1)))).success).toBe(false);
@@ -100,19 +100,19 @@ describe('ordered intermediate stops', () => {
     expect(commuteSchema.safeParse({ ...commute, waypoints: Array.from({ length: 6 }, () => place(1)) }).success).toBe(false);
   });
 
-  it('passes saved stops through every recurring-commute check', () => {
+  it('passes saved stops through every recurring-commute check', async () => {
     const store = new Store(':memory:');
     try {
       const commute: Commute = { id: 'with-stop', name: 'School then office', origin: place(0), destination: place(2), waypoints: [place(1)],
         days: [5], departureTime: '16:00', enabled: true, createdAt: departureAt, updatedAt: departureAt };
       const empty: PlanResponse = { options: [], baseline: null, conflicts: [], warnings: [], evaluatedAt: departureAt, graphVersion: 'test', eventRevision: 0, source: 'local-osm' };
       let planned: PlanRequest | undefined;
-      checkCommute(store, commute, (input) => { planned = input; return empty; }, Date.parse(departureAt));
+      (await checkCommute(store, commute, (input) => { planned = input; return empty; }, Date.parse(departureAt)));
       expect(planned).toMatchObject({ origin: place(0), destination: place(2), waypoints: [place(1)] });
     } finally { store.close(); }
   });
 
-  it('reports nearby scheduled closures on the original route without marking it blocked before traversal', () => {
+  it('reports nearby scheduled closures on the original route without marking it blocked before traversal', async () => {
     const router = new LocalRouter(graph([[0, 1, 90], [1, 2, 60]]));
     const future = event({ startsAt: '2027-01-15T11:30:00Z' });
     const farFuture = event({ id: 'beyond-window', startsAt: '2027-01-17T11:30:00Z', endsAt: null });
@@ -123,7 +123,7 @@ describe('ordered intermediate stops', () => {
 });
 
 describe('public street detours', () => {
-  it('uses connected residential streets when a primary road is blocked, while excluding private streets', () => {
+  it('uses connected residential streets when a primary road is blocked, while excluding private streets', async () => {
     const node = (index: number) => ({ type: 'node' as const, id: index + 1, lon: coordinates[index][0], lat: coordinates[index][1] });
     const osm: OsmDocument = { elements: [0, 1, 2, 3, 4].map(node).concat() };
     osm.elements.push(

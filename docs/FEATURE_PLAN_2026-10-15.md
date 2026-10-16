@@ -1,5 +1,7 @@
 # Bilingual journeys and Google Cloud speech
 
+**16 October follow-up:** the owner authorized [local/production environment support](ENVIRONMENTS.md). Firebase SDK authentication, server token/admin enforcement and user-scoped Firestore storage now exist for emulator/production configuration, alongside standalone SQLite. Hosted project setup/live deployment and Gemini extraction remain future work. This supersedes earlier statements below that Firebase must stay entirely disconnected; no admin correction dashboard has been added.
+
 Owner-authorized follow-up: explicit dummy normal/admin login is now permitted for localhost development only. The admin dashboard itself remains a discussion draft: [admin proposal](ADMIN_INTERFACE_PROPOSAL.md). See [dev accounts/tour](DEV_ACCOUNTS_AND_TOUR.md) for the actual local behavior; real Firebase identity is still deferred.
 
 Approved direction: English/Urdu interface and speech; guests may plan and navigate; Firebase authentication will be connected later. Google Cloud is the eventual deployment target, but this change does not deploy or publish the project.

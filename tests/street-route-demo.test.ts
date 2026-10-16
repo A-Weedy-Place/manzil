@@ -20,7 +20,7 @@ function createStore() { const store = new Store(':memory:'); cleanup.push(() =>
 const segmentKey = (a: number[], b: number[]) => `${a.join(',')}:${b.join(',')}`;
 
 describe('real F-8 residential street detour demo', () => {
-  it('reroutes a blocked Park Road through original OSM-tagged residential streets', () => {
+  it('reroutes a blocked Park Road through original OSM-tagged residential streets', async () => {
     const demo = streetRouteDemo(graph, at);
     const request = { origin: demo.origin, destination: demo.destination, departureAt: at, compareDepartures: false };
     const direct = planJourney(request, [], 0).baseline!;
@@ -52,31 +52,31 @@ describe('real F-8 residential street detour demo', () => {
     expect(residential.size).toBeGreaterThanOrEqual(2);
   });
 
-  it('does not disable other demos or ordinary closures, and repeated loads do not duplicate the owned fixture', () => {
+  it('does not disable other demos or ordinary closures, and repeated loads do not duplicate the owned fixture', async () => {
     const store = createStore();
     const ordinary: ClosureDraft = { ...streetRouteDemo(graph, at).closure, title: 'Ordinary user closure', description: 'Preserve ordinary changes',
       drawing: undefined, geometry: { type: 'Polygon', coordinates: [[[73.08, 33.7], [73.081, 33.7], [73.081, 33.701], [73.08, 33.7]]] } };
     const original = store.saveClosure(ordinary);
     const otherDemo = store.saveClosure({ ...ordinary, title: 'Demo · Existing scenario', description: '[manzil-demo:v1:other] Existing unrelated demo' });
-    const first = loadStreetRouteDemo(store, graph, at);
+    const first = (await loadStreetRouteDemo(store, graph, at));
     const revision = store.eventRevision;
-    const repeat = loadStreetRouteDemo(store, graph, at);
+    const repeat = (await loadStreetRouteDemo(store, graph, at));
     expect(repeat).toEqual(first); expect(store.eventRevision).toBe(revision);
     expect(store.list('closure')).toHaveLength(3);
-    const moved = loadStreetRouteDemo(store, graph, '2027-01-16T11:00:00.000Z');
+    const moved = (await loadStreetRouteDemo(store, graph, '2027-01-16T11:00:00.000Z'));
     expect(moved.closureId).toBe(first.closureId); expect(store.list('closure')).toHaveLength(3);
     expect(store.get('closure', original.id)).toEqual(original);
     expect(store.get('closure', otherDemo.id)).toEqual(otherDemo);
     const closure = store.get<Closure>('closure', first.closureId!)!;
     store.saveClosure({ ...closure, status: 'cancelled' }, closure.id, closure.revision);
-    expect(loadStreetRouteDemo(store, graph, at).closureId).toBe(first.closureId);
+    expect((await loadStreetRouteDemo(store, graph, at)).closureId).toBe(first.closureId);
     expect(store.get<Closure>('closure', first.closureId!)!.status).toBe('published');
   });
 
-  it('still uses the residential detour with all six existing demo scenarios enabled', () => {
+  it('still uses the residential detour with all six existing demo scenarios enabled', async () => {
     const store = createStore();
-    for (const scenario of demoCatalogue(store, graph, at).scenarios) toggleDemo(store, graph, scenario.id, at, true);
-    const demo = loadStreetRouteDemo(store, graph, at);
+    for (const scenario of (await demoCatalogue(store, graph, at)).scenarios) (await toggleDemo(store, graph, scenario.id, at, true));
+    const demo = (await loadStreetRouteDemo(store, graph, at));
     const result = planJourney({ origin: demo.origin, destination: demo.destination, departureAt: at, compareDepartures: false }, store.routingClosures(), store.eventRevision);
     expect(store.routingClosures()).toHaveLength(7);
     expect(result.options[0]?.kind).toBe('detour');
@@ -107,7 +107,7 @@ describe('real F-8 residential street detour demo', () => {
     expect(store.list('closure')).toHaveLength(1);
   });
 
-  it('reports unavailable if the genuine Park Road node fixture is absent', () => {
+  it('reports unavailable if the genuine Park Road node fixture is absent', async () => {
     expect(() => streetRouteDemo({ ...graph, nodes: [], edges: [] }, at)).toThrow('unavailable');
   });
 });

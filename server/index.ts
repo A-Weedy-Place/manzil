@@ -1,25 +1,24 @@
 import 'dotenv/config';
-import { resolve } from 'node:path';
-import { Store } from './store.js';
+import { bootstrap } from './bootstrap.js';
 import { createApp, applyRetention } from './app.js';
 import { checkEnabledCommutes } from './commutes.js';
 
-const port = Number(process.env.PORT ?? '3001');
-if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('PORT must be an integer from 1 to 65535.');
-if (process.env.HOST && process.env.HOST !== '127.0.0.1') throw new Error('This single-user prototype only supports HOST=127.0.0.1.');
-const store = new Store(resolve(process.env.MANZIL_DB_PATH ?? resolve(process.env.MANZIL_DATA_DIR ?? 'data', 'manzil.sqlite')));
-const { app, source } = createApp(store);
-const server = app.listen(port, '127.0.0.1', () => {
-  console.log(`Manzil local API: http://127.0.0.1:${port} (SQLite; signed-out public source coverage is partial)`);
-  source.start();
-  setImmediate(() => { applyRetention(store); checkEnabledCommutes(store); });
+const { config, store } = bootstrap();
+// Do not accept traffic with unusable cloud storage/credentials.
+if (config.mode !== 'local') await store.routingSnapshot();
+const { app, source } = createApp(store, { config });
+const tick = async () => { await applyRetention(store); await checkEnabledCommutes(store); };
+const server = app.listen(config.port, config.host, () => {
+  console.log(`Manzil ${config.mode} ${config.role}: ${config.host}:${config.port} (${store.backend})`);
+  if (config.mode === 'local') source.start();
+  if (config.mode === 'local') void tick().catch(() => console.error('Local journey check failed.'));
 });
-const commuteTimer = setInterval(() => { applyRetention(store); checkEnabledCommutes(store); }, 60_000);
-commuteTimer.unref();
+const commuteTimer = config.mode === 'local' ? setInterval(() => { void tick().catch(() => console.error('Local journey check failed.')); }, 60_000) : undefined;
+commuteTimer?.unref();
 let closing = false;
 function shutdown() {
   if (closing) return;
-  closing = true; source.stop(); clearInterval(commuteTimer);
+  closing = true; source.stop(); if (commuteTimer) clearInterval(commuteTimer);
   server.close(() => { store.close(); process.exit(0); });
   setTimeout(() => process.exit(0), 5000).unref();
 }

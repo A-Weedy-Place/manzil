@@ -16,6 +16,8 @@ Thumbs.db
 data/
 .playwright/
 test-results/
+.firebase/
+*-debug.log
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm

@@ -129,7 +129,7 @@ describe('local API', () => {
 });
 
 describe('durability, commute time, and privacy retention', () => {
-  it('retains data and revisions after reopening the SQLite database', () => {
+  it('retains data and revisions after reopening the SQLite database', async () => {
     const folder = mkdtempSync(join(tmpdir(), 'manzil-test-')); cleanup.push(() => rmSync(folder, { recursive: true, force: true }));
     const path = join(folder, 'state.sqlite'); let store = new Store(path);
     const first = store.saveClosure(closure);
@@ -143,7 +143,7 @@ describe('durability, commute time, and privacy retention', () => {
     expect(store.sourceStatus().nextCheckAt).toBe('2026-10-14T12:15:00Z');
     expect(store.profile()).toMatchObject({ id: 'local', displayName: 'A local traveller', theme: 'dark', mapStyle: 'outdoors', inferFrequentRoutes: true });
   });
-  it('backfills a legacy profile map style once without resetting preferences or timestamps', () => {
+  it('backfills a legacy profile map style once without resetting preferences or timestamps', async () => {
     const folder = mkdtempSync(join(tmpdir(), 'manzil-profile-migration-'));
     cleanup.push(() => rmSync(folder, { recursive: true, force: true }));
     const path = join(folder, 'state.sqlite'); let store = new Store(path);
@@ -156,34 +156,34 @@ describe('durability, commute time, and privacy retention', () => {
     cleanup.push(() => store.close());
     expect(store.profile()).toEqual(chosen); expect(store.profile().createdAt).toBe(legacy.createdAt);
   });
-  it('calculates weekdays and midnight in Islamabad time, not server timezone', () => {
+  it('calculates weekdays and midnight in Islamabad time, not server timezone', async () => {
     const commute: Commute = { id: 'commute', name: 'Office', origin: { name: 'A', coordinate: [73, 33] },
       destination: { name: 'B', coordinate: [73.1, 33.1] }, days: [4], departureTime: '00:30', enabled: true,
       createdAt: '', updatedAt: '' };
     expect(nextOccurrence(commute, Date.parse('2026-10-14T19:00:00Z'))).toBe('2026-10-14T19:30:00.000Z');
     expect(nextOccurrence(commute, Date.parse('2026-10-14T19:31:00Z'))).toBe('2026-10-21T19:30:00.000Z');
   });
-  it('deduplicates commute impact alerts and emits a new alert for an edited closure', () => {
+  it('deduplicates commute impact alerts and emits a new alert for an edited closure', async () => {
     const store = new Store(':memory:'); cleanup.push(() => store.close()); const saved = store.saveClosure(closure);
     const commute: Commute = { id: 'commute', name: 'Office', origin: { name: 'A', coordinate: [73, 33] },
       destination: { name: 'B', coordinate: [73.1, 33.1] }, days: [3], departureTime: '17:00', enabled: true,
       createdAt: '', updatedAt: '' };
     const planner = () => ({ ...emptyPlan, conflicts: [{ closureId: saved.id, title: saved.title, entryAt: closure.startsAt, exitAt: closure.endsAt! }] });
-    const now = Date.parse('2026-10-14T10:00:00Z'); checkCommute(store, commute, planner, now); checkCommute(store, commute, planner, now);
+    const now = Date.parse('2026-10-14T10:00:00Z'); (await checkCommute(store, commute, planner, now)); (await checkCommute(store, commute, planner, now));
     expect(store.list('alert')).toHaveLength(1);
-    store.saveClosure({ ...closure, title: 'Edited advice' }, saved.id, 1); checkCommute(store, commute, planner, now);
+    store.saveClosure({ ...closure, title: 'Edited advice' }, saved.id, 1); (await checkCommute(store, commute, planner, now));
     expect(store.list('alert')).toHaveLength(2);
   });
-  it('purges raw points after day30 and deletes the summary after day90', () => {
+  it('purges raw points after day30 and deletes the summary after day90', async () => {
     const store = new Store(':memory:'); cleanup.push(() => store.close()); const now = Date.parse('2026-10-14T12:00:00Z');
     const trip: Trip = { id: 'private-trip', name: 'Personal', startedAt: '2026-09-01T12:00:00Z', endedAt: '2026-09-01T12:01:00Z',
       points: [{ coordinate: [73, 33], timestamp: '2026-09-01T12:00:00Z', accuracy: 5 }],
       contributeToRoadDiscovery: false, distanceMeters: 120, durationSeconds: 60, gaps: 0, createdAt: '2026-09-01T12:01:00Z' };
-    store.put('trip', trip); applyRetention(store, now);
+    store.put('trip', trip); (await applyRetention(store, now));
     expect(store.get<Trip>('trip', trip.id)?.points).toEqual([]); expect(store.get<Trip>('trip', trip.id)?.distanceMeters).toBe(120);
-    applyRetention(store, now + 100 * 86400_000); expect(store.get('trip', trip.id)).toBeUndefined();
+    (await applyRetention(store, now + 100 * 86400_000)); expect(store.get('trip', trip.id)).toBeUndefined();
   });
-  it('retains every authoritative published closure and expires old GPS beyond display bounds', () => {
+  it('retains every authoritative published closure and expires old GPS beyond display bounds', async () => {
     const store = new Store(':memory:'); cleanup.push(() => store.close());
     const now = Date.parse('2026-10-14T12:00:00Z');
     store.put('closure', { ...closure, id: 'older-active', revision: 1, createdAt: '2025-01-01T00:00:00Z', updatedAt: '2025-01-01T00:00:00Z' }, '2025-01-01T00:00:00Z');
@@ -195,6 +195,6 @@ describe('durability, commute time, and privacy retention', () => {
       }
     });
     expect(store.routingClosures().map(item => item.id)).toEqual(['older-active']);
-    applyRetention(store, now); expect(store.get('trip', 'old-private')).toBeUndefined();
+    (await applyRetention(store, now)); expect(store.get('trip', 'old-private')).toBeUndefined();
   });
 });

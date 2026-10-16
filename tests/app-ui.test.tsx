@@ -40,7 +40,7 @@ it('unlocks existing personal screens with a dummy account and returns to guest 
   fireEvent.click(screen.getByRole('button', { name: 'Profile' }));
   fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
   expect(screen.getByRole('button', { name: 'Sign in' })).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'Find routes' })).toBeTruthy();
+  expect(await screen.findByRole('button', { name: 'Find routes' })).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Activity' })).toBeNull();
   expect(screen.getByRole('dialog', { name: 'Welcome to Manzil' })).toBeTruthy();
 });
