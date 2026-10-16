@@ -8,6 +8,7 @@ import { Store } from '../server/store';
 import { createApp, applyRetention } from '../server/app';
 import { SourceService } from '../server/source';
 import { nextOccurrence, checkCommute } from '../server/commutes';
+import { readConfig, type RuntimeConfig } from '../server/config';
 
 const cleanup: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); });
@@ -19,10 +20,10 @@ const closure: ClosureDraft = { title: 'Test closure', description: 'Verified te
   startsAt: '2026-10-14T11:00:00Z', endsAt: '2026-10-14T13:00:00Z', status: 'published',
   geometry: { type: 'Polygon', coordinates: [[[73, 33], [73.01, 33], [73.01, 33.01], [73, 33]]] } };
 
-async function setup() {
+async function setup(config?: RuntimeConfig) {
   const store = new Store(':memory:'); cleanup.push(() => store.close());
   const source = new SourceService(store, async () => ({ state: 'blocked', posts: [], observedCount: 0, message: 'Signed-out fixture unavailable.' }));
-  const { app } = createApp(store, { source, graph: () => graph, planner: () => emptyPlan,
+  const { app } = createApp(store, { config, source, graph: () => graph, planner: () => emptyPlan,
     places: query => [{ name: query || 'Local landmark', coordinate: [73, 33] }] });
   const server = await new Promise<Server>(resolve => { const instance = app.listen(0, '127.0.0.1', () => resolve(instance)); });
   cleanup.push(() => new Promise<void>(resolve => { server.closeAllConnections(); server.close(() => resolve()); }));
@@ -35,6 +36,20 @@ async function setup() {
 }
 
 describe('local API', () => {
+  it('serves Hosting pinned hosts without bypassing origin or account authorization', async () => {
+    const service = 'manzil-api-abc123-as.a.run.app';
+    const { port } = await setup(readConfig({ NODE_ENV: 'production', FIREBASE_PROJECT_ID: 'manzil-example',
+      ALLOWED_HOSTS: service, ALLOWED_ORIGINS: 'https://manzil-example.web.app', FIREBASE_HOSTING_SERVICE_HOST: service }));
+    const get = (path: string, host: string, origin = 'https://manzil-example.web.app') => new Promise<number | undefined>((resolve, reject) => {
+      const req = httpRequest({ hostname: '127.0.0.1', port, path: `/api${path}`, headers: { Host: host, Origin: origin } }, response => {
+        response.resume(); response.on('end', () => resolve(response.statusCode));
+      }); req.on('error', reject); req.end();
+    });
+    expect(await get('/health', `fh-080ad782a75264ae---${service}`)).toBe(200);
+    expect(await get('/commutes', `fh-080ad782a75264ae---${service}`)).toBe(401);
+    expect(await get('/health', `fh-080ad782a75264ae---${service}`, 'https://attacker.example')).toBe(403);
+    expect(await get('/health', 'fh-080ad782a75264ae---other-abc123-as.a.run.app')).toBe(403);
+  });
   it('keeps one local profile, validates partial preferences, and exposes consent-gated proposals', async () => {
     const { request } = await setup();
     const initial = await (await request('/profile')).json();

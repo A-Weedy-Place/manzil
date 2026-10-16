@@ -4,7 +4,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { z, ZodError } from 'zod';
 import type { Alert, AppState, Closure, Commute, CommuteDraft, GraphStatus, Place, Trip } from '../shared/types.js';
 import type { Repository } from './repository.js';
-import { readConfig, type RuntimeConfig } from './config.js';
+import { isAllowedApplicationHost, readConfig, type RuntimeConfig } from './config.js';
 import { firebaseServices } from './firebase.js';
 import { mountWorker } from './worker.js';
 import { HttpError } from './errors.js';
@@ -69,7 +69,7 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
     // Binding loopback alone does not prevent DNS rebinding or a hostile site's browser request.
     const host = request.headers.host;
     try {
-      if (!host || !config.allowedHosts.has(new URL(`http://${host}`).hostname)) throw new Error();
+      if (!host || !isAllowedApplicationHost(config, new URL(`http://${host}`).hostname)) throw new Error();
     } catch { next(new HttpError(403, 'Application host is not allowed.')); return; }
     const origin = request.headers.origin;
     if (origin && !(config.mode === 'production' ? config.allowedOrigins.has(origin) : isLocalOrigin(origin))) { next(new HttpError(403, 'Application origin is not allowed.')); return; }

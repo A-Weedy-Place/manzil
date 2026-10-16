@@ -1,12 +1,12 @@
 # Admin interface proposal — awaiting owner approval
 
-This document is a discussion draft. **No new admin dashboard, correction/audit workflow or publication agent has been implemented.** The 16 October [environment foundation](ENVIRONMENTS.md) adds Firebase token verification, custom admin claims and protected shared-data mutations in emulator/production modes. The original standalone dummy identities still only unlock local screens and do not secure that shared SQLite API. No production deployment exists.
+This document is a discussion draft. **No new admin dashboard, correction/audit workflow or publication agent has been implemented.** The core is now deployed with Firebase token verification, custom admin claims and protected shared-data mutations. Production has no seeded dummy users; owner account/admin onboarding is still needed. Standalone dummy identities only unlock local screens and do not secure shared SQLite. See [deployment procedure](FIRST_DEPLOYMENT.md) and [environment setup](ENVIRONMENTS.md).
 
 ## Decisions confirmed by the owner
 
 1. Publish valid agent-detected blockades automatically; admins correct mistakes afterward.
 2. Cancelling an incorrect blockade removes its routing effect while retaining evidence/history. Do not permanently delete it or let reprocessing silently recreate it.
-3. Guests may plan/navigate. Normal users use personal features; admins manage shared closure information. Firebase integration and deployment are separate later tasks.
+3. Guests may plan/navigate. Normal users use personal features; admins manage shared closure information. Firebase integration and core deployment are complete; the proposed full admin interface remains separate work.
 
 Automatic publication still requires structured geometry/time/source validation. A non-closure notice, invalid geometry or unresolved location/time must not become a published blockade simply because a model generated text. Such candidates belong in an exception queue. The Gemini agent itself remains future work owned by the user.
 

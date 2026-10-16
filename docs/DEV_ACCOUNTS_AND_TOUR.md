@@ -1,6 +1,6 @@
 # Development accounts and target-aware tour
 
-**16 October:** this page's shared dummy login describes standalone SQLite mode only. Recommended `npm.cmd run dev:firebase` seeds the same test emails/passwords into the real local Auth Emulator, uses verified tokens/admin claims and isolates user records in the Firestore Emulator. Production uses configured Firebase Authentication with no seeded dummy users. The admin dashboard/audit proposal remains unimplemented. See [environment setup](ENVIRONMENTS.md).
+**17 October:** this page's shared dummy login describes standalone SQLite mode only. Recommended `npm.cmd run dev:firebase` seeds the same test accounts into local Auth/Firestore emulators with verified claims and isolated records. The [hosted release](https://manzil-app-v1.web.app) uses real Firebase accounts with **no seeded dummy users**; the owner must register and receive an operator-assigned admin claim separately. The full admin dashboard/audit proposal remains unimplemented. See [environment setup](ENVIRONMENTS.md) and [deployment procedure](FIRST_DEPLOYMENT.md).
 
 Implemented locally on 15 October 2026. The proposed admin screen is separately described in [ADMIN_INTERFACE_PROPOSAL.md](ADMIN_INTERFACE_PROPOSAL.md) and is **not implemented**.
 

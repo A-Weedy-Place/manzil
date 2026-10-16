@@ -1,12 +1,12 @@
 # Local development and production configuration
 
-Implemented 16 October 2026. This adds one codebase with explicit runtime modes, real Firebase adapters and production build files. **Nothing has been deployed, no cloud project/billing configuration has been changed, and Gemini extraction remains future work.** The next step is a separate deployment plan using the owner's actual project and budget.
+Implemented 16 October 2026; the core was deployed on 17 October to **[manzil-app-v1.web.app](https://manzil-app-v1.web.app)** in project `manzil-app-v1`, region `asia-southeast1`. One codebase supports standalone SQLite, local Auth/Firestore emulators and hosted Firebase/Cloud Run. Billing and deployment APIs are enabled, with dedicated runtime/build permissions. Gemini, cloud speech and scheduled workers remain inactive. See [release procedure](FIRST_DEPLOYMENT.md) and [verification status](IMPLEMENTATION_STATUS.md).
 
 ## Modes
 
 | | Standalone local | Firebase emulator development | Production configuration |
 | --- | --- | --- | --- |
-| Command | `npm.cmd run dev` | `npm.cmd run dev:firebase` | Build with `npm.cmd run build:cloud`; deploy later |
+| Command | `npm.cmd run dev` | `npm.cmd run dev:firebase` | `npm.cmd run build:cloud`, then the [release procedure](FIRST_DEPLOYMENT.md) |
 | `MANZIL_MODE` | `local` (default) | `emulator` (set by launcher) | `production` |
 | Data | Existing local SQLite | Local Firestore Emulator | Hosted Firestore, using the same adapter |
 | Accounts | Original dummy UI identities; one shared database | Real Auth Emulator users/tokens and separate user records | Firebase Authentication, verified server-side |
@@ -22,8 +22,8 @@ Closure/time validation, OSM graph routing, demo geometry, commute checks, infer
 - **Node 24.12.0 or newer**: required by the current Firebase SDK dependency set. On 16 October, this machine was rechecked with **Node 24.22.0 / npm 11.19.1**; `npm.cmd run config:check` passes with `nodeSupported: true`. The earlier Node upgrade prerequisite is complete. The checker reports the selected mode and returns nonzero on an unsupported Node version. It prints no credentials and creates no resources.
 - **Java 21+** for the Firestore Emulator. Java 25 is installed on the inspected machine.
 - Dependencies are in `package-lock.json`; use `npm.cmd ci` on a new checkout. The Firebase CLI is a project development dependency, not a required global install.
-- Google Cloud CLI is **not on PATH** on the inspected machine. It is needed later for deployment/ADC setup, not for emulator development.
-- Docker Desktop is installed but its Linux engine is not running. It is optional for local development; container verification requires starting it, or a later Cloud Build run.
+- Google Cloud CLI is installed/on PATH and signed in; Firebase CLI is also signed in. CLI login is distinct from Application Default Credentials for running privileged Admin SDK scripts locally. Local/emulator development needs neither cloud login nor ADC.
+- Docker Desktop is optional for local development. The first container was built remotely with Cloud Build and verified running on Cloud Run; no local Docker image execution is claimed.
 
 ### Upgrading Node on Windows
 
@@ -74,16 +74,32 @@ The restored Closures/demo/edit controls remain visible. In emulator/production 
 
 Existing records remain in SQLite until a separately reviewed migration assigns ownership. No automatic GPS/notice/database upload happens when modes change.
 
-## Production preparation (no deployment yet)
+## Production configuration and deployment
+
+**17 October progress:** project/billing, default Standard Firestore in Singapore, email/password authentication, authorized domains and acceptance of the saved web key have been verified. Runtime identity `manzil-api@manzil-app-v1.iam.gserviceaccount.com` has Firestore user and Firebase Auth viewer permissions; the build identity has Cloud Run Builder. Cloud Run service `manzil-api` and Hosting are deployed; database rules/indexes are released and the retention index is READY. The cloud-built SDK consumes ignored `.env.cloud.local`; no key was printed. `config/cloud-run.manzil-app-v1.yaml` contains non-secret runtime settings, and `firebase.json` pins API rewrites to the Singapore service. This supersedes the earlier Mumbai suggestion and US template default.
+
+Hosting pinning uses `fh-*` tagged service hostnames. Set `FIREBASE_HOSTING_SERVICE_HOST` to the confirmed hash-based service hostname and include that hostname verbatim in `ALLOWED_HOSTS`. The server accepts Firebase tags only for that explicitly selected Cloud Run service, preserving origin and token/admin checks. A missing value caused the initial Hosting proxy 403; the deployed fix and three regression tests cover it. Do not replace the allowlist with a wildcard.
+
+For another machine, install the [Google Cloud CLI for Windows](https://cloud.google.com/sdk/docs/install-sdk#windows), then restart the terminal/VS Code to pick up PATH. From a new PowerShell terminal, run the following yourself and complete the browser sign-ins with the account owning the project. These select local CLI defaults and log in; they do not deploy the app:
+
+```powershell
+gcloud.cmd init
+gcloud.cmd config set project manzil-app-v1
+gcloud.cmd config set run/region asia-southeast1
+cd D:\Manzil\manzil
+.\node_modules\.bin\firebase.cmd login
+```
+
+The Firebase CLI is already installed in the repository. Never share login codes or credential files. The owner completed these logins for the first deployment. Use the [deployment guide](FIRST_DEPLOYMENT.md) for release commands and the read-only smoke script.
 
 1. Register a Firebase web app in the intended real project and enable email/password authentication. Choose the Firestore location deliberately before creation.
 2. Copy `config/frontend.env.example` to ignored `.env.cloud.local` and fill in the **public web configuration**. Never put an Admin service-account JSON/key or model secret in `VITE_*` fields.
 3. Run `npm.cmd run build:cloud`. It type-checks, builds the configured frontend and compiles the backend into `build/server/index.js`. Missing Firebase configuration or emulator settings make a cloud build fail. Plain `npm.cmd run build` remains a standalone preview build, not a configured Firebase release.
 4. Use `config/production.env.example` as the runtime template. Set the real project, exact HTTPS origins and API/Hosting hostnames. The server uses ADC/its attached service identity; no credential is baked into the image. `NODE_ENV=production` or Cloud Run's `K_SERVICE` cannot select local/emulator mode. Emulator hosts/local database settings are rejected, and startup waits for usable Firestore before listening.
 5. `Dockerfile` builds a Node 24 backend image, includes the attributed read-only road graph, prunes development dependencies and runs as a non-root user. `.dockerignore` uses an allowlist; `.gcloudignore` excludes local databases, env files, emulator data and sessions. The runtime must supply actual configuration. The image does not include Chromium; source collection remains disabled until a separate browser-worker packaging/access decision.
-6. `firebase.json` serves `dist`, caches hashed assets and forwards `/api/**` to `manzil-api` in **us-central1**, pinned to the backend revision. This service/region is a proposed default, not an existing deployment; align it with the agreed region before deployment. Deploying the frontend also needs the production Firestore rules/indexes and appropriate service permissions.
+6. `firebase.json` serves `dist`, caches hashed assets and forwards `/api/**` to the deployed `manzil-api` in **asia-southeast1 (Singapore)**, pinned to the backend revision. This matches the owner's Firestore location. Production rules/indexes and runtime permissions were deployed before the website's live checks.
 
-No deployment command/script is invoked here. A successful configured build does not verify a cloud project's billing, IAM, database location, external quotas or deployment readiness.
+Configuration/build checks do not deploy by themselves. The release commands in the deployment guide create/update actual cloud resources and can incur charges. The first release uses request-based billing, 0–1 instances, 1 vCPU, 1 GiB, concurrency 8 and a 60-second request timeout; instance settings and budget alerts are not monetary caps.
 
 ## Worker and roles
 
@@ -104,6 +120,6 @@ npm.cmd run build:server
 
 The normal suite skips integration cases without emulator hosts; `test:firebase` launches an isolated **demo-manzil-test** project on test ports 9199/8180/4410/4510 with websocket 9151. It exercises real Auth/Firestore token verification, role enforcement, concurrent account isolation, private record access, closure revision conflicts, large GPS chunks, notice deduplication and cross-instance speech accounting/cache. Compiled API/worker smoke checks also validate graph packaging and role separation. Tests use synthetic notices/audio/GPS only, never paid synthesis or private local records.
 
-Live Cloud Run/Firebase deployment, real Cloud ADC/IAM, email delivery, browser Firebase persistence, real-device GPS/Urdu pronunciation and successful X collection remain separate verification tasks. Docker image execution cannot be claimed while Docker Desktop is stopped. The implementation-status document records exact final test/build results and dependency-audit limitations.
+Cloud Build/container startup, attached-identity Firestore access and the live Hosting/API connection are verified. Email delivery, real-user login/session persistence, real-device GPS/Urdu pronunciation and successful X collection remain separate verification tasks. No local Docker Desktop execution is claimed. The implementation-status document records current test counts, browser evidence and dependency-audit limitations.
 
 Recorded foundation verification: **155 standard + seven emulator cases pass (162 total)**, standalone/cloud frontend builds and compiled backend pass, and the full emulator development launcher passed its alternate-port smoke run. The cloud frontend build used placeholder public identifiers only. That original verification ran on Node 24.11.1 despite dependency engine warnings. On Node **24.22.0**, the configuration check, **155 standard tests** and standalone TypeScript/Vite build have now been rerun successfully; the seven emulator cases were skipped in this follow-up. The earlier emulator/cloud/launcher/audit results were not rerun. See [implementation status](IMPLEMENTATION_STATUS.md) for the verification scope. The previous production dependency audit was clean; the Firebase CLI's development tree had seven advisories (four moderate, three high). No paid provider request occurred.

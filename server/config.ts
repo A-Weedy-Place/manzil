@@ -4,7 +4,14 @@ const loopback = new Set(['127.0.0.1', 'localhost', '[::1]']);
 export interface RuntimeConfig {
   mode: 'local' | 'emulator' | 'production'; host: string; port: number; projectId: string;
   allowedHosts: Set<string>; allowedOrigins: Set<string>; role: 'api' | 'worker';
-  workerAudience?: string; workerEmail?: string; speechPublic: boolean;
+  workerAudience?: string; workerEmail?: string; speechPublic: boolean; firebaseHostingServiceHost?: string;
+}
+/** Hosting pinTag URLs use fh-* tags on this one explicitly configured service. */
+export function isAllowedApplicationHost(config: RuntimeConfig, hostname: string): boolean {
+  if (config.allowedHosts.has(hostname)) return true;
+  const service = config.firebaseHostingServiceHost;
+  if (config.mode !== 'production' || !service || !hostname.endsWith(`---${service}`)) return false;
+  return /^fh-[a-z0-9-]+$/.test(hostname.slice(0, -(service.length + 3)));
 }
 export function readConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig {
   const mode = z.enum(['local', 'emulator', 'production']).parse(env.MANZIL_MODE ?? (env.NODE_ENV === 'production' ? 'production' : 'local'));
@@ -15,6 +22,9 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
   const role = z.enum(['api', 'worker']).parse(env.MANZIL_SERVICE_ROLE ?? 'api');
   const allowedHosts = new Set((env.ALLOWED_HOSTS ?? '').split(',').map(s => s.trim()).filter(Boolean));
   const allowedOrigins = new Set((env.ALLOWED_ORIGINS ?? '').split(',').map(s => s.trim()).filter(Boolean));
+  const firebaseHostingServiceHost = env.FIREBASE_HOSTING_SERVICE_HOST || undefined;
+  if (firebaseHostingServiceHost && (mode !== 'production' || !/^[a-z0-9][a-z0-9-]*\.a\.run\.app$/.test(firebaseHostingServiceHost) || !allowedHosts.has(firebaseHostingServiceHost)))
+    throw new Error('Firebase Hosting service host must be an explicitly allowed Cloud Run service hostname in production.');
   if (mode === 'production') {
     if (!/^[a-z][a-z0-9-]{4,28}[a-z0-9]$/.test(projectId) || projectId.startsWith('demo-')) throw new Error('A real FIREBASE_PROJECT_ID is required in production.');
     if (Object.keys(env).some(key => key.endsWith('_EMULATOR_HOST') && env[key])) throw new Error('Emulator hosts are forbidden in production.');
@@ -35,5 +45,5 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
       if (env.TTS_ENABLED === 'true' && env.ALLOW_PAID_SERVICES !== 'true') throw new Error('Local cloud speech requires explicit ALLOW_PAID_SERVICES=true.');
     }
   }
-  return { mode, host, port, projectId, role, allowedHosts, allowedOrigins, workerAudience: env.WORKER_AUDIENCE, workerEmail: env.WORKER_SERVICE_ACCOUNT_EMAIL, speechPublic: env.PUBLIC_CLOUD_SPEECH === 'true' };
+  return { mode, host, port, projectId, role, allowedHosts, allowedOrigins, firebaseHostingServiceHost, workerAudience: env.WORKER_AUDIENCE, workerEmail: env.WORKER_SERVICE_ACCOUNT_EMAIL, speechPublic: env.PUBLIC_CLOUD_SPEECH === 'true' };
 }

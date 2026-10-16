@@ -1,0 +1,14 @@
+# Non-secret runtime configuration for the first Singapore deployment.
+# Firebase web API keys belong in ignored .env.cloud.local, not this backend file.
+NODE_ENV: "production"
+MANZIL_MODE: "production"
+MANZIL_SERVICE_ROLE: "api"
+HOST: "0.0.0.0"
+FIREBASE_PROJECT_ID: "manzil-app-v1"
+ALLOWED_HOSTS: "manzil-api-488497279747.asia-southeast1.run.app,manzil-api-ld6lwscfya-as.a.run.app,manzil-app-v1.web.app,manzil-app-v1.firebaseapp.com"
+FIREBASE_HOSTING_SERVICE_HOST: "manzil-api-ld6lwscfya-as.a.run.app"
+ALLOWED_ORIGINS: "https://manzil-app-v1.web.app,https://manzil-app-v1.firebaseapp.com"
+TTS_ENABLED: "false"
+PUBLIC_CLOUD_SPEECH: "false"
+TTS_MONTHLY_CHARACTER_LIMIT: "100000"
+X_SCRAPER_ENABLED: "false"

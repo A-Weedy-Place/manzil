@@ -1,10 +1,10 @@
 # Local development
 
-**16 October:** the recommended production-parity workflow is now `npm.cmd run dev:firebase`, with local Auth/Firestore emulators, seeded accounts and user-isolated records. Node **24.12+** and Java **21+** are required; the project Firebase CLI is installed as a development dependency. Plain `npm.cmd run dev` retains the standalone shared SQLite mode described below. See [environment guide](ENVIRONMENTS.md) for switching modes, test ports, production configuration and verification limits. No deployment has occurred.
+**17 October:** the core is [deployed](https://manzil-app-v1.web.app); local workflows remain unchanged. Recommended `npm.cmd run dev:firebase` uses local Auth/Firestore emulators, seeded accounts and isolated records. Node **24.12+** and Java **21+** are required; Firebase CLI is a project dependency. Plain `npm.cmd run dev` retains standalone SQLite. See [environment guide](ENVIRONMENTS.md) for switching modes and [deployment procedure](FIRST_DEPLOYMENT.md) for explicit cloud releases. Local development never implicitly uploads private data or deploys changes.
 
 For the local dummy normal/admin credentials and updated spotlight tour, see [Development accounts and tour](DEV_ACCOUNTS_AND_TOUR.md). The admin dashboard is still a [proposal for discussion](ADMIN_INTERFACE_PROPOSAL.md), not an implemented feature.
 
-English/Urdu controls, guest account screens, onboarding and automatic GPS recovery are described in [Bilingual navigation and Cloud speech](BILINGUAL_NAVIGATION_AND_CLOUD.md). Core planning still needs no Cloud credentials. Optional speech uses server-side ADC and `TTS_ENABLED=true`. Firebase authentication/storage adapters are implemented; hosted project configuration and public deployment remain future work. In PowerShell, use `npm.cmd` if execution policy blocks `npm.ps1`.
+English/Urdu controls, guest account screens, onboarding and automatic GPS recovery are described in [Bilingual navigation and Cloud speech](BILINGUAL_NAVIGATION_AND_CLOUD.md). Local planning still needs no Cloud credentials. Optional cloud speech uses server-side ADC and `TTS_ENABLED=true`; it is disabled in the first hosted release. Firebase authentication/storage are configured for hosted use. In PowerShell, use `npm.cmd` if execution policy blocks `npm.ps1`.
 
 ## Start
 
@@ -17,7 +17,7 @@ npm run dev
 
 Open http://127.0.0.1:5173/. Vite proxies `/api` to the Express API at http://127.0.0.1:3001. Both listen only on loopback. Stop the retained terminal with Ctrl+C when finished. The API process and machine must remain running for automatic checks; closing the browser alone does not stop the server.
 
-`npm run dev:api` and `npm run dev:web` start either process separately. `npm run build` type-checks all source and creates `dist/`. `npm start` starts the standalone API only; it is not a production deployment or a static frontend server. For production-style development, stop the standalone processes and run `npm.cmd run dev:firebase`; it launches the local Auth/Firestore emulators, API, frontend and worker with seeded accounts. Hosted authentication setup and deployment are deferred; the authentication integration itself is implemented.
+`npm run dev:api` and `npm run dev:web` start either process separately. `npm run build` type-checks all source and creates standalone `dist/`; never publish that preview as the cloud frontend. `npm start` starts the standalone API only. For production-style development, stop the standalone processes and run `npm.cmd run dev:firebase`; it launches local Auth/Firestore, API, frontend and worker with seeded accounts. The hosted release uses `npm.cmd run build:cloud` and the separate release procedure.
 
 ## First useful workflow
 

@@ -1,9 +1,9 @@
 # Manzil منزل
 
-**16 October environment update:** one codebase now supports standalone SQLite development, Firebase Auth/Firestore emulators, and explicitly configured production Firebase/Cloud Run builds. Run `npm.cmd run dev:firebase` for isolated local user/admin accounts and production-style token/ownership checks. **Node 24.12+ and Java 21+ are required for this workflow.** No deployment or paid model activation has occurred. Start with [environment setup and verification](docs/ENVIRONMENTS.md); the deployment procedure will be agreed separately.
+**17 October deployment:** the core prototype is live at **[manzil-app-v1.web.app](https://manzil-app-v1.web.app)**, using Firebase Hosting, Cloud Run and Firestore in Singapore (`asia-southeast1`). Gemini, cloud speech and scheduled workers are not active. See the [deployment procedure](docs/FIRST_DEPLOYMENT.md) and [verified status](docs/IMPLEMENTATION_STATUS.md). Local SQLite and Firebase emulator development remain available; use `npm.cmd run dev:firebase` for isolated dev accounts. Node **24.12+** and Java **21+** are required for emulator development.
 
 
-English/Urdu interface and voice controls, a target-aware tutorial, Firebase-ready accounts, automatic foreground GPS rerouting (including remaining stops), and reduced map redraws are implemented. Google Cloud TTS uses server-side ADC, cached audio and bounded usage; enable it only after Cloud configuration. Firebase SDK authentication and isolated records are wired for emulators/production configuration; a real hosted project is not configured or deployed. Standalone development retains [dummy normal/admin sign-ins](docs/DEV_ACCOUNTS_AND_TOUR.md). The [admin dashboard](docs/ADMIN_INTERFACE_PROPOSAL.md) is proposed, not implemented. Core guest planning works locally without Cloud credentials. See [feature/setup guide](docs/BILINGUAL_NAVIGATION_AND_CLOUD.md) and [environment guide](docs/ENVIRONMENTS.md).
+English/Urdu interface and voice controls, a target-aware tutorial, Firebase accounts, automatic foreground GPS rerouting (including remaining stops), and reduced map redraws are implemented. Google Cloud TTS uses server-side ADC, cached audio and bounded usage; it remains disabled in the first release. Firebase email/password authentication and isolated records are configured in the hosted project; production users register real accounts, with no dummy passwords seeded. Standalone development retains [dummy normal/admin sign-ins](docs/DEV_ACCOUNTS_AND_TOUR.md). The [admin dashboard](docs/ADMIN_INTERFACE_PROPOSAL.md) is proposed, not implemented. Core guest planning also works locally without Cloud credentials. See [feature/setup guide](docs/BILINGUAL_NAVIGATION_AND_CLOUD.md) and [environment guide](docs/ENVIRONMENTS.md).
 
 Primary tabs are **Map, Closures, Saved and Profile**, with **Activity** added after sign-in. **Try street detour** and **Demo closures** are directly available in the planner; route results expose **Block a point on this route**, and the map always shows **Add restriction**. Guests see the skippable tutorial on every fresh visit and after sign-out, even if previously completed. Signed-in users retain remembered first-use behavior; everyone can replay it from Help or Profile.
 
@@ -33,6 +33,7 @@ Try **Find routes**, then **Block a point on this route** to see a connected det
 - [Retained product context and entire feature backlog](PROJECT_CONTEXT.md): original requirements, current priorities and future transit/crowd/traffic/learned-road features.
 - [Implementation status and verification](docs/IMPLEMENTATION_STATUS.md): actual build state, decisions and remaining limitations.
 - [Local development guide](docs/LOCAL_DEVELOPMENT.md): startup, configuration, local data, tests and troubleshooting.
+- [First deployment and repeat releases](docs/FIRST_DEPLOYMENT.md): real project/region, runtime permissions, commands, smoke checks and deferred services.
 - [Map editor guide](docs/MAP_EDITOR.md): drawing, scheduling, editing, import/export and journey workflows.
 - [Local routing](docs/ROUTING.md): real graph, temporal validation, OSM provenance and routing limits.
 - [API reference](docs/API.md) and [source/agent handoff](docs/INGESTION_IMPLEMENTATION.md).
@@ -56,7 +57,7 @@ Try **Find routes**, then **Block a point on this route** to see a connected det
 7. A persistent local profile, preferences, opt-in browser notifications and separately consented learning/closure alerts for usual recorded journeys.
 8. Route-step preview, foreground GPS guidance, optional voice prompts and recalculation from a fresh position. No background/Google-equivalent navigation claim.
 
-The implemented stack is React/TypeScript/Vite, MapLibre GL JS, OpenFreeMap, a local OSM routing engine, Express and a shared SQLite/Firestore repository boundary. Firebase emulators exercise the same Firestore/token integration intended for production. The flat vector map needs internet and WebGL but no map API key; it removes POIs/building detail in Clean mode and retains attribution. Live Google Cloud deployment, Gemini interpretation and FCM remain future work. Live traffic, transit routing, crowd verification, automatic learned-road publication and camera avoidance remain on the explicit roadmap. Read the [environment guide](docs/ENVIRONMENTS.md) for current configuration and the [15 October redesign guide](docs/REDESIGN_2026-10-15.md) for historical UI decisions.
+The implemented stack is React/TypeScript/Vite, MapLibre GL JS, OpenFreeMap, a local OSM routing engine, Express and a shared SQLite/Firestore repository boundary. Firebase emulators exercise the same adapter/token integration used by the hosted core. The flat vector map needs internet and WebGL but no map API key; it removes POIs/building detail in Clean mode and retains attribution. Gemini interpretation and FCM remain future work. Live traffic, transit routing, crowd verification, automatic learned-road publication and camera avoidance remain on the roadmap. Read the [environment guide](docs/ENVIRONMENTS.md) for current configuration and the [15 October redesign guide](docs/REDESIGN_2026-10-15.md) for historical UI decisions.
 
 ## Validation
 
@@ -66,7 +67,7 @@ npm run test:firebase
 npm run build
 ```
 
-Verification totals **162 passing tests**: 155 standard cases plus seven real Auth/Firestore emulator cases across 24 files. The normal command intentionally skips those seven without emulator hosts; run `test:firebase` to execute them. Coverage includes the retained routing/API/UI regressions plus user isolation, admin access, large GPS chunks/retention, concurrent revisions, shared speech accounting and compiled API/worker startup. Standalone and cloud-configured builds pass; the cloud build used public placeholder configuration only. Production dependencies audit clean; seven development-tool advisories remain in the Firebase CLI dependency tree. Browser evidence and verification boundaries are in the implementation status. Live Cloud deployment, real-device GPS, OS notification delivery and successful live X retrieval remain unverified.
+Verification totals **165 passing tests**: 158 standard cases plus seven real Auth/Firestore emulator cases across 24 files. The normal command intentionally skips those seven without emulator hosts; run `test:firebase` to execute them. Coverage includes routing/API/UI regressions, user isolation, admin access, GPS retention, concurrent revisions, shared speech accounting and Hosting's pinned Cloud Run hostnames. The cloud build passes with this project's configuration. Cloud Build/container startup, Firestore access and live API checks through the website are verified. The previous runtime dependency audit was clean; seven Firebase CLI development advisories remained. See implementation status for browser evidence and limits. Real-device GPS/audio, OS notification delivery and successful live X retrieval remain unverified; Gemini and cloud speech are not active.
 
 Use the prominent top clock to view closures and routes at **Now** or a chosen PKT date/time. Add up to five intermediate stops. Open **Demo closures** for six test scenarios. See [map time and stops](docs/MAP_TIME_AND_STOPS.md) and [demo guide](docs/DEMOS.md). Map browsing is worldwide; the routing graph remains bounded to central Islamabad.
 
@@ -82,7 +83,7 @@ The project and team name is **Manzil (منزل)**, meaning destination. The pri
 
 ## Milestone
 
-Two developers aim to finish and polish the prototype by **17 October 2026**. The local core was implemented on October 14. The owner will handle deployment and build the Gemini agent later.
+Two developers aim to finish and polish the prototype by **17 October 2026**. The local core was implemented on October 14 and first deployed on October 17. Gemini integration and the remaining feature/real-device verification still need work.
 
 ## Credentials and dependencies
 
