@@ -23,7 +23,7 @@ Plain `npm.cmd run dev` still uses standalone shared SQLite and UI-only dummy id
 
 | Control | Current behavior |
 | --- | --- |
-| Main navigation | Map, Closures, Saved and Profile; Activity after sign-in, Admin for administrators |
+| Main navigation | Map, Plan ahead, Closures, Saved and Profile; Activity after sign-in, Admin for administrators |
 | Street routing | Part of ordinary time-ranked routing; no separate street-detour feature |
 | Demo closures / route block-point action | Admin-only synthetic testing controls; ten catalogue scenarios, four with suggested journeys |
 | Add restriction | Visible map button; guest is asked to sign in, ordinary member submits for review, verified/admin may publish |

@@ -7,6 +7,7 @@ import './bilingual.css';
 import './privacy.css';
 import './community.css';
 import './fuel.css';
+import './map-time.css';
 import App from './App';
 
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);

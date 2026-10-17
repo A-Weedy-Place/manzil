@@ -1,5 +1,9 @@
 /** App-owned copy only. User notices, names and original source evidence remain verbatim. */
 export const urdu: Record<string, string> = {
+  'Plan ahead': 'آئندہ سفر', 'Live map': 'موجودہ نقشہ', 'Planned map': 'منتخب وقت کا نقشہ',
+  'Plan ahead time': 'آئندہ سفر کا وقت', 'Viewing map for': 'اس وقت کا نقشہ', 'Show map': 'نقشہ دکھائیں', 'Return to live map': 'موجودہ نقشے پر واپس جائیں',
+  'View live route': 'موجودہ راستہ دیکھیں',
+  'Open Plan ahead to choose a date and time. Live map always shows now.': 'تاریخ اور وقت منتخب کرنے کے لیے آئندہ سفر کھولیں۔ موجودہ نقشہ ہمیشہ ابھی کا وقت دکھاتا ہے۔',
   'Your vehicle': 'آپ کی گاڑی', 'Vehicle type': 'گاڑی کی قسم', 'Car': 'کار', 'Motorcycle': 'موٹر سائیکل',
   'Fuel type': 'ایندھن کی قسم', 'Petrol': 'پٹرول', 'Diesel': 'ڈیزل', 'Vehicle name (optional)': 'گاڑی کا نام (اختیاری)',
   'For example, Honda CD 70': 'مثلاً ہونڈا سی ڈی 70', 'Mileage (km/litre)': 'مائلیج (کلومیٹر فی لیٹر)', 'km/litre': 'کلومیٹر فی لیٹر',
