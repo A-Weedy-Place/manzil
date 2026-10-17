@@ -10,6 +10,9 @@
 .header-theme:hover { background:var(--green-soft); color:var(--green); }
 .header-actions { gap:12px; }
 .workspace-avatar { display:grid; width:44px; height:44px; flex-shrink:0; }
+/* Keep the green identity marks distinct on the neutral light panels. */
+:root:not([data-theme='dark']) :is(.brand img,.account-brand .account-logo) { border:2px solid #6e9286; background:#f7fbf8; }
+:root:not([data-theme='dark']) :is(.workspace-avatar,.profile-avatar,.profile-setting-link .profile-setting-icon) { border:1px solid #91b5a6; background:#d7eae0; color:#086b59; }
 .profile-statistics-dialog { place-items:start; padding:82px 20px 20px; background:rgb(12 25 36 / .12); }
 .profile-statistics-dialog .modal-card { margin:0; margin-inline-start:calc(var(--rail) + var(--panel)); width:min(420px,calc(100vw - var(--rail) - var(--panel) - 40px)); max-height:calc(100dvh - 102px); overflow:auto; padding:24px; box-shadow:0 16px 70px #102b4233; }
 .statistics-dialog-heading { display:flex; align-items:start; gap:12px; justify-content:space-between; margin-bottom:18px; }

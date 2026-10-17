@@ -13,7 +13,7 @@ export const profileSectionTitle: Record<ProfileSection, string> = {
 /** One adjacent, keyboard-accessible panel for every personal setting. */
 export default function ProfileSettingsDialog({ section, onClose, children, closeLabel = 'Close settings' }: { section: ProfileSection; onClose: () => void; children: ReactNode; closeLabel?: string }) {
   const titleId = useId();
-  return <Modal titleId={titleId} onClose={onClose} className="profile-settings-dialog profile-statistics-dialog">
+  return <Modal titleId={titleId} onClose={onClose} dismissOnOutsideClick className="profile-settings-dialog profile-statistics-dialog">
     <div className="statistics-dialog-heading"><h1 id={titleId}>{t(profileSectionTitle[section])}</h1><button className="icon-button" aria-label={t(closeLabel)} onClick={onClose}><X size={20} /></button></div>
     <div className={`profile-section-content profile-section-${section}`}>{children}</div>
   </Modal>;

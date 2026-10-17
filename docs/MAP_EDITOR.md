@@ -1,12 +1,12 @@
 # Map editor and local journey workflows
 
-This describes the implemented localhost interface. The full product inventory remains in [PROJECT_CONTEXT.md](../PROJECT_CONTEXT.md); [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) records verification and remaining work. Google Cloud deployment and Gemini interpretation are future integrations.
+This describes the feature-branch localhost interface. The full product inventory remains in [PROJECT_CONTEXT.md](../PROJECT_CONTEXT.md); [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) records verification and remaining work. The teammate handles release to the existing Firebase deployment; Gemini interpretation remains a future integration.
 
-Primary navigation is **Map, Closures, Saved and Profile**, with **Activity** shown after sign-in. Closure editing and demos remain directly accessible in this localhost prototype; this is not the proposed role-enforced admin interface. The planner shows **Try street detour** and **Demo closures**, results show **Block a point on this route**, and the map always shows the **Add restriction** plus button. Guests receive a skippable tour on each fresh visit/reload and after sign-out; Help and Profile offer replay. See [accounts and tour behavior](DEV_ACCOUNTS_AND_TOUR.md).
+Primary navigation is **Map, Plan ahead, Closures, Saved and Profile**, with **Activity** shown after sign-in and a separate **Admin** workspace for authorized administrators. Closure reporting, moderation and demo mutation follow the [API role permissions](API.md). Demo closures include suggested journeys submitted through ordinary routing, including street detours; there is no separate street-routing mode. Create restrictions through **Closures → Add closure**. The skippable tour follows registration or explicit guest entry, with Help/Profile replay; ordinary login and resumed guest reload do not reopen it. See [accounts and tour behavior](DEV_ACCOUNTS_AND_TOUR.md).
 
 ## Map display and preferences
 
-The map uses **MapLibre GL JS 6** and OpenFreeMap. **Streets** is the colourful default; **Outdoors, High contrast, Minimal and Night** are available from Style on the map or Profile. Map styles are independent of the app's light/dark/system theme. Default **Clean** detail removes venue/POI labels, building details and road shields, and delays smaller street names until closer zoom. **Standard** restores ordinary two-dimensional detail. All choices remain flat and north-up, with pitch/rotation disabled. See [MAP_STYLES.md](MAP_STYLES.md).
+The map uses **MapLibre GL JS 6** and OpenFreeMap. **Night** is the new/missing map default; **Classic** and **Minimal** are also available from Style on the map or Profile. **Dark** is the independent new/missing app preference; saved Light/Dark/System and map styles are preserved. Light has grey outer panels and pale-blue cards. Default **Clean** detail removes venue/POI labels, building details and road shields, and delays smaller street names until closer zoom. **Standard** restores ordinary two-dimensional detail. All choices remain flat and north-up, with pitch/rotation disabled. See [MAP_STYLES.md](MAP_STYLES.md).
 
 Style, tile, font and sprite requests need internet. This configuration has no paid basemap key and does not use the old `VITE_MAPTILER_KEY` raster option. OpenFreeMap/OpenMapTiles/OpenStreetMap attribution remains available in the map's attribution control; preserve it. Provider setup follows the [official OpenFreeMap guide](https://openfreemap.org/quick_start/).
 
@@ -16,7 +16,7 @@ If basemap resources fail, a visible warning accompanies the existing map or a p
 
 ## Journey endpoints and scheduling
 
-In **Map**, choose a starting point and destination using local search, the map-pick buttons, or draggable A/B markers. Search covers selected landmarks and road names in the imported Islamabad graph; it is not an address or worldwide geocoder. Select a suggestion to establish an endpoint. Arrow keys move through loaded suggestions and Enter selects one. Typing another query clears the selected endpoint and invalidates its old suggestions.
+In **Map**, choose a starting point and destination using Pakistan-filtered Photon/OSM search with local landmark/road fallback, map selection or draggable A/B markers. Either endpoint/stop also offers explicit **Use current location**. This is not Google Places or a guaranteed exhaustive address index. Select a suggestion to establish an endpoint. Arrow keys move through loaded suggestions and Enter selects one. Typing another query clears the selected endpoint and invalidates its old suggestions. See [provider coverage and limitations](ROUTING.md).
 
 The endpoint search and editor coordinate entry accept **latitude, longitude**, for example `33.7000, 73.0500`. Domain objects, API requests, recorded points and GeoJSON always store **[longitude, latitude]**, for example `[73.0500, 33.7000]`. The UI converts between these orders.
 

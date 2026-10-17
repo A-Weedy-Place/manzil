@@ -52,7 +52,7 @@ As admin, use **Demo closures → Try route** on Park Road/F-8, Rohtas Road/G-9,
 
 ## Implemented local features
 
-1. Clean 2D MapLibre/OpenFreeMap vector map with Pakistan place/road search, draggable pins, light/dark/system app themes, three map styles and a map-detail preference. Colourful Classic is the default; Minimal and Night remain available. Light panels use a blue tint. See [map styles and the black-polygon fix](docs/MAP_STYLES.md).
+1. Clean 2D MapLibre/OpenFreeMap vector map with Pakistan place/road search, draggable pins, light/dark/system app themes, three map styles and a map-detail preference. Dark app appearance and Night map are the new/missing defaults; saved choices stay intact. Light uses grey outer panels and pale-blue cards. Classic and Minimal remain available. See [map styles and the black-polygon fix](docs/MAP_STYLES.md).
 2. Point, road-corridor and polygon restrictions; exact geometry preview, coordinate editing, scheduled start/end, drafts, revisions, cancellation and GeoJSON import/export.
 3. Up to three genuinely different driving routes for the same departure over a bundled OSM graph; clear blue route lines/time labels, distance/ETA cards, closure traversal-time checks and separate earlier/later departure comparisons.
 4. Weekly saved commutes, next-occurrence checks and deduplicated in-app impact alerts while the backend runs.

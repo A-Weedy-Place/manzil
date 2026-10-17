@@ -8,7 +8,7 @@ Updated 17 October 2026. Open **Style** on the map, or **Profile → Appearance 
 | Minimal | Quiet pale land, muted green/blue areas and darker slate roads/labels | OpenFreeMap Positron, tuned colours | `minimal` |
 | Night — default | Deep blue background, clear road outlines and light labels | OpenFreeMap Dark, tuned colours | `night` |
 
-**App theme** controls the interface's light/dark/system appearance. **Map style** independently controls the basemap. **Map detail** independently controls label/building/POI density; Clean remains the default. Flat 2D, blue route alternatives and bright red closures apply to every style. Switching styles does not reroute, reset endpoints or clear an unsaved drawing.
+**App theme** controls the interface's light/dark/system appearance, defaulting to **Dark** for new or missing preferences. Saved Light/Dark/System choices stay intact; explicit System follows the operating system. Light has neutral-grey outer panels and pale-blue inner cards. **Map style** independently controls the basemap, defaulting to **Night**. **Map detail** independently controls label/building/POI density; Clean remains the default. Flat 2D, blue route alternatives and bright red closures apply to every style. Switching styles does not reroute, reset endpoints or clear an unsaved drawing.
 
 The chooser previews illustrate each palette; they are not geographic screenshots or route data. The panel supports selected-state focus, Escape and outside-click dismissal. Profile exposes the same labelled buttons.
 

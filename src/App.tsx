@@ -118,7 +118,7 @@ export default function App() {
   const reloadSequence = useRef(0);
   const lastLoadedState = useRef<AppState | null>(null);
   const latestView = useRef(view); latestView.current = view;
-  const theme = state?.profile?.theme === 'system' || !state?.profile?.theme ? systemDark ? 'dark' : 'light' : state.profile.theme;
+  const theme = state?.profile?.theme === 'system' ? systemDark ? 'dark' : 'light' : state?.profile?.theme ?? 'dark';
   const mapStyle = normalizeMapStyleId(state?.profile.mapStyle);
   const profileName = state?.profile.displayName && state.profile.displayName !== 'Traveller' ? state.profile.displayName : user?.displayName ?? state?.profile.displayName ?? 'Guest';
   const membership = state?.membership?.uid === user?.uid ? state?.membership : null;

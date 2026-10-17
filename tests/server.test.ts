@@ -72,7 +72,7 @@ describe('local API', () => {
   it('keeps one local profile, validates partial preferences, and exposes consent-gated proposals', async () => {
     const { request } = await setup();
     const initial = await (await request('/profile')).json();
-    expect(initial).toMatchObject({ id: 'local', displayName: 'Traveller', theme: 'system', mapDetail: 'clean', mapStyle: 'night',
+    expect(initial).toMatchObject({ id: 'local', displayName: 'Traveller', theme: 'dark', mapDetail: 'clean', mapStyle: 'night',
       browserNotifications: false, collectTravelData: false, travelDataChoiceMade: false, inferFrequentRoutes: false, transport: 'car' });
     const changed = await request('/profile', 'PATCH', { displayName: 'Ali', theme: 'dark', browserNotifications: true });
     expect(changed.status).toBe(200); expect(await changed.json()).toMatchObject({ displayName: 'Ali', theme: 'dark', browserNotifications: true, inferFrequentRoutes: false });
@@ -99,12 +99,21 @@ describe('local API', () => {
     const { request } = await setup();
     for (const mapStyle of ['streets', 'outdoors', 'contrast', 'minimal', 'night']) {
       const response = await request('/profile', 'PATCH', { mapStyle }); expect(response.status).toBe(200);
-      expect(await response.json()).toMatchObject({ mapStyle, theme: 'system', mapDetail: 'clean' });
+      expect(await response.json()).toMatchObject({ mapStyle, theme: 'dark', mapDetail: 'clean' });
     }
     await request('/profile', 'PATCH', { theme: 'dark', mapStyle: 'streets' });
     expect((await (await request('/state')).json()).profile).toMatchObject({ theme: 'dark', mapStyle: 'streets' });
     for (const mapStyle of ['satellite', '', null, 1]) expect((await request('/profile', 'PATCH', { mapStyle })).status).toBe(400);
     expect(await (await request('/profile')).json()).toMatchObject({ theme: 'dark', mapStyle: 'streets', displayName: 'Traveller' });
+  });
+  it('saves explicit Light, Dark and System independently from the default Night map', async () => {
+    const { request } = await setup();
+    for (const theme of ['light', 'dark', 'system']) {
+      const response = await request('/profile', 'PATCH', { theme });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ theme, mapStyle: 'night' });
+      expect((await (await request('/state')).json()).profile).toMatchObject({ theme, mapStyle: 'night' });
+    }
   });
   it('persists versioned closures, refuses stale edits, and soft-cancels', async () => {
     const { store, request } = await setup();
@@ -202,6 +211,27 @@ describe('durability, commute time, and privacy retention', () => {
       const chosen = store.updateProfile({ mapStyle }); store.close(); store = new Store(path);
       expect(store.profile()).toEqual(chosen); expect(store.profile().createdAt).toBe(legacy.createdAt);
     }
+    cleanup.push(() => store.close());
+  });
+  it('defaults missing SQLite appearance to Dark without changing explicit palettes, System or profile dates', () => {
+    const folder = mkdtempSync(join(tmpdir(), 'manzil-theme-migration-'));
+    cleanup.push(() => rmSync(folder, { recursive: true, force: true }));
+    const path = join(folder, 'state.sqlite'); let store = new Store(path);
+    const { theme: _oldTheme, ...legacy } = { ...store.profile(), displayName: 'Legacy appearance fixture', mapStyle: 'minimal' as const,
+      createdAt: '2026-10-01T12:00:00.000Z', updatedAt: '2026-10-02T12:00:00.000Z' };
+    store.setMeta('profile', legacy);
+    expect(store.profile()).toEqual({ ...legacy, theme: 'dark' });
+    store.close(); store = new Store(path);
+    expect(store.profile()).toEqual({ ...legacy, theme: 'dark' });
+    expect(store.meta('profile')).toEqual({ ...legacy, theme: 'dark' });
+    for (const theme of ['light', 'dark', 'system'] as const) {
+      const chosen = store.updateProfile({ theme }); store.close(); store = new Store(path);
+      expect(store.profile()).toEqual(chosen);
+      expect(store.profile()).toMatchObject({ theme, mapStyle: 'minimal', createdAt: legacy.createdAt });
+    }
+    const { theme: _theme, mapStyle: _style, ...withoutAppearance } = store.profile();
+    store.setMeta('profile', withoutAppearance); store.close(); store = new Store(path);
+    expect(store.profile()).toEqual({ ...withoutAppearance, theme: 'dark', mapStyle: 'night' });
     cleanup.push(() => store.close());
   });
   it('calculates weekdays and midnight in Islamabad time, not server timezone', async () => {

@@ -101,6 +101,26 @@ it.each([false, true])('persists the header appearance toggle independently of t
   expect(capture.props!.mapStyle).toBe('outdoors');
   expect(fetcher.mock.calls.filter(([url]) => url === '/api/profile').map(([, init]) => JSON.parse(init!.body as string))).toEqual([{ theme: 'light' }, { theme: 'dark' }]);
 });
+it.each([undefined, 'light', 'dark', 'system'] as const)('uses Dark while loading and preserves the saved appearance %s', async savedTheme => {
+  let finishLoading!: (response: Response) => void;
+  let changeSystemTheme!: (event: MediaQueryListEvent) => void;
+  const media = { matches: false, addEventListener: (_event: string, listener: typeof changeSystemTheme) => { changeSystemTheme = listener; }, removeEventListener: vi.fn() };
+  vi.stubGlobal('matchMedia', vi.fn(() => media));
+  const fetcher = vi.fn((url: string) => url === '/api/state'
+    ? new Promise<Response>(resolve => { finishLoading = resolve; })
+    : Promise.resolve(responseFor(url)));
+  vi.stubGlobal('fetch', fetcher);
+  render(<App />);
+  expect(document.documentElement.dataset.theme).toBe('dark');
+  await waitFor(() => expect(finishLoading).toBeTypeOf('function'));
+  await act(async () => finishLoading(new Response(JSON.stringify({ ...state, profile: { ...state.profile, theme: savedTheme, mapStyle: undefined } }))));
+  await screen.findByRole('button', { name: 'Find routes' });
+  expect(document.documentElement.dataset.theme).toBe(savedTheme === 'light' || savedTheme === 'system' ? 'light' : 'dark');
+  expect(capture.props!.mapStyle).toBe('night');
+  act(() => { media.matches = true; changeSystemTheme({ matches: true } as MediaQueryListEvent); });
+  expect(document.documentElement.dataset.theme).toBe(savedTheme === 'light' ? 'light' : 'dark');
+  expect(fetcher.mock.calls.some(([url]) => url === '/api/profile')).toBe(false);
+});
 it('opens sign-in first and only enters guest planning after an explicit skip', async () => {
   sessionStorage.removeItem('manzil-entry-guest');
   vi.stubGlobal('fetch', vi.fn(async (url: string) => responseFor(url)));

@@ -61,6 +61,7 @@ export default function ProfilePanel({ account, onSignOut, personalFeaturesAvail
   }
   function closeSection() { photoGeneration.current++; setPreparingPhoto(false); setError(''); if (onSectionChange) onSectionChange(null); else setLocalSection(null); }
   function openSection(next: ProfileSection) {
+    if (activeSection === next) { closeSection(); return; }
     setError('');
     if (onSectionChange) onSectionChange(next);
     else if (next === 'statistics') (onStatistics ?? onActivity)();
@@ -114,7 +115,7 @@ export default function ProfilePanel({ account, onSignOut, personalFeaturesAvail
         {settingsRow('vehicle', Car, profile.vehicle ? [profile.vehicle.label || t(profile.vehicle.kind === 'motorcycle' ? 'Motorcycle' : 'Car'), profile.vehicle.kmPerLitre ? `${profile.vehicle.kmPerLitre} ${t('km/litre')}` : t('Mileage not set')].join(' · ') : t('Add a car or motorcycle'))}
       </>}
       {settingsRow('fuel', Fuel, t(state.fuel?.records.length ? 'Dated PSO reference prices' : 'Unavailable'))}
-      {settingsRow('appearance', Sun, `${t(profile.theme === 'light' ? 'Light' : profile.theme === 'dark' ? 'Dark' : 'System')} · ${mapName} · ${language === 'ur' ? 'اردو' : 'English'}`)}
+      {settingsRow('appearance', Sun, `${t(profile.theme === 'light' ? 'Light' : !profile.theme || profile.theme === 'dark' ? 'Dark' : 'System')} · ${mapName} · ${language === 'ur' ? 'اردو' : 'English'}`)}
       {personalFeaturesAvailable && settingsRow('alerts', Bell, t(profile.browserNotifications ? 'Browser notifications on' : 'Browser notifications off'))}
     </nav>
     <section className="profile-utilities"><button className="settings-link" onClick={onTour}><UserRound size={19} /><span>{t('Replay tour')}</span><ChevronRight size={18} /></button>{role === 'admin' && <button className="settings-link" onClick={onSources}><Inbox size={20} /><span>{t('Source updates & collector')}</span><ChevronRight size={18} /></button>}{AUTH_MODE === 'development' && <p className="small muted">{t('Development accounts share this local workspace.')}</p>}</section>
@@ -130,7 +131,7 @@ export default function ProfilePanel({ account, onSignOut, personalFeaturesAvail
       {ownDialog === 'data' && <section className={`travel-consent-card profile-consent ${profile.collectTravelData ? 'is-enabled' : ''}`}><div className="row between"><ShieldCheck size={24} /><span className={`tag ${profile.collectTravelData ? 'green' : 'neutral'}`}>{t(profile.collectTravelData ? 'On' : 'Off')}</span></div><p>{t('Optional GPS history for your statistics and usual-route alerts. Foreground only.')}</p><button className={profile.collectTravelData ? 'secondary-button full' : 'primary-button full'} disabled={busy} onClick={() => update({ collectTravelData: !profile.collectTravelData, inferFrequentRoutes: !profile.collectTravelData, travelDataChoiceMade: true })}>{t(profile.collectTravelData ? 'Stop collecting trip data' : 'Allow personal trip data & usual-route alerts')}</button>{!profile.collectTravelData && state.trips.length > 0 && <p className="small muted">{t('Existing trips remain in Activity, where you can export or delete them.')}</p>}</section>}
       {ownDialog === 'appearance' && <>
         <label className="field-label">{t('Language')}<select value={language} onChange={event => setLanguage(event.target.value === 'ur' ? 'ur' : 'en')}><option value="en">English</option><option value="ur">اردو</option></select></label>
-        <span className="field-label">{t('App theme')}</span><div className="segmented-control" role="group" aria-label={t('App theme')}>{(['light', 'dark', 'system'] as const).map(theme => <button disabled={busy} key={theme} className={profile.theme === theme ? 'selected' : ''} aria-pressed={profile.theme === theme} onClick={() => update({ theme })}>{theme === 'dark' ? <Moon size={17} /> : theme === 'light' ? <Sun size={17} /> : <Map size={17} />}{t(theme[0].toUpperCase() + theme.slice(1))}</button>)}</div>
+        <span className="field-label">{t('App theme')}</span><div className="segmented-control" role="group" aria-label={t('App theme')}>{(['light', 'dark', 'system'] as const).map(theme => <button disabled={busy} key={theme} className={(profile.theme ?? 'dark') === theme ? 'selected' : ''} aria-pressed={(profile.theme ?? 'dark') === theme} onClick={() => update({ theme })}>{theme === 'dark' ? <Moon size={17} /> : theme === 'light' ? <Sun size={17} /> : <Map size={17} />}{t(theme[0].toUpperCase() + theme.slice(1))}</button>)}</div>
         <h3 className="profile-map-style-heading">{t('Map style')}</h3><MapStyleChoices value={profile.mapStyle ?? 'night'} disabled={busy} onChange={mapStyle => update({ mapStyle })} />
         <label className="field-label map-detail-setting">{t('Map detail')}<select value={profile.mapDetail} disabled={busy} onChange={event => update({ mapDetail: event.target.value as LocalProfile['mapDetail'] })}><option value="clean">{t('Clean · essential roads and places')}</option><option value="standard">{t('Detailed · more labels and places')}</option></select></label>
       </>}

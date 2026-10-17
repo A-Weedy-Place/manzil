@@ -47,7 +47,7 @@ export interface Repository {
 
 export function defaultProfile(): LocalProfile {
   const now = new Date().toISOString();
-  return { id: 'local', displayName: 'Traveller', theme: 'system', mapDetail: 'clean', mapStyle: 'night', browserNotifications: false,
+  return { id: 'local', displayName: 'Traveller', theme: 'dark', mapDetail: 'clean', mapStyle: 'night', browserNotifications: false,
     collectTravelData: false, travelDataChoiceMade: false, inferFrequentRoutes: false, transport: 'car', createdAt: now, updatedAt: now };
 }
 export function defaultSourceStatus(enabled = false): SourceStatus {

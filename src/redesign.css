@@ -1,5 +1,5 @@
 /* Route-first design. Shared surfaces also drive the profile and map controls. */
-:root { --ink:#192e35; --muted:#475d73; --paper:#dfebfa; --surface:#cedff3; --border:#adc3dd; --green:#086b59; --green-hover:#045443; --green-soft:#e4f3ed; --blue:#2164e8; --blue-soft:#d0e0fb; --red:#f02339; --red-ink:#ba192d; --red-soft:#fff0f2; --orange:#8c5b14; --rail:76px; --panel:404px; color-scheme:light; }
+:root { --ink:#192e35; --muted:#475d73; --paper:#eceff1; --surface:#e0eaf7; --border:#b7c2cf; --green:#086b59; --green-hover:#045443; --green-soft:#dceee6; --blue:#2164e8; --blue-soft:#d0e0fb; --red:#f02339; --red-ink:#ba192d; --red-soft:#fff0f2; --orange:#8c5b14; --rail:76px; --panel:404px; color-scheme:light; }
 :root[data-theme='dark'] { --ink:#edf3f5; --muted:#b0bec6; --paper:#182730; --surface:#101c24; --border:#344650; --green:#73ddbf; --green-hover:#98ebd2; --green-soft:#1c3d37; --blue:#8ab4ff; --blue-soft:#233a5c; --red:#ff4051; --red-ink:#ffa4af; --red-soft:#44262e; --orange:#f3cc87; color-scheme:dark; }
 body { background:var(--surface); color:var(--ink); }
 h1 { font-size:25px; font-weight:650; line-height:1.25; text-wrap:balance; } h2 { font-size:18px; } h3 { font-size:16px; }

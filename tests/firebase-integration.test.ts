@@ -147,8 +147,8 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
     expect(await personal.get('alert', 'optout-alert-fixture')).toBeUndefined();
   });
   it('persists a skipped data choice per UID without opting in, defaults missing styles to Night and preserves saved palettes', async () => {
-    expect(await (await request('/profile')).json()).toMatchObject({ mapStyle: 'night', collectTravelData: false, travelDataChoiceMade: false });
-    expect(await store.forUser('bob').profile()).toMatchObject({ mapStyle: 'night', collectTravelData: false, travelDataChoiceMade: false });
+    expect(await (await request('/profile')).json()).toMatchObject({ theme: 'dark', mapStyle: 'night', collectTravelData: false, travelDataChoiceMade: false });
+    expect(await store.forUser('bob').profile()).toMatchObject({ theme: 'dark', mapStyle: 'night', collectTravelData: false, travelDataChoiceMade: false });
     const styleStore = store.forUser('legacy-style-fixture');
     const { mapStyle: _oldStyle, ...legacyStyle } = { ...await styleStore.profile(), displayName: 'Legacy style fixture', theme: 'light' as const,
       updatedAt: '2026-10-01T12:00:00.000Z' };
@@ -167,6 +167,27 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
     expect(await new FirestoreStore(services.db).forUser('alice').profile()).toMatchObject({ travelDataChoiceMade: true, collectTravelData: false, inferFrequentRoutes: false });
     expect(await store.forUser('bob').profile()).toMatchObject({ travelDataChoiceMade: false, collectTravelData: false });
     expect((await request('/profile', alice, { inferFrequentRoutes: true }, 'PATCH')).status).toBe(400);
+  });
+  it('defaults missing Firestore appearance to Dark and preserves explicit saved Light, Dark and System', async () => {
+    const personal = store.forUser('legacy-theme-fixture');
+    const { theme: _oldTheme, ...legacy } = { ...await personal.profile(), displayName: 'Legacy appearance fixture', mapStyle: 'minimal' as const,
+      createdAt: '2026-10-01T12:00:00.000Z', updatedAt: '2026-10-02T12:00:00.000Z' };
+    await personal.setMeta('profile', legacy);
+    expect(await personal.profile()).toEqual({ ...legacy, theme: 'dark' });
+    expect(await personal.meta('profile')).toEqual(legacy);
+    const updated = await personal.updateProfile({ displayName: 'Updated legacy fixture' });
+    expect(updated).toMatchObject({ theme: 'dark', mapStyle: 'minimal', createdAt: legacy.createdAt });
+    expect(await personal.meta('profile')).toEqual(updated);
+    for (const theme of ['light', 'dark', 'system'] as const) {
+      const chosen = await personal.updateProfile({ theme });
+      expect(await new FirestoreStore(services.db).forUser('legacy-theme-fixture').profile()).toEqual(chosen);
+      expect(chosen).toMatchObject({ theme, mapStyle: 'minimal', createdAt: legacy.createdAt });
+    }
+    const { theme: _theme, mapStyle: _style, ...withoutAppearance } = await personal.profile();
+    await personal.setMeta('profile', withoutAppearance);
+    expect(await personal.profile()).toEqual({ ...withoutAppearance, theme: 'dark', mapStyle: 'night' });
+    expect(await personal.meta('profile')).toEqual(withoutAppearance);
+    expect(await personal.updateProfile({ displayName: 'Both appearance fields missing' })).toMatchObject({ theme: 'dark', mapStyle: 'night', createdAt: legacy.createdAt });
   });
   it('isolates simultaneous users, profiles and saved records and persists across repository instances', async () => {
     await Promise.all([request('/profile', alice, { displayName: 'Alice' }, 'PATCH'), request('/profile', bob, { displayName: 'Bob' }, 'PATCH')]);

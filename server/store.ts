@@ -52,11 +52,11 @@ export class Store {
       const profile = this.meta<LocalProfile>('profile');
       if (!profile) {
         const now = new Date().toISOString();
-        this.setMeta('profile', { id: 'local', displayName: 'Traveller', theme: 'system', mapDetail: 'clean', mapStyle: 'night',
+        this.setMeta('profile', { id: 'local', displayName: 'Traveller', theme: 'dark', mapDetail: 'clean', mapStyle: 'night',
           browserNotifications: false, collectTravelData: false, travelDataChoiceMade: false, inferFrequentRoutes: false, transport: 'car', createdAt: now, updatedAt: now } satisfies LocalProfile);
-      } else if (profile.mapStyle === undefined) {
-        // Add the independent basemap preference without resetting older preferences or timestamps.
-        this.setMeta('profile', { ...profile, mapStyle: 'night' });
+      } else if (profile.theme === undefined || profile.mapStyle === undefined) {
+        // Fill missing appearance preferences without resetting saved choices or timestamps.
+        this.setMeta('profile', { ...profile, theme: profile.theme ?? 'dark', mapStyle: profile.mapStyle ?? 'night' });
       }
     });
     if (!this.meta<SourceStatus>('sourceStatus')) this.setMeta('sourceStatus', {
@@ -88,7 +88,10 @@ export class Store {
     });
   }
   get eventRevision() { return this.meta<number>('eventRevision') ?? 0; }
-  profile(): LocalProfile { return { collectTravelData: false, travelDataChoiceMade: false, ...this.meta<LocalProfile>('profile')! }; }
+  profile(): LocalProfile {
+    const profile = this.meta<LocalProfile>('profile')!;
+    return { collectTravelData: false, travelDataChoiceMade: false, ...profile, theme: profile.theme ?? 'dark', mapStyle: profile.mapStyle ?? 'night' };
+  }
   updateProfile(patch: Partial<Omit<LocalProfile, 'id' | 'createdAt' | 'updatedAt'>>): LocalProfile {
     return this.transaction(() => {
       const profile: LocalProfile = { ...this.profile(), ...patch, updatedAt: new Date().toISOString() };
