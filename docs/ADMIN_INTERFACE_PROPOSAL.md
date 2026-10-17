@@ -1,12 +1,21 @@
-# Admin interface proposal — awaiting owner approval
+# Admin workspace and extended agent-correction proposal
 
-This document is a discussion draft. **No new admin dashboard, correction/audit workflow or publication agent has been implemented.** The core is now deployed with Firebase token verification, custom admin claims and protected shared-data mutations. Production has no seeded dummy users; owner account/admin onboarding is still needed. Standalone dummy identities only unlock local screens and do not secure shared SQLite. See [deployment procedure](FIRST_DEPLOYMENT.md) and [environment setup](ENVIRONMENTS.md).
+**17 October update:** the owner authorized and the feature branch implements the community admin workspace, user verification, pending report review, shared blockade editing/cancellation and source-pipeline status. These changes run locally until the other developer integrates/releases them. Firebase admin claims and server-managed verified membership enforce permissions; production has no seeded dummy users. Standalone dummy identities do not secure shared SQLite. [Current tested status](IMPLEMENTATION_STATUS.md), [API](API.md), [deployment](FIRST_DEPLOYMENT.md).
+
+## Implemented workspace
+
+1. Admin sign-in opens **Control centre**. **Blockades** provides pending/all filters, expandable schedule/photo/reporter details, approve/reject and edit/cancel. Verified contributors can review reports from ordinary users in Closures too.
+2. **People** lists Firebase Auth users with pagination and contributor verify/unverify. It cannot grant admin and exposes no private trip traces, profile city or personal photo records.
+3. **Pipeline** uses the real source status/notices and existing collector/manual-import controls. Disabled or failed/partial access remains visible. Gemini interpretation and automatic publication remain future work.
+4. Regular authors can edit pending drafts. Rejected reports are read-only for them; approved records become shared and routing uses the published snapshot. Cancellations retain the record/evidence and remove routing effects. Photos are loaded on authorized expansion rather than in every state poll.
+
+The following design retains the **future extended agent correction/audit/override** requirements. A complete before/after audit ledger, cancellation reasons, agent replay suppression and model correction workflow are not implemented by community moderation.
 
 ## Decisions confirmed by the owner
 
 1. Publish valid agent-detected blockades automatically; admins correct mistakes afterward.
 2. Cancelling an incorrect blockade removes its routing effect while retaining evidence/history. Do not permanently delete it or let reprocessing silently recreate it.
-3. Guests may plan/navigate. Normal users use personal features; admins manage shared closure information. Firebase integration and core deployment are complete; the proposed full admin interface remains separate work.
+3. Guests may plan/navigate. Regular users submit reports for review; verified contributors/admins can publish and review. Admins manage users and pipeline controls. Extended agent correction remains separate work.
 
 Automatic publication still requires structured geometry/time/source validation. A non-closure notice, invalid geometry or unresolved location/time must not become a published blockade simply because a model generated text. Such candidates belong in an exception queue. The Gemini agent itself remains future work owned by the user.
 
@@ -39,17 +48,18 @@ Reprocessing the same rejected notice revision cannot create a replacement activ
 
 ## Role boundary
 
-| Role | Proposed access |
+| Role | Current feature-branch access |
 | --- | --- |
 | Guest | Published closures, route planning, navigation, tour |
-| Normal user | Guest features plus their saved journeys, preferences/history and personal alerts |
-| Admin | Shared blockade editing/cancellation/restoration, evidence and correction log |
+| Normal user | Guest features, private account features and pending reports/photos |
+| Verified contributor | Normal features, direct publication and pending report review; own report editing |
+| Admin | Shared blockade editing/cancellation, review, user verification and pipeline controls |
 
 Production permissions must be enforced by the API using verified Firebase identity and a server-managed admin role. Hiding a button or editing browser role state is not authorization. Normal users must not grant themselves admin status. Admin access to shared closures does not imply access to users' private GPS traces.
 
-Standalone dummy development accounts share the SQLite database, with no multi-user isolation or server authorization. In Firebase emulator/production modes, accounts have private records and shared closure/source mutations require verified custom admin claims. An emulator launcher seeds local test accounts; production startup never seeds them. Dummy UI login is absent from production builds.
+Standalone dummy development accounts share the SQLite database, with no production multi-user authorization. Firebase modes isolate private records by verified UID and enforce per-action permissions, with source/demo controls requiring custom admin claims. The emulator launcher seeds test accounts; production startup never seeds them. Dummy UI login is absent from production builds.
 
-The UI restoration keeps the **Closures** tab and always-visible map **Add restriction** button visible, alongside direct demo and route block-point controls. **Activity** appears only after sign-in. Standalone tools retain their trusted-local behavior; Firebase modes reject guest/normal-user shared mutations at the API. A separate guest demo sandbox is not implemented. The correction/history/override workflow in this proposal still needs agreement and implementation before automatic agent publication.
+The **Closures** tab and map **Add restriction** remain visible; guests must sign in to submit. Demo and route-block testing controls are admin-only. Activity appears for ordinary signed-in users. A separate guest demo sandbox is not implemented. The extended correction/history/override workflow still needs implementation before claiming automatic agent correction and replay protection.
 
 ## Suggested delivery order after approval
 
@@ -58,4 +68,4 @@ The UI restoration keeps the **Closures** tab and always-visible map **Add restr
 3. Build the admin-only list/detail/map screen and edit/cancel/restore interactions in English and Urdu.
 4. Connect verified Firebase roles and per-user data ownership before public access; test normal-user rejection at the API.
 
-User management, analytics dashboards, bulk actions and a general database browser are outside the first version. The initial focus is quickly correcting an incorrect blockade without losing the evidence explaining the correction.
+Contributor verification/user listing is implemented. General analytics dashboards, bulk actions and a database browser remain outside this version.

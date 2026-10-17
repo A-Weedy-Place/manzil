@@ -77,7 +77,8 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
     await store.updateSourceStatus({ enabled: false, state: 'disabled' });
     expect((await request('/commutes')).status).toBe(401);
     expect((await request('/closures', undefined, draft)).status).toBe(401);
-    expect((await request('/closures', alice, { ...draft, admin: true })).status).toBe(403);
+    const submitted = await request('/closures', alice, { ...draft, admin: true, moderation: 'approved' });
+    expect(submitted.status).toBe(201); expect(await submitted.json()).toMatchObject({ status: 'draft', moderation: 'pending', author: { uid: 'alice', role: 'user' } });
     expect((await request('/notices', alice)).status).toBe(403);
     expect((await request('/state', 'forged-token')).status).toBe(401);
   });
@@ -85,8 +86,6 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
     const revision = (await store.routingSnapshot()).revision;
     const notices = (await store.listNotices()).length;
     const sharedWrites: [string, unknown, string][] = [
-      ['/CLOSURES', draft, 'POST'],
-      ['/CLOSURES/', draft, 'POST'],
       ['/NoTiCeS', { text: 'Case-variant authorization fixture', url: 'https://example.test/case-variant-notice' }, 'POST'],
       ['/SoUrCe/settings', { enabled: false }, 'PATCH'],
     ];
@@ -111,6 +110,41 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
     expect((await (await request('/COMMUTES', bob)).json() as Commute[]).some(item => item.id === commute.id)).toBe(false);
     expect((await request(`/COMMUTES/${commute.id}`, bob, undefined, 'DELETE')).status).toBe(404);
     expect((await request(`/COMMUTES/${commute.id}`, alice, undefined, 'DELETE')).status).toBe(200);
+  });
+  it('moderates community evidence and revokes verification across requests without changing admin claims', async () => {
+    const photo = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/cB8AAAAASUVORK5CYII=';
+    const response = await request('/closures', alice, { ...draft, title: 'Pending photo report', photos: [photo], author: { uid: 'administrator', role: 'admin' } });
+    expect(response.status).toBe(201); const closure = await response.json() as Closure;
+    expect(closure).toMatchObject({ status: 'draft', moderation: 'pending', author: { uid: 'alice', role: 'user' } });
+    expect((await request(`/closures/${closure.id}`, bob)).status).toBe(404);
+    expect((await (await request('/state')).json()).closures.some((item: Closure) => item.id === closure.id)).toBe(false);
+    const own = (await (await request('/state', alice)).json()).closures.find((item: Closure) => item.id === closure.id);
+    expect(own.photoCount).toBe(1); expect(own).not.toHaveProperty('photos');
+    expect((await request(`/closures/${closure.id}/review`, bob, { revision: 1, decision: 'approve' })).status).toBe(403);
+    const directory = await (await request('/admin/users', admin)).json(); expect(directory.users.some((user: { uid: string }) => user.uid === 'bob')).toBe(true);
+    expect((await request('/admin/users/bob', admin, { verified: true }, 'PATCH')).status).toBe(200);
+    expect((await (await request('/state', bob)).json()).membership.role).toBe('verified');
+    expect((await (await request(`/closures/${closure.id}`, bob)).json()).photos).toEqual([photo]);
+    const reviewed = await request(`/closures/${closure.id}/review`, bob, { revision: 1, decision: 'approve' });
+    expect(reviewed.status).toBe(200); expect(await reviewed.json()).toMatchObject({ status: 'published', reviewedBy: { uid: 'bob', role: 'verified' } });
+    expect((await request('/admin/users/bob', admin, { verified: false }, 'PATCH')).status).toBe(200);
+    const pending = await request('/closures', bob, { ...draft, title: 'After revocation' });
+    expect(await pending.json()).toMatchObject({ status: 'draft', moderation: 'pending', author: { uid: 'bob', role: 'user' } });
+    expect((await services.auth.getUser('bob')).customClaims?.admin).toBe(false);
+    expect((await request('/admin/users/administrator', admin, { verified: false }, 'PATCH')).status).toBe(409);
+  });
+  it('stores collection consent per UID and prevents trip and learned-alert writes after opt-out', async () => {
+    const personal = store.forUser('alice');
+    expect((await request('/profile', alice, { collectTravelData: true, inferFrequentRoutes: true }, 'PATCH')).status).toBe(200);
+    expect((await store.forUser('bob').profile()).collectTravelData).toBe(false);
+    expect((await request('/profile', alice, { collectTravelData: false }, 'PATCH')).status).toBe(200);
+    expect(await personal.profile()).toMatchObject({ collectTravelData: false, inferFrequentRoutes: false });
+    const now = Date.now(), trip: Trip = { id: 'optout-atomic-fixture', name: 'Consent race fixture', startedAt: new Date(now-60000).toISOString(), endedAt: new Date(now).toISOString(), createdAt: new Date(now).toISOString(),
+      points: [{ coordinate: [73,33.7], timestamp: new Date(now-60000).toISOString(), accuracy: 8 },{ coordinate: [73.001,33.7], timestamp: new Date(now).toISOString(), accuracy: 8 }], contributeToRoadDiscovery: false, distanceMeters: 90, durationSeconds: 60, gaps: 0 };
+    await expect(personal.saveTripIfConsented(trip)).rejects.toMatchObject({ status: 403 });
+    expect(await personal.get('trip', trip.id)).toBeUndefined();
+    await expect(personal.addAlertOnce('optout-alert-fixture', { title: 'Must not be written', message: 'Synthetic fixture', createdAt: trip.createdAt, read: false, frequentRouteId: 'usual-fixture' })).rejects.toMatchObject({ status: 409 });
+    expect(await personal.get('alert', 'optout-alert-fixture')).toBeUndefined();
   });
   it('isolates simultaneous users, profiles and saved records and persists across repository instances', async () => {
     await Promise.all([request('/profile', alice, { displayName: 'Alice' }, 'PATCH'), request('/profile', bob, { displayName: 'Bob' }, 'PATCH')]);
@@ -227,6 +261,7 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
     expect(snapshot.revision).toBeGreaterThanOrEqual(2);
   });
   it('chunks large GPS traces, keeps summaries small and enforces private trace access/deletion', async () => {
+    expect((await request('/profile', alice, { collectTravelData: true }, 'PATCH')).status).toBe(200);
     const now = Date.now(), count = 12000;
     const points = Array.from({ length: count }, (_, index) => ({ coordinate: [73 + index * 0.0000001,33.7], timestamp: new Date(now - 7200_000 + index * 500).toISOString(), accuracy: 5 }));
     const response = await request('/trips', alice, { name: 'Private GPS fixture', startedAt: new Date(now - 7200_000).toISOString(), endedAt: new Date(now).toISOString(), points, contributeToRoadDiscovery: false });

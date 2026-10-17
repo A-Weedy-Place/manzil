@@ -11,17 +11,20 @@ async function checkRuntime() {
 const PREFERENCES = 'manzil-guest-appearance-v1';
 function guestPreferences(): Record<string, unknown> { try { return JSON.parse(localStorage.getItem(PREFERENCES) ?? '{}'); } catch { return {}; } }
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
-  await checkRuntime();
   const userId = getAuthSession().user?.uid;
+  await checkRuntime();
+  if (userId !== getAuthSession().user?.uid) throw new Error('Account changed. Please retry.');
   if (FIREBASE_AUTH_ENABLED && !userId && path === '/profile' && init.method === 'PATCH') {
     const patch = JSON.parse(String(init.body));
     if (Object.keys(patch).some(key => !['theme', 'mapStyle', 'mapDetail'].includes(key))) throw new Error('Sign in for personal settings.');
     const next = { ...guestPreferences(), ...patch };
     localStorage.setItem(PREFERENCES, JSON.stringify(next)); return next as T;
   }
+  const accountHeaders = await authorizationHeaders();
+  if (userId !== getAuthSession().user?.uid) throw new Error('Account changed. Please retry.');
   const response = await fetch(`/api${path}`, {
     ...init,
-    headers: { 'Content-Type': 'application/json', ...await authorizationHeaders(), ...init.headers },
+    headers: { 'Content-Type': 'application/json', ...accountHeaders, ...init.headers },
     signal: init.signal ?? AbortSignal.timeout(path.includes('/source/check') ? 75000 : 30000),
   });
   const data = await response.json().catch(() => ({ error: 'The local server returned an unreadable response.' }));

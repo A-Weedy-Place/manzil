@@ -54,9 +54,20 @@ function squaredPointSegmentDistance(p: Coordinate, a: number[], b: number[]): n
 export function isDistinctUsefulCandidate(graph: RoutingGraph, candidate: Candidate, accepted: Candidate[], deadline = Infinity): boolean {
   const primary = accepted[0];
   if (!candidate.edges.length || candidate.path.durationSeconds > primary.path.durationSeconds * 1.5 + 60 || candidate.path.distanceMeters > primary.path.distanceMeters * 1.65 + 250) return false;
-  // A loop can manufacture differences while returning to the same corridor. Do not offer it as an alternative.
+  // Reject loops within a leg. Ordered stops may legitimately require revisiting
+  // a road/node on another leg (for example, collect someone then return home).
+  // A global visited set incorrectly discarded every alternative for those trips.
   const visited = new Set<number>([graph.edges[candidate.edges[0].index].from]);
-  for (const entry of candidate.edges) { const node = graph.edges[entry.index].to; if (visited.has(node)) return false; visited.add(node); }
+  const stops = candidate.path.snappedWaypoints ?? [];
+  let stop = 0;
+  const reached = (node: number) => {
+    const coordinate = graph.nodes[node].coordinate;
+    let advanced = false;
+    while (stop < stops.length && coordinate[0] === stops[stop][0] && coordinate[1] === stops[stop][1]) { stop++; advanced = true; }
+    if (advanced) { visited.clear(); visited.add(node); }
+  };
+  reached(graph.edges[candidate.edges[0].index].from);
+  for (const entry of candidate.edges) { const node = graph.edges[entry.index].to; if (visited.has(node)) return false; visited.add(node); reached(node); }
   for (const reference of accepted) {
     const referenceSegments = new Set(reference.edges.map((entry) => segmentKey(graph.edges[entry.index])));
     const minimumLength = Math.min(reference.path.distanceMeters, candidate.path.distanceMeters);

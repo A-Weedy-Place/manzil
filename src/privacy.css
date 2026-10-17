@@ -1,0 +1,17 @@
+.profile-avatar { overflow: hidden; flex-shrink: 0; }
+.profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.profile-identity > div { min-width: 0; }
+.profile-identity p { overflow-wrap: anywhere; }
+.profile-photo-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 14px 0; }
+.profile-photo-actions label { position: relative; cursor: pointer; min-height: 44px; }
+.profile-photo-actions input[type=file] { position: absolute; inset: 0; opacity: 0; width: 100%; cursor: pointer; }
+.profile-photo-actions label:focus-within { outline: 2px solid var(--primary, #007a66); outline-offset: 3px; }
+.profile-details-form { display: grid; gap: 10px; }
+.profile-details-form button { min-height: 44px; justify-self: start; }
+.travel-consent-card { border: 1px solid var(--border); padding: 16px; border-radius: 16px; margin-top: 20px; background: var(--green-soft); }
+.travel-consent-card.is-enabled { border-color: var(--green); }
+.travel-consent-card h2 { display: flex; align-items: center; gap: 8px; }
+.travel-consent-card .row > h2 { margin: 0; }
+.travel-consent-card p { line-height: 1.55; }
+.travel-consent-card > div { min-width: 0; }
+.travel-consent-card button { min-height: 44px; height: auto; white-space: normal; line-height: 1.4; }

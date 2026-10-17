@@ -1,10 +1,14 @@
 import { t } from '../lib/language';
+import { useEffect, useState } from 'react';
 import { ArrowRight, Bookmark, ChevronDown, Clock3, Navigation, Route, ShieldCheck, TriangleAlert } from 'lucide-react';
 import type { PlanResponse, RouteOption } from '../../shared/types';
 import { dateTime, distance, duration, time } from '../lib/format';
 
-interface Props { updating?: boolean; showDemo?: boolean; plan: PlanResponse; selectedId: string | null; onSelect: (route: RouteOption) => void; onSaveCommute: () => void; onNavigate: () => void; onDemo: () => void; demoBusy: boolean }
-export default function RouteResults({ updating = false, showDemo = false, plan, selectedId, onSelect, onSaveCommute, onNavigate, onDemo, demoBusy }: Props) {
+interface Props { updating?: boolean; showDemo?: boolean; baselineSelected?: boolean; onBaselineSelect?: () => void; plan: PlanResponse; selectedId: string | null; onSelect: (route: RouteOption) => void; onSaveCommute: () => void; onNavigate: () => void; onDemo: () => void; demoBusy: boolean }
+export default function RouteResults({ updating = false, showDemo = false, baselineSelected, onBaselineSelect, plan, selectedId, onSelect, onSaveCommute, onNavigate, onDemo, demoBusy }: Props) {
+  const [localExpanded, setLocalExpanded] = useState(false);
+  useEffect(() => { setLocalExpanded(false); }, [plan]);
+  const baselineExpanded = baselineSelected ?? localExpanded;
   const driving = plan.options.filter(option => ['direct', 'detour', 'alternative'].includes(option.kind));
   const selected = driving.find(option => option.id === selectedId) ?? driving[0];
   const departures = plan.options.filter(option => ['leave_earlier', 'leave_later'].includes(option.kind));
@@ -17,8 +21,9 @@ export default function RouteResults({ updating = false, showDemo = false, plan,
     {plan.conflicts.length > 0 && <div className="notice-box closure-impact"><TriangleAlert size={20} /><div><strong>{plan.conflicts.length} {t("closure")}{plan.conflicts.length !== 1 ? t("s") : t("")} {t("on the original route")}</strong><p>{plan.conflicts.map(c => c.title).join(' · ')}</p></div></div>}
     {!!plan.upcoming?.length && <div className="upcoming-route-notice"><Clock3 size={17} /><span>{t("Original route: ")}{plan.upcoming.map(item => `${item.title} · closes ${dateTime(item.startsAt)}`).join(' / ')}</span></div>}
     {!driving.length && <div className="error-box">{t(plan.unavailableReason ?? 'No clear route at this time. Choose another departure.')}</div>}
+    {driving.length > 0 && driving.length < 3 && <p className="route-availability-note" role="status">{driving.length === 1 ? t('1 distinct route validated.') : t('2 distinct routes validated.')} {t(plan.source === 'osrm' ? 'The online provider returned fewer clear alternatives.' : 'Other paths may be too similar, closed or outside the search limits.')}</p>}
     <div className="route-options">{driving.map(card)}</div>
-    {!!plan.conflicts.length && plan.baseline && <div className="blocked-route-card" aria-label={t("Original route blocked")}><TriangleAlert size={18} /><span><strong>{t("Original route · Blocked")}</strong><small>{duration(plan.baseline.durationSeconds)} {t("· ")}{distance(plan.baseline.distanceMeters)}</small></span></div>}
+    {!!plan.conflicts.length && plan.baseline && <div className="blocked-route-inspection"><button type="button" className={`blocked-route-card${baselineExpanded ? ' is-inspected' : ''}`} aria-label={t("Inspect original blocked route")} aria-expanded={baselineExpanded} onClick={() => { setLocalExpanded(value => !value); onBaselineSelect?.(); }}><TriangleAlert size={18} /><span><strong>{t("Original route · Blocked")}</strong><small>{duration(plan.baseline.durationSeconds)} {t("· ")}{distance(plan.baseline.distanceMeters)}</small></span><ChevronDown size={17} /></button>{baselineExpanded && <div className="blocked-route-details"><strong>{t('Unavailable · comparison only')}</strong><p>{t('Without the closure: ')}{duration(plan.baseline.durationSeconds)} · {distance(plan.baseline.distanceMeters)} · {t('Arrive ')}{time(plan.baseline.arrivalAt)}</p><ul>{plan.conflicts.map(conflict => <li key={conflict.closureId}>{conflict.title} · {time(conflict.entryAt)}</li>)}</ul><p className="route-via">{t('Via ')}{[...new Set(plan.baseline.steps.map(step => step.roadName))].filter(Boolean).join(' · ')}</p></div>}</div>}
     {departures.length > 0 && <details className="departure-alternatives"><summary><Clock3 size={17} />{t("Compare departure times")}<span>{departures.length}</span><ChevronDown size={16} /></summary><div className="route-options">{departures.map(card)}</div></details>}
     {selected && <><button className="primary-button full start-navigation" onClick={onNavigate}><Navigation size={19} />{t("Navigate")}<ArrowRight size={18} /></button><button className="secondary-button full save-route-button" onClick={onSaveCommute}><Bookmark size={18} />{t("Save journey")}</button>
       <details className="road-sequence"><summary>{t("Road sequence ")}<ChevronDown size={16} /></summary><ol>{selected.steps.map((step, index) => <li key={index}><span>{t(step.instruction || step.roadName || 'Continue on local road')}</span><small>{distance(step.distanceMeters)}</small></li>)}</ol></details>

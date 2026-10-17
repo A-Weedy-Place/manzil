@@ -84,4 +84,17 @@ describe('distinct same-departure alternatives', () => {
     expect(sameTime(result.options)).toHaveLength(2);
     expect(result.options.every((route) => !route.steps.some((step) => step.roadName === 'North Road'))).toBe(true);
   });
+  it('retains distinct alternatives when a required stop means returning over earlier nodes', () => {
+    const graph = corridors(), outward = request(graph);
+    const result = new LocalRouter(graph).plan({ ...outward, waypoints: [outward.destination], destination: outward.origin }, [], 1);
+    const routes = sameTime(result.options);
+    expect(routes.length).toBeGreaterThan(1);
+    for (const route of routes) {
+      expect(route.geometry.coordinates[0]).toEqual(outward.origin.coordinate);
+      expect(route.geometry.coordinates.at(-1)).toEqual(outward.origin.coordinate);
+      expect(route.snappedWaypoints).toEqual([outward.destination.coordinate]);
+      expect(route.geometry.coordinates).toContainEqual(outward.destination.coordinate);
+      expect(route.validation).toBe('clear');
+    }
+  });
 });

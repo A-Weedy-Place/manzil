@@ -5,13 +5,25 @@ export type Coordinate = [number, number];
 export interface Place { id?: string; name: string; coordinate: Coordinate }
 export interface Drawing { kind: 'point' | 'line' | 'polygon'; coordinates: Coordinate[]; widthMeters: number }
 export type ClosureReason = 'protest' | 'vip' | 'construction' | 'accident' | 'other';
+export type CommunityRole = 'user' | 'verified' | 'admin';
+export interface ClosureAuthor { uid: string; displayName: string; role: CommunityRole }
+export interface ClosureModeration {
+  moderation?: 'pending' | 'approved' | 'rejected'; author?: ClosureAuthor;
+  reviewedBy?: ClosureAuthor; reviewedAt?: string; photoCount?: number;
+}
+export interface Membership { uid: string; role: CommunityRole; verified: boolean }
+export interface CommunityUser extends Membership {
+  email?: string; displayName?: string; photoURL?: string; disabled: boolean;
+  createdAt?: string; lastSignInAt?: string;
+}
 export interface ClosureDraft {
   title: string; description: string; reason: ClosureReason;
   startsAt: string; endsAt: string | null;
   status: 'published' | 'draft' | 'cancelled';
-  geometry: Polygon; drawing?: Drawing; sourceUrl?: string;
+  geometry: Polygon; drawing?: Drawing; sourceUrl?: string; photos?: string[];
 }
-export interface Closure extends ClosureDraft { id: string; revision: number; createdAt: string; updatedAt: string }
+export interface Closure extends ClosureDraft, ClosureModeration { id: string; revision: number; createdAt: string; updatedAt: string }
+export type ClosureInput = ClosureDraft & ClosureModeration;
 export interface RouteStep { instruction: string; roadName: string; distanceMeters: number; durationSeconds: number }
 export interface RoutePath {
   geometry: LineString; distanceMeters: number; durationSeconds: number;
@@ -68,6 +80,7 @@ export interface Trip extends TripDraft { id: string; distanceMeters: number; du
 export type MapStyleId = 'streets' | 'outdoors' | 'contrast' | 'minimal' | 'night';
 export interface LocalProfile {
   id: 'local'; displayName: string; theme: 'light' | 'dark' | 'system';
+  city?: string; location?: string; photoDataUrl?: string; collectTravelData?: boolean;
   mapDetail: 'clean' | 'standard'; mapStyle: MapStyleId; browserNotifications: boolean;
   inferFrequentRoutes: boolean; transport: 'car'; createdAt: string; updatedAt: string;
 }
@@ -80,7 +93,8 @@ export interface AppState {
   notices: SourceNotice[]; trips: Trip[];
   sourceStatus: SourceStatus; graph: GraphStatus;
   eventRevision: number; profile: LocalProfile;
+  membership?: Membership | null;
 }
 export type ApiError = { error: string; details?: string };
-export type MapMode = 'browse' | 'origin' | 'destination' | 'waypoint' | 'point' | 'line' | 'polygon';
+export type MapMode = 'browse' | 'origin' | 'destination' | 'waypoint' | 'point' | 'line' | 'polygon' | 'road';
 export interface MapFocus { coordinates: Coordinate[]; token: number }

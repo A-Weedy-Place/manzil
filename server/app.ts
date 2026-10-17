@@ -2,14 +2,14 @@ import express, { type ErrorRequestHandler, type Request } from 'express';
 import { randomUUID } from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { z, ZodError } from 'zod';
-import type { Alert, AppState, Closure, Commute, CommuteDraft, GraphStatus, Place, Trip } from '../shared/types.js';
+import type { Alert, AppState, Closure, ClosureInput, Commute, CommuteDraft, GraphStatus, Place, Trip } from '../shared/types.js';
 import type { Repository } from './repository.js';
 import { isAllowedApplicationHost, readConfig, type RuntimeConfig } from './config.js';
 import { firebaseServices } from './firebase.js';
 import { mountWorker } from './worker.js';
 import { HttpError } from './errors.js';
 import { drawingToPolygon, summarizeTrace } from './geometry.js';
-import { closureDraftSchema, closureUpdateSchema, commuteSchema, drawingSchema, instantSchema, noticeSchema, planSchema, polygonSchema, profilePatchSchema, tripSchema } from './validation.js';
+import { closureDraftSchema, closureUpdateSchema, commuteSchema, coordinateSchema, drawingSchema, instantSchema, noticeSchema, planSchema, polygonSchema, profilePatchSchema, tripSchema } from './validation.js';
 import { SourceService, contentHash } from './source.js';
 import { getRoutingGraph, graphStatus, planJourney, searchPlaces } from './routing/index.js';
 import { activeClosureRoads } from './routing/closure-segments.js';
@@ -19,10 +19,13 @@ import type { RoutingGraph } from './routing/graph.js';
 import { checkCommute, checkEnabledCommutes, type Planner } from './commutes.js';
 import { frequentRouteProposals } from './frequent-routes.js';
 import { SpeechService, speechSchema } from './speech.js';
+import { actorFor, assertEditClosure, canReadClosure, closureSummary, directoryEntry, isReviewer, membershipFor, setVerification, type TokenUser, type UserDirectory } from './community.js';
+import { RoadSelectionError, selectRoadSection } from './routing/road-selection.js';
 
 interface AppOptions {
   config?: RuntimeConfig;
-  verifyToken?: (token: string) => Promise<{ uid: string; admin?: boolean }>;
+  verifyToken?: (token: string) => Promise<TokenUser>;
+  userDirectory?: UserDirectory;
   speech?: SpeechService;
   source?: SourceService; planner?: Planner;
   graph?: () => GraphStatus; places?: (query: string) => Place[] | Promise<Place[]>;
@@ -66,7 +69,8 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
   const app = express();
   const source = options.source ?? new SourceService(rootStore);
   const speech = options.speech ?? new SpeechService(rootStore);
-  const verifyToken = options.verifyToken ?? (async token => { const decoded = await firebaseServices(config.projectId).auth.verifyIdToken(token, true); return { uid: decoded.uid, admin: decoded.admin === true }; });
+  const verifyToken = options.verifyToken ?? (async token => { const decoded = await firebaseServices(config.projectId).auth.verifyIdToken(token, true); return { uid: decoded.uid, admin: decoded.admin === true, name: typeof decoded.name === 'string' ? decoded.name : undefined }; });
+  const directory = () => options.userDirectory ?? firebaseServices(config.projectId).auth;
   const planner = options.planner ?? planJourney;
   const currentGraph = options.graph ?? graphStatus;
   const places = options.places ?? searchPlaces;
@@ -102,7 +106,7 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
   const routes = express.Router();
   routes.use(async (request, response, next) => {
     if (config.role === 'worker') throw new HttpError(404, 'API is unavailable on the worker service.');
-    let user: { uid: string; admin?: boolean } | null = null;
+    let user: TokenUser | null = null;
     if (config.mode !== 'local' && request.headers.authorization) {
       const match = /^Bearer ([^\s]+)$/.exec(request.headers.authorization);
       if (!match) throw new HttpError(401, 'Invalid authorization header.');
@@ -112,12 +116,13 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
       // Express defaults to case-insensitive paths and optional trailing slashes.
       // Apply the same normalization before classifying authorization needs.
       const path = request.path.toLowerCase().replace(/\/+$/, '') || '/', write = !['GET', 'HEAD', 'OPTIONS'].includes(request.method);
-      const admin = path.startsWith('/notices') || path.startsWith('/agent/') || path.startsWith('/source/') && path !== '/source/status' || write && (path.startsWith('/closures') || path.startsWith('/demos'));
+      const admin = path.startsWith('/admin') || path.startsWith('/notices') || path.startsWith('/agent/') || path.startsWith('/source/') && path !== '/source/status' || write && path.startsWith('/demos');
       const personal = /^\/(commutes|trips|alerts|frequent-routes)(\/|$)/.test(path) || path === '/profile' && write;
-      if ((admin || personal || path === '/speech' && !config.speechPublic) && !user) throw new HttpError(401, 'Sign in to use this feature.');
+      if ((admin || personal || write && path.startsWith('/closures') || path === '/speech' && !config.speechPublic) && !user) throw new HttpError(401, 'Sign in to use this feature.');
       if (admin && !user?.admin) throw new HttpError(403, 'Administrator access is required for shared closure/source changes.');
     }
     response.locals.user = user;
+    response.locals.membership = await membershipFor(rootStore, user, config.mode === 'local');
     context.run(scopeFor(user?.uid ?? null), next);
   });
   routes.get('/speech/status', async (_request, response) => response.json(await speech.status()));
@@ -130,19 +135,50 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
   routes.get('/runtime', (_request, response) => response.json({ mode: config.mode, projectId: config.projectId, auth: config.mode === 'local' ? 'development' : 'firebase', storage: store.backend, scheduledWork: config.mode === 'production' ? 'external-worker' : 'local' }));
   routes.get('/state', async (_request, response) => {
     const personal = config.mode === 'local' || !!response.locals.user;
-    const admin = config.mode === 'local' || response.locals.user?.admin;
+    const member = response.locals.membership;
+    const admin = member?.role === 'admin';
     if (personal) await applyRetention(store);
-    const snapshot = await store.routingSnapshot(!!admin);
-    const state: AppState = { closures: snapshot.closures, commutes: personal ? await store.list('commute', 100) : [],
+    const snapshot = await store.routingSnapshot(!!member);
+    const state: AppState = { closures: snapshot.closures.filter(closure => canReadClosure(closure, member)).map(closureSummary), commutes: personal ? await store.list('commute', 100) : [],
       alerts: personal ? await store.list('alert', 200) : [], trips: personal ? await store.listTripSummaries() : [], notices: admin ? await store.listNotices() : [],
-      graph: currentGraph(), eventRevision: snapshot.revision, sourceStatus: await store.sourceStatus(), profile: await store.profile() };
+      graph: currentGraph(), eventRevision: snapshot.revision, sourceStatus: await store.sourceStatus(), profile: await store.profile(), membership: member };
     response.json(state);
   });
   routes.get('/profile', async (_request, response) => response.json(await store.profile()));
+  routes.get('/admin/users', async (request, response) => {
+    if (config.mode === 'local' && !options.userDirectory) {
+      response.json({ users: [{ uid: 'local-admin', displayName: 'Local developer', disabled: false, role: 'admin', verified: true }] }); return;
+    }
+    const pageToken = z.string().max(2000).optional().parse(request.query.pageToken);
+    let result;
+    try { result = await directory().listUsers(50, pageToken); }
+    catch (error) {
+      if ((error as { code?: string })?.code === 'auth/invalid-page-token') throw new HttpError(400, 'The user-list page expired. Reload the directory.');
+      throw new HttpError(503, 'The account directory is unavailable. Check Firebase Auth service permissions.');
+    }
+    const users = await Promise.all(result.users.map(user => directoryEntry(rootStore, user)));
+    response.json({ users, ...(result.pageToken ? { nextPageToken: result.pageToken } : {}) });
+  });
+  routes.patch('/admin/users/:id', async (request, response) => {
+    const { verified } = z.object({ verified: z.boolean() }).strict().parse(request.body);
+    const uid = id(request);
+    if (config.mode === 'local' && !options.userDirectory) throw new HttpError(409, 'User verification requires Firebase accounts. Standalone mode is a single trusted local user.');
+    let user;
+    try { user = await directory().getUser(uid); }
+    catch (error) {
+      if ((error as { code?: string })?.code === 'auth/user-not-found') throw new HttpError(404, 'Account not found.');
+      throw new HttpError(503, 'The account directory is unavailable. Check Firebase Auth service permissions.');
+    }
+    if (user.customClaims?.admin === true) throw new HttpError(409, 'Administrator access is managed separately; it cannot be changed here.');
+    await setVerification(rootStore, uid, verified, response.locals.membership.uid);
+    response.json({ uid, verified, role: verified ? 'verified' : 'user' });
+  });
   routes.patch('/profile', async (request, response) => {
     const patch = profilePatchSchema.parse(request.body);
+    if (patch.collectTravelData === false) patch.inferFrequentRoutes = false;
+    if (patch.inferFrequentRoutes && !(patch.collectTravelData ?? (await store.profile()).collectTravelData)) throw new HttpError(400, 'Allow travel data collection before learning frequent routes.');
     const profile = await store.updateProfile(patch);
-    if (patch.inferFrequentRoutes !== undefined) await recheck();
+    if (patch.inferFrequentRoutes !== undefined || patch.collectTravelData !== undefined) await recheck();
     response.json(profile);
   });
   routes.get('/frequent-routes', async (_request, response) => {
@@ -152,6 +188,11 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
     const query = z.string().max(160).parse(request.query.q ?? ''); response.json(await places(query));
   });
   routes.post('/geometry', (request, response) => response.json(polygonSchema.parse(drawingToPolygon(drawingSchema.parse(request.body)))));
+  routes.post('/roads/section', (request, response) => {
+    const { from, to } = z.object({ from: coordinateSchema, to: coordinateSchema }).strict().parse(request.body);
+    try { response.json(selectRoadSection(roadGraph(), from, to)); }
+    catch (error) { if (error instanceof RoadSelectionError) throw new HttpError(error.status, error.message); throw error; }
+  });
   routes.post('/plan', async (request, response, next) => {
     const body = planSchema.parse(request.body);
     try {
@@ -169,11 +210,31 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
     catch (error) { next(error instanceof HttpError ? error : new HttpError(400, 'This journey could not be calculated. Check the endpoints and departure time.')); }
   });
   routes.post('/closures', async (request, response) => {
-    const closure = await store.saveClosure(closureDraftSchema.parse(request.body)); if (config.mode === 'local') await recheck(); response.status(201).json(closure);
+    const member = response.locals.membership!;
+    const body = closureDraftSchema.parse(request.body), actor = await actorFor(store, member, response.locals.user);
+    const draft: ClosureInput = { ...body, author: actor, moderation: isReviewer(member) ? 'approved' : 'pending',
+      status: isReviewer(member) ? body.status : 'draft', photoCount: body.photos?.length ?? 0 };
+    const closure = await store.saveClosure(draft); if (config.mode === 'local') await recheck(); response.status(201).json(closure);
   });
   routes.get('/closures/roads', async (request, response) => {
     const at = instantSchema.parse(request.query.at ?? new Date().toISOString());
     response.json(activeClosureRoads(requireRoadGraph(), (await store.routingSnapshot()).closures, at));
+  });
+  routes.get('/closures/:id', async (request, response) => {
+    const closure = await getRecord<Closure>(store, 'closure', id(request));
+    if (!canReadClosure(closure, response.locals.membership)) throw new HttpError(404, 'Closure not found.');
+    response.json({ ...closure, photoCount: closure.photos?.length ?? closure.photoCount ?? 0 });
+  });
+  routes.post('/closures/:id/review', async (request, response) => {
+    const member = response.locals.membership;
+    if (!isReviewer(member)) throw new HttpError(403, 'Verified contributor or administrator access is required.');
+    const body = z.object({ revision: z.number().int().positive(), decision: z.enum(['approve', 'reject']) }).strict().parse(request.body);
+    const previous = await getRecord<Closure>(store, 'closure', id(request));
+    if (previous.moderation !== 'pending' || previous.status !== 'draft') throw new HttpError(409, 'This report is no longer awaiting review.');
+    const reviewer = await actorFor(store, member, response.locals.user);
+    const closure = await store.saveClosure({ ...previous, status: body.decision === 'approve' ? 'published' : 'draft',
+      moderation: body.decision === 'approve' ? 'approved' : 'rejected', reviewedBy: reviewer, reviewedAt: new Date().toISOString() }, previous.id, body.revision);
+    if (config.mode === 'local') await recheck(); response.json(closure);
   });
   routes.get('/demos', async (request, response) => {
     const at = instantSchema.parse(request.query.at ?? new Date().toISOString());
@@ -192,11 +253,18 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
     const result = await toggleDemo(store, requireRoadGraph(), body.scenario, body.at, body.enabled); if (config.mode === 'local') await recheck(); response.json(result);
   });
   routes.put('/closures/:id', async (request, response) => {
-    const { revision, ...draft } = closureUpdateSchema.parse(request.body);
-    const closure = await store.saveClosure(draft, id(request), revision); if (config.mode === 'local') await recheck(); response.json(closure);
+    const { revision, ...body } = closureUpdateSchema.parse(request.body);
+    const previous = await getRecord<Closure>(store, 'closure', id(request)), member = response.locals.membership!;
+    assertEditClosure(previous, member);
+    const draft: ClosureInput = { ...body, ...(previous.author ? { author: previous.author } : {}),
+      moderation: isReviewer(member) ? 'approved' : 'pending', status: isReviewer(member) ? body.status : 'draft',
+      photos: body.photos ?? previous.photos ?? [], photoCount: (body.photos ?? previous.photos)?.length ?? 0,
+      ...(previous.reviewedBy ? { reviewedBy: previous.reviewedBy, reviewedAt: previous.reviewedAt } : {}) };
+    const closure = await store.saveClosure(draft, previous.id, revision); if (config.mode === 'local') await recheck(); response.json(closure);
   });
   routes.delete('/closures/:id', async (request, response) => {
     const previous = await getRecord<Closure>(store, 'closure', id(request));
+    assertEditClosure(previous, response.locals.membership);
     const closure = await store.saveClosure({ ...previous, status: 'cancelled' }, previous.id, previous.revision); if (config.mode === 'local') await recheck(); response.json(closure);
   });
   routes.get('/commutes', async (_request, response) => response.json(await store.list('commute', 100)));
@@ -224,10 +292,11 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
   routes.get('/trips', async (_request, response) => { await applyRetention(store); response.json(await store.listTripSummaries()); });
   routes.get('/trips/:id', async (request, response) => { await applyRetention(store); response.json(await getRecord<Trip>(store, 'trip', id(request))); });
   routes.post('/trips', async (request, response) => {
+    if (!(await store.profile()).collectTravelData) throw new HttpError(403, 'Allow travel data collection in Profile before saving a trip.');
     const draft = tripSchema.parse(request.body);
     const trip: Trip = { ...draft, id: randomUUID(), createdAt: new Date().toISOString(), ...summarizeTrace(draft.points),
       durationSeconds: Math.round((Date.parse(draft.endedAt) - Date.parse(draft.startedAt)) / 1000) };
-    await store.put('trip', trip); await applyRetention(store); await recheck(); response.status(201).json(await store.get('trip', trip.id) ?? trip);
+    await store.saveTripIfConsented(trip); await applyRetention(store); await recheck(); response.status(201).json(await store.get('trip', trip.id) ?? trip);
   });
   routes.patch('/trips/:id', async (request, response) => {
     const body = z.object({ name: z.string().trim().min(1).max(120).optional(), contributeToRoadDiscovery: z.boolean().optional() }).strict().parse(request.body);

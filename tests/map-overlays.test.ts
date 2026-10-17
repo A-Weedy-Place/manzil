@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Closure } from '../shared/types';
-import { activeClosurePolygons, closureRoadKey, routeMatchesMapSnapshot, visibleClosureRoads, type ClosureRoads } from '../src/lib/mapOverlays';
+import type { Closure, Coordinate, RoutePath } from '../shared/types';
+import { activeClosurePolygons, closureRoadKey, exclusiveBaselineSegments, routeMatchesMapSnapshot, visibleClosureRoads, type ClosureRoads } from '../src/lib/mapOverlays';
 
 const closure: Closure = {
   id: 'road', title: 'Road closed', description: '', reason: 'other', status: 'published', revision: 1,
@@ -46,5 +46,27 @@ describe('map closure snapshots', () => {
     const future = { ...closure, id: 'future', startsAt: '2026-10-16T10:00:00Z', endsAt: null };
     expect(closureRoadKey([closure], closure.startsAt)).toBe(closureRoadKey([closure, future], closure.startsAt));
     expect(closureRoadKey([closure, future], future.startsAt)).not.toBe(closureRoadKey([closure], closure.startsAt));
+  });
+});
+
+const path = (coordinates: Coordinate[]): RoutePath => ({ geometry: { type: 'LineString', coordinates }, departureAt: closure.startsAt, arrivalAt: closure.endsAt!, durationSeconds: 60, distanceMeters: 100, steps: [], snappedOrigin: coordinates[0], snappedDestination: coordinates.at(-1)! });
+describe('blocked original geometry', () => {
+  it('does not tint the open shared start and end of a clear detour', () => {
+    const original = path([[73, 33.7], [73.001, 33.7], [73.002, 33.7], [73.003, 33.7]]);
+    const clear = path([[73, 33.7], [73.001, 33.7], [73.001, 33.701], [73.002, 33.701], [73.002, 33.7], [73.003, 33.7]]);
+    expect(exclusiveBaselineSegments(original, [clear])).toEqual([[[73.001, 33.7], [73.002, 33.7]]]);
+  });
+  it('clips partial shared segments even with opposite direction and different nodes', () => {
+    const original = path([[73, 33.7], [73.004, 33.7]]), clear = path([[73.003, 33.7], [73.001, 33.7]]);
+    expect(exclusiveBaselineSegments(original, [clear])).toEqual([[[73, 33.7], [73.001, 33.7]], [[73.003, 33.7], [73.004, 33.7]]]);
+  });
+  it('does not remove a geometric crossing or a separate parallel carriageway', () => {
+    const original = path([[73, 33.7], [73.004, 33.7]]);
+    expect(exclusiveBaselineSegments(original, [path([[73.002, 33.699], [73.002, 33.701]]), path([[73, 33.7001], [73.004, 33.7001]])])).toEqual([original.geometry.coordinates]);
+  });
+  it('has no blocked overlay where the whole baseline is shared and retains it without clear choices', () => {
+    const original = path([[73, 33.7], [73.004, 33.7]]);
+    expect(exclusiveBaselineSegments(original, [original])).toEqual([]);
+    expect(exclusiveBaselineSegments(original, [])).toEqual([original.geometry.coordinates]);
   });
 });

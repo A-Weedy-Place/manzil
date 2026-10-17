@@ -3,7 +3,7 @@ import type { Closure, Commute, CommuteImpact, PlanRequest, PlanResponse } from 
 import { planJourney } from './routing/index.js';
 import type { Repository } from './repository.js';
 import { HttpError } from './errors.js';
-import { coveredBySavedCommute, frequentRouteProposals } from './frequent-routes.js';
+import { coveredBySavedCommute, observedJourneys, observedJourneyConflicts, type ObservedJourney } from './frequent-routes.js';
 
 const KARACHI_OFFSET_MS = 5 * 3600_000;
 /** Pakistan Standard Time currently has a fixed UTC+05:00 offset. Weekdays are local. */
@@ -27,13 +27,14 @@ function ensureOpen(store: Repository) {
   if (isClosed(store)) throw new Error('The local store is closed.');
 }
 async function requireFrequentConsent(store: Repository, frequentRouteId?: string) {
-  if (frequentRouteId && !(await store.profile()).inferFrequentRoutes) {
-    throw new HttpError(409, 'Usual-journey notifications are disabled.');
+  if (frequentRouteId) {
+    const profile = await store.profile();
+    if (!profile.collectTravelData || !profile.inferFrequentRoutes) throw new HttpError(409, 'Usual-journey notifications are disabled.');
   }
   ensureOpen(store);
 }
 
-export async function checkCommute(store: Repository, commute: Commute, planner: Planner = planJourney, now = Date.now(), frequentRouteId?: string, coveredConflictIds: Set<string> = new Set(), coveredEventRevision?: number): Promise<CommuteImpact> {
+export async function checkCommute(store: Repository, commute: Commute, planner: Planner = planJourney, now = Date.now(), frequentRouteId?: string, coveredConflictIds: Set<string> = new Set(), coveredEventRevision?: number, observed?: ObservedJourney): Promise<CommuteImpact> {
   const occurrenceAt = nextOccurrence(commute, now);
   const request: PlanRequest = { origin: commute.origin, destination: commute.destination, waypoints: commute.waypoints, departureAt: occurrenceAt,
     compareDepartures: true };
@@ -51,14 +52,18 @@ export async function checkCommute(store: Repository, commute: Commute, planner:
     ensureOpen(store);
     if ((await store.routingSnapshot()).revision !== revision) continue;
     // A matching closure ID alone cannot suppress an updated restriction after a retry.
-    const notifyConflicts = plan.conflicts.filter(conflict => revision !== coveredRevision || !coveredConflictIds.has(conflict.closureId));
+    const historical = observed ? observedJourneyConflicts(observed, closures, occurrenceAt) : [];
+    const combined = new Map(plan.conflicts.map(conflict => [conflict.closureId, conflict]));
+    for (const conflict of historical) if (!combined.has(conflict.closureId)) combined.set(conflict.closureId, conflict);
+    const notifyConflicts = [...combined.values()].filter(conflict => revision !== coveredRevision || !coveredConflictIds.has(conflict.closureId));
+    const observedAffected = historical.some(conflict => notifyConflicts.some(notify => notify.closureId === conflict.closureId));
     const signature = createHash('sha256').update(JSON.stringify(notifyConflicts.map(conflict => {
       const closure = closures.find(item => item.id === conflict.closureId);
       return [conflict.closureId, closure?.revision];
     }).sort())).digest('hex').slice(0, 20);
     const key = `${frequentRouteId ? 'frequent-route' : 'commute'}-check:${frequentRouteId ?? commute.id}:${occurrenceAt}`;
     const alertTarget = frequentRouteId ? { frequentRouteId } : { commuteId: commute.id };
-    const previous = await store.meta<{ signature: string; hadConflicts: boolean }>(key);
+    const previous = await store.meta<{ signature: string; hadConflicts: boolean; observed?: boolean }>(key);
     ensureOpen(store);
     await requireFrequentConsent(store, frequentRouteId);
     // Metadata is also remote with Firestore. Revalidate after that awaited read
@@ -67,18 +72,20 @@ export async function checkCommute(store: Repository, commute: Commute, planner:
     ensureOpen(store);
     if (notifyConflicts.length && previous?.signature !== signature) {
       await store.addAlertOnce(`${key}:${signature}`, {
-        title: `${commute.name}: route disruption`,
-        message: `${notifyConflicts.length} published closure${notifyConflicts.length === 1 ? '' : 's'} affect your next planned journey. ${plan.options.length ? 'Open the journey planner to compare validated route and departure options.' : 'No validated alternative was found.'}`,
+        title: observedAffected ? 'Your observed journey may be affected' : `${commute.name}: route disruption`,
+        message: observedAffected
+          ? `Published closures overlap the expected passage of a previously recorded journey. This is a historical corridor warning, not confirmation of your next route.${historical.some(conflict => conflict.uncertain) ? ' Sparse GPS sections make the corridor approximate.' : ''} ${plan.options.length ? 'Open the planner to compare fresh validated routes.' : 'No fresh validated alternative was found.'}`
+          : `${notifyConflicts.length} published closure${notifyConflicts.length === 1 ? '' : 's'} affect your next planned journey. ${plan.options.length ? 'Open the journey planner to compare validated route and departure options.' : 'No validated alternative was found.'}`,
         createdAt: new Date(now).toISOString(), read: false, ...alertTarget, closureId: notifyConflicts[0]?.closureId,
       });
-    } else if (previous?.hadConflicts && !plan.conflicts.length && plan.baseline && plan.options.length) {
+    } else if (previous?.hadConflicts && !combined.size && plan.baseline && plan.options.length) {
       await store.addAlertOnce(`${key}:clear:${revision}`, { title: `${commute.name}: disruption cleared`,
-        message: 'The current published closure set no longer conflicts with the next journey. Estimates exclude live traffic and unreported road conditions.',
+        message: previous.observed ? 'No current published closure overlaps the expected passage of the recorded journey. Check a fresh route before leaving; historical GPS is not a road-access guarantee.' : 'The current published closure set no longer conflicts with the next journey. Estimates exclude live traffic and unreported road conditions.',
         createdAt: new Date(now).toISOString(), read: false, ...alertTarget });
     }
     ensureOpen(store);
     await requireFrequentConsent(store, frequentRouteId);
-    await store.setMeta(key, { signature, hadConflicts: Boolean(notifyConflicts.length), checkedAt: new Date(now).toISOString() });
+    await store.setMeta(key, { signature, hadConflicts: Boolean(notifyConflicts.length), observed: observedAffected, checkedAt: new Date(now).toISOString() });
     return { commuteId: commute.id, occurrenceAt, plan: { ...plan, eventRevision: revision } };
   }
   throw new HttpError(409, 'Closures changed while checking this journey. Check again for current advice.');
@@ -136,7 +143,8 @@ async function runEnabledCommutes(store: Repository, planner: Planner, now: numb
     catch { /* One unavailable or invalid saved route must not stop checks for the others. */ }
   }
   if (isClosed(store)) return;
-  for (const proposal of await frequentRouteProposals(store, now)) {
+  for (const observed of await observedJourneys(store, now)) {
+    const proposal = observed.proposal;
     if (isClosed(store)) return;
     const { revision } = await store.routingSnapshot();
     // Nearby endpoints and similar times are only a dedupe hint, not proof that
@@ -144,7 +152,7 @@ async function runEnabledCommutes(store: Repository, planner: Planner, now: numb
     const covered = new Set(saved.filter(commute => savedRevisions.get(commute.id) === revision && coveredBySavedCommute(proposal, commute))
       .flatMap(commute => savedImpacts.get(commute.id)?.plan.conflicts.map(conflict => conflict.closureId) ?? []));
     const commute: Commute = { ...proposal, name: 'Your usual journey', enabled: true, createdAt: proposal.lastObservedAt, updatedAt: proposal.lastObservedAt };
-    try { await checkCommute(store, commute, planner, now, proposal.id, covered, revision); }
+    try { await checkCommute(store, commute, planner, now, proposal.id, covered, revision, observed); }
     catch { /* One unavailable learned route must not stop checks for the others. */ }
   }
 }
