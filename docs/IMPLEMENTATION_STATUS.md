@@ -2,6 +2,10 @@
 
 Local core delivered 14 October 2026; map/routing/profile/navigation redesign implemented 15 October. This document records tested behavior and limitations. Full retained scope: [PROJECT_CONTEXT](../PROJECT_CONTEXT.md). Current UX and integration details: [15 October redesign](REDESIGN_2026-10-15.md).
 
+## Feature branch and handoff — 17 October
+
+Created `codex/feature-development` from `origin/main` at `34e9e4a` after fetching GitHub. The owner and assistant will implement and test features locally, publish branch commits and keep documentation current; the other developer handles integration into `main` and deployment. The initial branch change only records this workflow; it adds no app behavior or deployment. Validation is documentation review and `git diff --check`; application tests/builds are not rerun for this documentation-only change. Existing test/deployment evidence below retains its original scope and date. See [development workflow](DEVELOPMENT_WORKFLOW.md).
+
 ## Merge reconciliation — 17 October
 
 Combined first-deployment commit `be1fd4c` and incoming Pakistan-routing/Firebase commit `f9d6d3b`. Resolved the three documentation conflicts by retaining the deployment evidence and incoming feature/provider history, with the local/deployed distinction explicit. Resolved `tests/server.test.ts` by using the incoming extensible app-options fixture, adapting the Hosting-tag test to it, and keeping both Hosting-host and case/trailing-slash authorization tests. Auto-merged production host validation, UID-scoped async storage and national planning remain intact.
