@@ -10,7 +10,7 @@ import { defaultProfile, defaultSourceStatus, type RecordKind, type PersonalReco
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const decode = <T>(data: FirebaseFirestore.DocumentData | undefined): T | undefined => data?.json ? JSON.parse(data.json) as T : undefined;
 const pack = (value: unknown) => ({ json: JSON.stringify(value) });
-const sharedMeta = (key: string) => /^(source|fuel:|demoScenario:|streetRouteDemo:|speech:|community:member:|eventRevision$)/.test(key);
+const sharedMeta = (key: string) => /^(source|fuel:|weather:|demoScenario:|streetRouteDemo:|speech:|community:member:|eventRevision$)/.test(key);
 interface SharedCache { snapshot?: RoutingSnapshot }
 
 /** Durable repository used unchanged by emulators and Cloud Run. No local-file fallback. */

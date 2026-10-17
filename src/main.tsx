@@ -15,6 +15,7 @@ import './account-settings.css';
 import './statistics.css';
 import './journey-controls.css';
 import './saved-journeys.css';
+import './weather.css';
 import App from './App';
 
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);

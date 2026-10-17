@@ -1,5 +1,14 @@
 /** App-owned copy only. User notices, names and original source evidence remain verbatim. */
 export const urdu: Record<string, string> = {
+  'Islamabad weather': 'اسلام آباد کا موسم', 'Loading weather': 'موسم آ رہا ہے', 'Weather unavailable': 'موسم دستیاب نہیں',
+  'Cached forecast': 'محفوظ پیش گوئی', 'Hourly forecast': 'گھنٹہ وار پیش گوئی', 'Weather by Open-Meteo': 'موسم: Open-Meteo',
+  'Weather is available within the forecast window only.': 'موسم صرف دستیاب پیش گوئی کی مدت کے لیے موجود ہے۔',
+  'Weather is temporarily unavailable.': 'موسم عارضی طور پر دستیاب نہیں۔',
+  'Clear sky': 'صاف آسمان', 'Clear night': 'صاف رات', 'Mainly clear': 'زیادہ تر صاف', 'Partly cloudy': 'جزوی ابر آلود',
+  'Overcast': 'ابر آلود', 'Fog': 'دھند', 'Freezing fog': 'جمتی دھند', 'Freezing drizzle': 'جمتی بوندا باندی',
+  'Drizzle': 'بوندا باندی', 'Freezing rain': 'جمتی بارش', 'Rain showers': 'بارش کی بوچھاڑ', 'Rain': 'بارش',
+  'Snow': 'برف باری', 'Thunderstorm with hail': 'گرج چمک اور ژالہ باری', 'Thunderstorm': 'گرج چمک',
+  'Updated': 'آخری تازہ کاری',
   'Example route': 'مثالی راستہ', 'Illustrative closure': 'فرضی بندش',
   'Cached fuel reference. Latest check overdue or failed.': 'ایندھن کی محفوظ حوالہ قیمت۔ تازہ جانچ میں تاخیر یا ناکامی ہوئی۔',
   'Search a place or address': 'مقام یا پتہ تلاش کریں', 'Use current location': 'موجودہ مقام استعمال کریں',

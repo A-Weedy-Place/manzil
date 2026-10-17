@@ -1,6 +1,7 @@
 import type { Coordinate, MapStyleId, Trip } from '../../shared/types';
 import { loadMapStyle } from './mapStyle';
 import { tripTraceBounds, tripTraceSections, usableTracePoints } from './tripTrace';
+import { drawTripShareWeather } from './tripShareWeather';
 
 const WIDTH = 1080, HEIGHT = 1360, MAP_HEIGHT = 640;
 export interface TripShareImage { blob: Blob; basemap: 'map' | 'illustration' }
@@ -132,7 +133,7 @@ export async function renderTripShareImage(trip: Trip, options: { signal: AbortS
       context.drawImage(logo, 51, 37, 78, 78); context.restore();
     }
     context.fillStyle = '#8be0bb'; context.font = '700 56px Georgia, serif'; context.fillText('manzil.', logo ? 150 : 60, 88);
-    context.fillStyle = '#dbe9e5'; context.font = '500 22px system-ui, sans-serif'; context.fillText('MY JOURNEY', 60, 135);
+    context.fillStyle = '#dbe9e5'; context.font = '500 22px system-ui, sans-serif'; context.fillText('MY JOURNEY', 60, 154);
     context.textAlign = 'right'; context.font = '500 22px system-ui, sans-serif';
     const date = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Karachi', day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(trip.startedAt));
     context.fillText(date, WIDTH - 60, 82);
@@ -172,6 +173,7 @@ export async function renderTripShareImage(trip: Trip, options: { signal: AbortS
     context.fillStyle = '#bbcec8'; context.font = '400 19px system-ui, sans-serif';
     context.fillText(trip.demoData ? 'Simulated journey · fictional GPS and fuel estimate' : 'Recorded journey · fuel cost is an estimate', 48, 1270);
     context.font = '500 18px system-ui, sans-serif'; context.fillText('Plan your way with Manzil', 48, 1314);
+    drawTripShareWeather(context, trip.weather, WIDTH, HEIGHT);
     return { blob: await imageBlob(canvas, options.signal), basemap: kind };
   } finally { clearTimeout(deadline); options.signal.removeEventListener('abort', cancel); controller.abort(); }
 }

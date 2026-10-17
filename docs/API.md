@@ -21,6 +21,12 @@ Registration and Forgot password use the Firebase client Authentication SDK, not
 
 Admin authority comes only from the verified Firebase custom claim. Contributor verification is separate server-owned metadata (`community:member:<uid>`) read for each request; it is not a browser setting or an admin claim. The admin verification API never grants/revokes administrator access. `AppState.membership` supplies the current UID/role/verified flag; the UI only trusts it when its UID matches the current account. Standalone mode deliberately uses one trusted `local-admin` API identity and shared SQLite data; its dummy normal/admin UI accounts cannot test production authorization. Use emulators for permission/isolation checks.
 
+## Islamabad hourly weather
+
+Public **`GET /api/weather?at=<ISO instant>`** returns the city-level `WeatherResponse` for the matching hour; omitted `at` uses now. Offsets are normalized to UTC and scheduling remains PKT. Unknown query parameters, timezone-free dates and repeated values are rejected. The endpoint accepts no coordinates/city/provider URL. `state` is `fresh`, `stale` or `unavailable`; a nullable `reading` includes hour, temperatureC, WMO weatherCode, isDay, fixed Islamabad coordinate and source/retrieval metadata. `availableUntil` is exclusive. Weather requests share a durable hourly cache and do not change closure/access/route validation.
+
+`POST /api/trips` can attach optional **server-owned `weather`** from fresh cached departure-hour data for trips starting within 30 km of Islamabad; client weather is rejected by the strict input schema. No upstream request is made during trip creation. Existing consent/UID checks still apply. Old/out-of-city/uncovered trips stay without weather and sharing never backfills current values. See [full weather API/cache/provider limits](WEATHER.md).
+
 ## Vehicle, fuel prices and spending estimates
 
 `PATCH /api/profile` also accepts `vehicle: {kind:'car'|'motorcycle', label?:string, fuelType:'petrol'|'diesel', kmPerLitre:number|null}`. Economy is finite, 1–200 km/litre, or null to disable estimates. The server manages `vehicleUpdatedAt`; clients cannot backdate it. Optional fields preserve existing profiles. `transport:'car'` continues to describe road routing; vehicle kind changes fuel estimates without enabling motorcycle-specific access/ETAs.

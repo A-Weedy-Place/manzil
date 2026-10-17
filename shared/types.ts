@@ -1,4 +1,5 @@
 import type { LineString, Polygon } from 'geojson';
+import type { WeatherReading } from './weather.js';
 
 /** All coordinates use GeoJSON order: [longitude, latitude]. */
 export type Coordinate = [number, number];
@@ -105,7 +106,7 @@ export interface TripDraft {
   name: string; startedAt: string; endedAt: string; points: RecordedPoint[];
   contributeToRoadDiscovery: boolean;
 }
-export interface Trip extends TripDraft { id: string; distanceMeters: number; durationSeconds: number; createdAt: string; gaps: number; pointCount?: number; fuelEstimate?: FuelEstimate; demoData?: boolean }
+export interface Trip extends TripDraft { id: string; distanceMeters: number; durationSeconds: number; createdAt: string; gaps: number; pointCount?: number; fuelEstimate?: FuelEstimate; weather?: WeatherReading; demoData?: boolean }
 export type MapStyleId = 'streets' | 'outdoors' | 'contrast' | 'minimal' | 'night';
 export interface LocalProfile {
   id: 'local'; displayName: string; theme: 'light' | 'dark' | 'system';

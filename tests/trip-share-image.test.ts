@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { Trip } from '../shared/types';
+import type { WeatherReading } from '../shared/weather';
 import { tripTraceBounds, tripTraceSections } from '../src/lib/tripTrace';
+import { drawTripShareWeather } from '../src/lib/tripShareWeather';
 
 const mock = vi.hoisted(() => ({ fail: false, wait: false, instances: [] as FakeMap[], style: vi.fn() }));
 class FakeMap {
@@ -31,7 +33,7 @@ let context: Record<string, unknown> & { fillText: ReturnType<typeof vi.fn>; dra
 beforeEach(() => {
   mock.fail = false; mock.wait = false; mock.instances.length = 0; mock.style.mockReset().mockResolvedValue({ version: 8, sources: {}, layers: [] });
   context = { fillText: vi.fn(), drawImage: vi.fn(), measureText: (value: string) => ({ width: value.length * 12 }) };
-  for (const method of ['fillRect', 'beginPath', 'roundRect', 'fill', 'stroke', 'moveTo', 'lineTo', 'arc', 'save', 'restore', 'clip']) context[method] = vi.fn();
+  for (const method of ['fillRect', 'beginPath', 'closePath', 'roundRect', 'fill', 'stroke', 'moveTo', 'lineTo', 'arc', 'bezierCurveTo', 'translate', 'scale', 'save', 'restore', 'clip']) context[method] = vi.fn();
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(context as unknown as CanvasRenderingContext2D);
   vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(callback => callback(new Blob(['png'], { type: 'image/png' })));
   vi.stubGlobal('Image', class {
@@ -52,6 +54,50 @@ it('renders an attributed actual basemap with green route and PNG branding, then
   const text = context.fillText.mock.calls.map(call => call[0]).join(' ');
   expect(text).toContain('manzil.'); expect(text).toContain('OpenFreeMap · © OpenMapTiles · © OpenStreetMap contributors'); expect(text).toContain('F-8'); expect(text).toContain('Blue Area'); expect(text).toContain('17 Oct 2026');
   expect(mock.style).toHaveBeenCalledWith('minimal', 'clean', expect.any(AbortSignal));
+});
+
+it('keeps the journey eyebrow below the circular logo without moving the map or journey title', async () => {
+  await renderTripShareImage(trip, { signal: new AbortController().signal });
+  const logo = context.drawImage.mock.calls.find(call => call[1] === 51 && call[2] === 37);
+  const eyebrow = context.fillText.mock.calls.find(call => call[0] === 'MY JOURNEY');
+  const title = context.fillText.mock.calls.find(call => call[0] === trip.name);
+  expect(logo).toBeDefined(); expect(eyebrow?.[2] - 22).toBeGreaterThan(37 + 78 + 12);
+  expect(title?.[2]).toBe(204); expect(title?.[2] - 36).toBeGreaterThan(eyebrow?.[2] + 10);
+  expect(context.drawImage.mock.calls.some(call => call[1] === 36 && call[2] === 240 && call[4] === 640)).toBe(true);
+});
+
+const weather: WeatherReading = { location: 'Islamabad', coordinate: [73.0479, 33.6844], at: '2026-10-17T08:00:00Z',
+  temperatureC: 24.4, weatherCode: 61, isDay: true, fetchedAt: '2026-10-17T07:30:00Z', source: 'Open-Meteo', sourceUrl: 'https://open-meteo.com/' };
+
+it('shares the saved trip temperature with a native rain symbol and weather source, without requesting fresh weather', async () => {
+  const fetch = vi.fn(() => { throw new Error('Sharing must not request weather'); }); vi.stubGlobal('fetch', fetch);
+  const reading = Object.freeze({ ...weather });
+  await renderTripShareImage({ ...trip, weather: reading }, { signal: new AbortController().signal });
+  expect(fetch).not.toHaveBeenCalled(); expect(reading).toEqual(weather);
+  const saved = context.fillText.mock.calls.find(call => call[0] === 'Islamabad · 24°C');
+  expect(saved).toEqual(['Islamabad · 24°C', 1020, 155]);
+  expect(context.fillText).toHaveBeenCalledWith('Weather · Open-Meteo model · open-meteo.com', 1032, 1314);
+  expect(context.bezierCurveTo).toHaveBeenCalled();
+  expect(context.lineTo).toHaveBeenCalledWith(8, 39); // rain beneath the cloud
+});
+
+it('omits weather for legacy history and invalid snapshots instead of substituting today’s temperature', async () => {
+  const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
+  await renderTripShareImage(trip, { signal: new AbortController().signal });
+  const text = context.fillText.mock.calls.map(call => call[0]).join(' ');
+  expect(text).not.toContain('Islamabad ·'); expect(text).not.toContain('Open-Meteo'); expect(fetch).not.toHaveBeenCalled();
+  context.fillText.mockClear();
+  expect(drawTripShareWeather(context as unknown as CanvasRenderingContext2D, { ...weather, temperatureC: Number.NaN }, 1080, 1360)).toBe(false);
+  expect(context.fillText).not.toHaveBeenCalled();
+});
+
+it.each([
+  ['sun', 0, true], ['moon', 0, false], ['cloud-sun', 2, true], ['cloud-moon', 2, false], ['cloud', 3, true],
+  ['fog', 45, true], ['drizzle', 51, true], ['rain', 65, true], ['snow', 75, true], ['thunderstorm', 95, true], ['unknown', 999, true],
+])('renders the %s diagram locally from its saved condition', (_name, weatherCode, isDay) => {
+  expect(drawTripShareWeather(context as unknown as CanvasRenderingContext2D, { ...weather, weatherCode: weatherCode as number, isDay: isDay as boolean }, 1080, 1360)).toBe(true);
+  expect(context.translate).toHaveBeenCalled(); expect(context.scale).toHaveBeenCalledWith(.85, .85);
+  expect(context.fillText).toHaveBeenCalledWith('Islamabad · 24°C', 1020, 155);
 });
 
 it('uses an explicitly labelled geographic illustration only when WebGL or tiles are unavailable', async () => {

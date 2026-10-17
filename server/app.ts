@@ -23,6 +23,7 @@ import { actorFor, assertEditClosure, canReadClosure, closureSummary, directoryE
 import { RoadSelectionError, selectRoadSection } from './routing/road-selection.js';
 import { FuelService, travelStatistics, pktDay } from './fuel.js';
 import { estimateTraceFuel } from '../shared/fuel.js';
+import { WeatherService } from './weather.js';
 
 interface AppOptions {
   config?: RuntimeConfig;
@@ -30,6 +31,7 @@ interface AppOptions {
   userDirectory?: UserDirectory;
   speech?: SpeechService;
   fuel?: FuelService;
+  weather?: WeatherService;
   source?: SourceService; planner?: Planner;
   graph?: () => GraphStatus; places?: (query: string) => Place[] | Promise<Place[]>;
   roadGraph?: () => RoutingGraph | null;
@@ -73,6 +75,7 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
   const source = options.source ?? new SourceService(rootStore);
   const speech = options.speech ?? new SpeechService(rootStore);
   const fuel = options.fuel ?? new FuelService(rootStore);
+  const weather = options.weather ?? new WeatherService(rootStore, undefined, undefined, process.env.NODE_ENV !== 'test');
   const verifyToken = options.verifyToken ?? (async token => { const decoded = await firebaseServices(config.projectId).auth.verifyIdToken(token, true); return { uid: decoded.uid, admin: decoded.admin === true, name: typeof decoded.name === 'string' ? decoded.name : undefined }; });
   const directory = () => options.userDirectory ?? firebaseServices(config.projectId).auth;
   const planner = options.planner ?? planJourney;
@@ -149,6 +152,11 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
     response.json(state);
   });
   routes.get('/profile', async (_request, response) => response.json(await store.profile()));
+  routes.get('/weather', async (request, response) => {
+    const query = z.object({ at: instantSchema.optional() }).strict().parse(request.query);
+    const at = new Date(query.at ?? Date.now()).toISOString();
+    response.json(await weather.get(at));
+  });
   routes.get('/fuel/prices', async (_request, response) => response.json(await fuel.status()));
   routes.post('/fuel/check', async (request, response) => {
     z.object({}).strict().parse(request.body); response.json(await fuel.check());
@@ -316,6 +324,10 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
         if (estimate) trip.fuelEstimate = estimate;
       }
     }
+    const tripWeather = await weather.snapshot(draft.startedAt, draft.points[0].coordinate);
+    if (tripWeather) trip.weather = tripWeather;
+    // saveTripIfConsented still rechecks the owning profile atomically after all
+    // awaits. The city forecast is cache-only and never waits for a provider.
     await store.saveTripIfConsented(trip); await applyRetention(store); await recheck(); response.status(201).json(await store.get('trip', trip.id) ?? trip);
   });
   routes.patch('/trips/:id', async (request, response) => {
@@ -357,5 +369,5 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
     response.status(500).json({ error: 'The local operation failed. Existing saved data is retained.' });
   };
   app.use(errors);
-  return { app, source, fuel };
+  return { app, source, fuel, weather };
 }
