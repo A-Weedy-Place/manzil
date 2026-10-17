@@ -33,6 +33,31 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); signOut(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); setLanguage('en'); document.documentElement.dir = 'ltr'; });
 
+it('defaults Local to Minimal, remembers its own style and restores the driving preference without a profile write', async () => {
+  const first = render(<App />);
+  await screen.findByTestId('map');
+  expect(capture.props!.mapStyle).toBe('outdoors');
+  fireEvent.click(screen.getByRole('button', { name: 'Local' }));
+  await waitFor(() => expect(capture.props?.transit?.network.version).toBe('network-v1'));
+  expect(capture.props!.mapStyle).toBe('minimal');
+  fireEvent.click(screen.getByRole('button', { name: 'Choose map style' }));
+  expect(screen.getByRole('button', { name: 'Minimal map style' }).getAttribute('aria-pressed')).toBe('true');
+  fireEvent.click(screen.getByRole('button', { name: 'Night map style' }));
+  expect(capture.props!.mapStyle).toBe('night');
+  fireEvent.click(screen.getByRole('button', { name: 'Close map styles' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Map' }));
+  expect(capture.props!.mapStyle).toBe('outdoors');
+  fireEvent.click(screen.getByRole('button', { name: 'Local' }));
+  expect(capture.props!.mapStyle).toBe('night');
+  expect(capture.mounts).toBe(1);
+  expect(vi.mocked(send).mock.calls.filter(([path]) => path === '/profile')).toHaveLength(0);
+  first.unmount();
+  render(<App />); await screen.findByTestId('map');
+  expect(capture.props!.mapStyle).toBe('outdoors');
+  fireEvent.click(screen.getByRole('button', { name: 'Local' }));
+  await waitFor(() => expect(capture.props!.mapStyle).toBe('night'));
+});
+
 it('keeps Local endpoints and transit lines independent of the driving planner while retaining one map', async () => {
   render(<App />); await screen.findByRole('button', { name: 'Find routes' }); await screen.findByTestId('map');
   act(() => { capture.props!.onEndpointMove('A', [73.03, 33.71]); capture.props!.onEndpointMove('B', [73.04, 33.72]); });

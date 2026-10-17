@@ -5,7 +5,7 @@ import type { FeatureCollection } from 'geojson';
 import type { MapViewProps } from '../src/components/MapView';
 import type { Closure, Coordinate, RouteOption } from '../shared/types';
 import type { TransitNetwork } from '../shared/transit';
-import { validateStyleMin, type LayerSpecification } from '@maplibre/maplibre-gl-style-spec';
+import { createExpression, validateStyleMin, type LayerSpecification } from '@maplibre/maplibre-gl-style-spec';
 
 const maps = vi.hoisted(() => ({ instances: [] as MockMap[], markers: [] as { coordinate: Coordinate; options: { element: HTMLElement }; remove: () => void }[] }));
 
@@ -98,6 +98,40 @@ it('adds and removes transit overlays on the retained map, keeping red closures 
   result.rerender(<MapView {...base} transit={null} />); await act(async () => {});
   expect(source.data.features).toEqual([]); expect(map.getSource('manzil-transit-stops')?.data.features).toEqual([]);
   expect(maps.instances).toHaveLength(1); expect(map.setStyle).toHaveBeenCalledOnce();
+});
+
+it('keeps all bus lines and intermediate stops legible at city overview without white bundles or overstating schematic geometry', async () => {
+  render(<MapView {...props()} mapStyle="minimal" />); await act(async () => {});
+  const map = maps.instances[0], layers = [...map.layers.keys()];
+  const paint = (id: string) => (map.layers.get(id) as { paint: Record<string, unknown> }).paint;
+  const evaluate = (expression: unknown, zoom: number, selected: boolean): number => {
+    if (typeof expression === 'number') return expression;
+    const parsed = createExpression(expression, 'test.paint');
+    if (parsed.result !== 'success') throw new Error(JSON.stringify(parsed.value));
+    return parsed.value.evaluate({ zoom }, { type: 'Point', properties: { selected } });
+  };
+  for (const name of ['manzil-transit-line', 'manzil-transit-schematic']) {
+    const style = paint(name);
+    expect(evaluate(style['line-width'], 11.5, false)).toBeGreaterThanOrEqual(4);
+    expect(evaluate(style['line-width'], 11.5, true)).toBeGreaterThanOrEqual(7);
+    expect(evaluate(style['line-opacity'], 11.5, false)).toBeGreaterThanOrEqual(.9);
+    expect(style['line-color']).toEqual(['get', 'color']);
+  }
+  const casing = paint('manzil-transit-casing');
+  expect(casing['line-color']).not.toBe('#ffffff'); expect(evaluate(casing['line-opacity'], 11.5, false)).toBeLessThanOrEqual(.2);
+  const stops = paint('manzil-transit-stops');
+  expect(evaluate(stops['circle-radius'], 11.5, false)).toBeGreaterThanOrEqual(2.25);
+  expect(evaluate(stops['circle-opacity'], 11.5, false)).toBeGreaterThanOrEqual(.9);
+  expect(evaluate(stops['circle-stroke-opacity'], 11.5, false)).toBeGreaterThanOrEqual(.9);
+  expect(evaluate(stops['circle-radius'], 9, false)).toBeLessThan(evaluate(stops['circle-radius'], 11.5, false));
+  expect(evaluate(stops['circle-opacity'], 9, false)).toBeLessThan(evaluate(stops['circle-opacity'], 11.5, false));
+  expect(evaluate(stops['circle-radius'], 9, true)).toBeGreaterThanOrEqual(5); expect(evaluate(stops['circle-opacity'], 9, true)).toBe(1);
+  expect((map.layers.get('manzil-transit-casing') as { filter: unknown }).filter).toEqual(['==', ['get', 'schematic'], false]);
+  expect(paint('manzil-transit-schematic')['line-dasharray']).toEqual([2, 1.8]);
+  expect(paint('manzil-transit-journey-schematic')['line-dasharray']).toEqual([2, 1.8]);
+  for (const layer of ['manzil-transit-line', 'manzil-transit-schematic', 'manzil-transit-journey-line', 'manzil-transit-journey-schematic', 'manzil-transit-stops']) expect(layers.indexOf('manzil-closure-roads-line')).toBeGreaterThan(layers.indexOf(layer));
+  const validation = validateStyleMin({ version: 8, glyphs: 'https://example.com/{fontstack}/{range}.pbf', sources: Object.fromEntries([...map.sources].map(([id, source]) => [id, { type: 'geojson', data: source.data }])), layers: [...map.layers.values()] as LayerSpecification[] });
+  expect(validation.map(issue => issue.message)).toEqual([]); expect(maps.instances).toHaveLength(1);
 });
 
 it('retains the map, style and overlay sources across route switches, polling and app theme changes', async () => {

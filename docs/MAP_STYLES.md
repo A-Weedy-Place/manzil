@@ -1,16 +1,20 @@
 # Map styles
 
-Updated 18 October 2026. Open **Style** on the map, or **Profile → Appearance → Map style**, to switch between three distinct choices. **Classic is the initial/default map for new or missing preferences**; an explicitly saved palette is respected. Outdoors is called **Classic**; Streets and High contrast are retired from both choosers.
+Updated 18 October 2026. Open **Style** on the map, or **Profile → Appearance → Map style**, to switch between three distinct choices. **Classic is the initial/default driving map for new or missing preferences**; an explicitly saved palette is respected. **Local independently defaults to Minimal.** Outdoors is called **Classic**; Streets and High contrast are retired from both choosers.
 
 | Style | Appearance | Base | Saved id |
 | --- | --- | --- | --- |
 | Classic — default | Green parks, blue water, warm main roads and a pale cream/green backdrop | OpenFreeMap Bright, tuned colours | `outdoors` |
-| Minimal | Quiet pale land, muted green/blue areas and darker slate roads/labels | OpenFreeMap Positron, tuned colours | `minimal` |
+| Minimal — Local default | Earlier pale land, understated areas and light roads; coloured transit overlays stand out | OpenFreeMap Positron, original palette | `minimal` |
 | Night | Deep blue background, clear road outlines and light labels | OpenFreeMap Dark, tuned colours | `night` |
 
 **App theme** controls the interface's light/dark/system appearance, defaulting to **Dark** for new or missing preferences. Saved Light/Dark/System choices stay intact; explicit System follows the operating system. Light has neutral-grey outer panels and pale-blue inner cards. **Map style** independently controls the basemap, defaulting to **Classic**. **Map detail** independently controls label/building/POI density; Clean remains the default. Flat 2D, blue route alternatives and bright red closures apply to every style. Switching styles does not reroute, reset endpoints or clear an unsaved drawing.
 
 The chooser previews illustrate each palette; they are not geographic screenshots or route data. The panel supports selected-state focus, Escape and outside-click dismissal. Profile exposes the same labelled buttons.
+
+## Independent Local preference
+
+Entering Local uses **Minimal** unless that guest/account has explicitly chosen another Local style in this browser. Local's Style chooser writes only `manzil-local-map-style-v1:guest` or its signed-in UID-scoped browser key. Switching to Map, Plan ahead or Profile restores the saved driving/profile map style; Local changes never PATCH the profile or change app appearance. Profile's Appearance settings continue to edit the driving preference. Choices persist across reloads when browser storage is available; blocked storage retains a choice for the mounted session. Invalid stored choices fall back to Minimal, and account switching does not briefly expose another account's choice. This is a browser preference, not a cloud-synced profile field.
 
 ## Existing profiles
 
@@ -26,9 +30,9 @@ The basemap effect depends only on normalized map style, map detail and an expli
 
 `tests/map-lifecycle.test.tsx` mounts the real React map component against an instrumented MapLibre boundary: route switches, copied polling payloads and app theme changes keep one map/style/source, unchanged data avoids worker re-indexing, and explicit detail changes perform a style update. Missing preferences and equivalent Classic aliases are covered too. These are lifecycle regression checks, not a claim to reproduce or fix every intermittent graphics/tile flash. Moving or zooming into uncached areas still requires network tiles; network errors and graphics-context interruptions retain explicit error/restart states.
 
-## Minimal road visibility
+## Restored Minimal palette
 
-Minimal now uses darker slate minor roads (`#7a8c97`) and main roads (`#607988`), muted casings, stronger labels and pale green/blue geographic areas. This colour-only transformation retains upstream road widths, geometry, filters, opacity and zoom thresholds, including Clean's reduced label/POI density. Rail/ferry/pier lines are not recoloured as streets. Route blue and closure red remain separate overlays; the palette does not change legal access, route ranking or closure/time validation. The transformation follows the transportation layer names and filters in the [official upstream Positron style](https://github.com/openmaptiles/positron-gl-style/blob/master/style.json), rather than bundling another map engine or road network.
+The owner's latest choice restores the pale Minimal behavior from `9f902c2`, before `cac2313` added darker slate roads, casings and label overrides. Minimal again uses the upstream Positron palette, retaining Clean's reduced label/POI density and the pattern-only fill safeguard below. Its preview uses light roads again. Classic and Night transformations remain intact. The [official upstream Positron style](https://github.com/openmaptiles/positron-gl-style/blob/master/style.json) supplies real basemap geometry; restoring its palette changes no routes, source coordinates, road access or closure/time validation. Local's heavier coloured route overlays remain distinct from the pale basemap.
 
 ## Black polygon fix
 
@@ -38,6 +42,6 @@ Clean now substitutes an explicit palette-appropriate solid colour before removi
 
 ## Verification
 
-`tests/map-style.test.ts` has focused regression coverage for exactly three offered palettes, Classic for missing preferences, legacy Classic normalization, non-black pattern-only fills across all five accepted ids, preservation of explicit colour expressions and original style objects, Standard restoration, darker Minimal roads/labels in both detail modes while retaining density/non-road lines, shared provider caching and source attribution. Fixtures reproduce inspected upstream pattern/transportation layer structures; the tests make no external network calls. Guest tests cover new Dark/Classic preferences, preserving saved v1/v2 choices and missing-field fallback. SQLite/API and Firebase integration expectations cover Classic for new/missing profiles and persistence of all five accepted saved ids; actual emulator and overall integration/build/browser evidence is recorded separately in [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md).
+`tests/map-style.test.ts` has focused regression coverage for exactly three offered palettes, Classic for missing driving preferences, legacy Classic normalization, non-black pattern-only fills across all five accepted ids, preservation of explicit colour expressions and original style objects, Standard restoration, restored upstream Minimal colours in both detail modes while retaining Clean density, shared provider caching and source attribution. Fixtures reproduce inspected upstream pattern/transportation layer structures; the tests make no external network calls. Local preference and transit UI tests cover its Minimal default, independent persistent choice, account isolation, invalid/blocked storage and one-map tab switching without profile writes. Guest tests cover new Dark/Classic driving preferences, preserving saved v1/v2 choices and missing-field fallback. SQLite/API and Firebase integration expectations cover Classic for new/missing profiles and persistence of all five accepted saved ids; actual emulator and overall integration/build/browser evidence is recorded separately in [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md).
 
 The earlier five-style/69-test browser evidence in implementation history describes the 15 October version, not this reduced chooser.

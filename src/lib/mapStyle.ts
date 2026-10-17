@@ -19,7 +19,7 @@ export const MAP_STYLE_URLS: Record<MapStyleId, string> = {
 };
 export const MAP_STYLES: { id: MapStyleId; name: string; description: string; colours: [string, string, string, string] }[] = [
   { id: 'outdoors', name: 'Classic', description: 'Green parks, blue water, warm roads', colours: ['#f1f4e7', '#92c584', '#7bc4df', '#e5ba77'] },
-  { id: 'minimal', name: 'Minimal', description: 'Quiet colours with distinct roads', colours: ['#f2f3f0', '#d7dfd8', '#c4d9e4', '#7a8c97'] },
+  { id: 'minimal', name: 'Minimal', description: 'A quiet, pale backdrop', colours: ['#f2f3f0', '#d7dfd8', '#c4d9e4', '#ffffff'] },
   { id: 'night', name: 'Night', description: 'Deep blue with clear road outlines', colours: ['#15232c', '#1d3832', '#17394b', '#6a8192'] },
 ];
 export const MAP_ATTRIBUTION = '<a href="https://openfreemap.org/" target="_blank" rel="noopener">OpenFreeMap</a> · © <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a> · © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>';
@@ -75,20 +75,6 @@ export function prepareMapStyle(original: StyleSpecification, detail: MapDetail,
     if (layer.type === 'fill' && /residential|suburb/.test(name)) layer.paint = { ...layer.paint, 'fill-color': '#f4eddd', 'fill-opacity': .5 };
     if (layer.type === 'line' && /motorway|trunk|primary|secondary/.test(name) && !/casing|outline|rail|label/.test(name)) layer.paint = { ...layer.paint, 'line-color': '#e5ba77' };
     if (layer.type === 'symbol' && layer.layout?.['text-field']) layer.paint = { ...layer.paint, 'text-color': '#35423a', 'text-halo-color': '#fffdf7', 'text-halo-width': 1.1 };
-  }
-  if (mapStyle === 'minimal') for (const layer of style.layers) {
-    const name = `${layer.id} ${'source-layer' in layer ? layer['source-layer'] : ''}`.toLowerCase();
-    if (layer.type === 'fill' && /water/.test(name)) layer.paint = { ...layer.paint, 'fill-color': '#c4d9e4' };
-    if (layer.type === 'fill' && /park|wood|forest|grass/.test(name)) layer.paint = { ...layer.paint, 'fill-color': '#d7dfd8' };
-    // Positron's white/light-grey roads disappear against its pale land. Keep
-    // the upstream widths, filters and zoom thresholds, changing only colours.
-    // Filter-only rail layers can have misleading names such as highway_subtle.
-    const nonRoad = /rail|ferry|pier|aeroway/.test(name) || /"(?:rail|transit|ferry|pier)"/.test(JSON.stringify('filter' in layer ? layer.filter ?? [] : []));
-    if (layer.type === 'line' && /road|highway|transportation/.test(name) && !nonRoad) {
-      const colour = /casing|outline/.test(name) ? '#adbcc5' : /path|pedestrian|track/.test(name) ? '#95a3a7' : /motorway|trunk|primary|secondary|major/.test(name) ? '#607988' : '#7a8c97';
-      layer.paint = { ...layer.paint, 'line-color': colour };
-    }
-    if (layer.type === 'symbol' && layer.layout?.['text-field']) layer.paint = { ...layer.paint, 'text-color': '#415360', 'text-halo-color': '#f8faf6' };
   }
   if (mapStyle === 'night') for (const layer of style.layers) {
     const name = `${layer.id} ${'source-layer' in layer ? layer['source-layer'] : ''}`.toLowerCase();

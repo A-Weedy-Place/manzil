@@ -31,6 +31,7 @@ import { useAlertNotifications } from './lib/notifications';
 import { api, send } from './lib/api';
 import { closureState, dateTime, dayDate, distance, downloadJSON, inputISO, localInput, relative, time } from './lib/format';
 import { normalizeMapStyleId } from './lib/mapStyle';
+import { useLocalMapStyle } from './lib/useLocalMapStyle';
 import AdminPanel from './components/AdminPanel';
 import ClosureList from './components/ClosureList';
 import { useTravelCapture } from './lib/useTravelCapture';
@@ -125,7 +126,8 @@ export default function App() {
   const lastLoadedState = useRef<AppState | null>(null);
   const latestView = useRef(view); latestView.current = view;
   const theme = state?.profile?.theme === 'system' ? systemDark ? 'dark' : 'light' : state?.profile?.theme ?? 'dark';
-  const mapStyle = normalizeMapStyleId(state?.profile.mapStyle);
+  const [localMapStyle, changeLocalMapStyle] = useLocalMapStyle(user?.uid);
+  const mapStyle = view === 'local' ? localMapStyle : normalizeMapStyleId(state?.profile.mapStyle);
   const profileName = state?.profile.displayName && state.profile.displayName !== 'Traveller' ? state.profile.displayName : user?.displayName ?? state?.profile.displayName ?? 'Guest';
   const membership = state?.membership?.uid === user?.uid ? state?.membership : null;
   const role = membership?.role ?? (user?.role === 'admin' ? 'admin' : user ? 'user' : 'guest');
@@ -412,6 +414,7 @@ export default function App() {
     setProfileSection(null); setCommuteOpen(value => value + 1); navigate('commutes');
   }
   async function changeMapStyle(mapStyle: MapStyleId) {
+    if (view === 'local') { changeLocalMapStyle(mapStyle); return; }
     if (mapStyleBusy || !state || normalizeMapStyleId(state.profile.mapStyle) === mapStyle) return;
     const owner = getAuthSession().user?.uid;
     setMapStyleBusy(true);
