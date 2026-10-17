@@ -1,6 +1,7 @@
 // Read-only deployment checks. Rejected write requests must never create records.
 const base = new URL(process.argv[2] ?? 'https://manzil-app-v1.web.app');
 const expectedProject = process.argv[3] ?? 'manzil-app-v1';
+const national = process.argv[4] === '--national';
 if (base.protocol !== 'https:' || base.pathname !== '/' || base.search || base.hash || base.username || base.password)
   throw new Error('Provide an HTTPS origin without a path, query or credentials.');
 const websiteOrigin = `https://${expectedProject}.web.app`;
@@ -36,8 +37,32 @@ await request('/api/commutes', { status: 401 });
 await request('/api/trips', { status: 401 });
 await request('/api/closures', { body: {}, status: 401 });
 await request('/api/source/check', { body: {}, status: 401 });
+await request('/api/COMMUTES/', { status: 401 });
+await request('/api/SpEeCh/', { body: { language: 'en', prompt: { kind: 'test' } }, status: 401 });
+await request('/api/PrOfIlE/', { method: 'PATCH', body: { displayName: 'Rejected smoke request' }, status: 401 });
+await request('/api/CLOSURES/', { body: {}, status: 401 });
+await request('/api/NoTiCeS/', { status: 401 });
 await request('/api/runtime', { status: 401, headers: { Authorization: 'Bearer deployment-invalid-token' } });
 await request('/api/runtime', { status: 403, headers: { Origin: 'https://example.invalid' } });
+let nationalResult;
+if (national) {
+  const places = await request('/api/places?q=Lahore');
+  assert(Array.isArray(places) && places.length > 0, 'Pakistan place search returned no Lahore results');
+  const nationalPlan = await request('/api/plan', { body: {
+    origin: { name: 'Badshahi Mosque road approach (deployment smoke)', coordinate: [74.3095, 31.588] },
+    destination: { name: 'Lahore Museum road approach (deployment smoke)', coordinate: [74.3099, 31.5682] },
+    departureAt: new Date().toISOString(), compareDepartures: false,
+  } });
+  assert(nationalPlan.source === 'osrm' && nationalPlan.options?.length > 0, `National routing unavailable: ${nationalPlan.unavailableReason ?? 'no clear options'}`);
+  assert(nationalPlan.options.every(option => option.validation === 'clear' && option.geometry?.coordinates?.length > 2), 'An invalid national route was offered');
+  const foreign = await request('/api/plan', { body: {
+    origin: { name: 'Foreign coverage test', coordinate: [77.209, 28.6139] },
+    destination: { name: 'Lahore road approach', coordinate: [74.3099, 31.5682] }, departureAt: new Date().toISOString(),
+  } });
+  assert(foreign.options?.length === 0 && /within Pakistan/.test(foreign.unavailableReason), 'Foreign endpoint was not rejected');
+  nationalResult = { places: places.length, routeOptions: nationalPlan.options.length,
+    distanceMeters: nationalPlan.options[0].distanceMeters, durationSeconds: nationalPlan.options[0].durationSeconds, foreignEndpointRejected: true };
+}
 console.log(JSON.stringify({ origin: base.origin, checks, graphReady: true, storage: 'firestore', project: expectedProject,
   routeOptions: plan.options.length, personalAccessDenied: true, guestWritesDenied: true, cloudSpeechEnabled: false,
-  automaticCollectionEnabled: false }, null, 2));
+  automaticCollectionEnabled: false, national: nationalResult }, null, 2));

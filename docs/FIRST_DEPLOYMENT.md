@@ -2,6 +2,8 @@
 
 Deployment target agreed during setup on 17 October 2026: Firebase Hosting plus Cloud Run and the default Firestore Standard database in Singapore (`asia-southeast1`). The private source repository stays private. Existing SQLite data, GPS traces and local account fixtures are not migrated or uploaded.
 
+**Latest release:** merged application commit `34e9e4a`, API revision **`manzil-api-00004-7t4`**, Hosting pin **`fh-2f5b84f588973b7c`**. Direct and website national/auth smoke runs pass all 19 checks, and browser Lahore search/routing and phone layout pass. Previous healthy rollback pairing: revision `manzil-api-00003-7zh` with Hosting pin `fh-d2031b7ee0c98b16`. The initial pre-fix revision/tag is not a working rollback target. See [current verification](IMPLEMENTATION_STATUS.md#merged-release-deployed--17-october).
+
 ## Verified prerequisites
 
 - Google Cloud project `manzil-app-v1` / project number `488497279747` is ACTIVE and billing is enabled. The owner reported creating a billing budget alert; alerts are not a hard spending cap.
@@ -9,7 +11,7 @@ Deployment target agreed during setup on 17 October 2026: Firebase Hosting plus 
 - Firebase email/password authentication is enabled. Authorized domains include `manzil-app-v1.web.app` and `manzil-app-v1.firebaseapp.com`.
 - Google Cloud CLI and repository-local Firebase CLI are signed in. Use `gcloud.cmd` and `.\node_modules\.bin\firebase.cmd` from PowerShell.
 - Ignored `.env.cloud.local` contains the registered web app configuration. Its key was not printed. `npm.cmd run build:cloud` passes.
-- 158 standard cases and all seven real Auth/Firestore emulator integration cases have passed on Node 24.22.0 (165 total). Default tests skip emulator cases; use `npm.cmd run test:firebase` to run them.
+- The merged release has passed 229 standard cases and twelve real Auth/Firestore emulator cases on Node 24.22.0 (241 total). The first release's 165-case result is historical. Default tests skip emulator cases; use `npm.cmd run test:firebase` to run them.
 
 ## One-time cloud setup
 
@@ -57,7 +59,17 @@ Hosting serves the cloud-built `dist` and forwards `/api/**` to `manzil-api` in 
 node scripts/smoke-cloud.mjs https://manzil-app-v1.web.app manzil-app-v1
 ```
 
-The script makes 11 checks using public example coordinates, including rejected unauthenticated writes. It does not create accounts, closures or personal records. Hosting must be republished after an API revision update so its pin moves to the newly tested revision. Merely changing the Cloud Run latest revision does not update an existing Hosting pin.
+The script makes 16 checks using public example coordinates, including case/trailing-slash authorization and rejected unauthenticated writes. It does not create accounts, closures or personal records. Append `--national` for three more checks: Lahore place search, a real Lahore road route, and rejection of a foreign endpoint. Those optional checks contact the configured public providers using public example coordinates; repeat requests reuse the backend caches. Hosting must be republished after an API revision update so its pin moves to the newly tested revision. Merely changing the Cloud Run latest revision does not update an existing Hosting pin.
+
+```powershell
+node scripts/smoke-cloud.mjs https://manzil-app-v1.web.app manzil-app-v1 --national
+```
+
+## Pakistan-wide prototype providers
+
+The merged release keeps the bundled Islamabad graph and uses explicitly configured `OSRM_BASE_URL=https://router.project-osrm.org` and `PHOTON_BASE_URL=https://photon.komoot.io` elsewhere in Pakistan. These public endpoints are for light prototype use: the [OSRM policy](https://github.com/Project-OSRM/osrm-backend/wiki/Demo-server) limits reasonable non-commercial use to one request per second; [Photon guidance](https://github.com/komoot/photon#demo-server) permits reasonable usage with no availability guarantee. The clients cache/deduplicate, bound queues and limit request starts; Cloud Run retains maximum one instance. Select suitable hosted/self-hosted capacity before scaling or commercial use. Do not activate scheduled national batches as part of this release.
+
+Queries and endpoint/stop coordinates go to the configured search/routing providers; raw GPS traces and account credentials do not. The app still validates closures/timing on returned route candidates and may explicitly return no safe route. OSRM cannot take arbitrary closure polygons, nationwide red road coating is not implemented, and toll/checkpost prices or waits are not supplied. See [routing limits](ROUTING.md).
 
 ## Account and feature boundaries
 

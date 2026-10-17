@@ -1,5 +1,11 @@
 # Local implementation status
 
+## Local pull and stash reconciliation - 17 October
+
+`main` is at feature merge `8191693` (pull request #1). The saved local deployment documentation, explicit prototype-provider configuration and expanded smoke script were reapplied alongside the incoming map polish, community/admin tools, vehicle/fuel estimates and Plan ahead behavior. The four overlapping documentation files retain both sets of information. The last verified hosted source remains **`34e9e4a` / `manzil-api-00004-7t4`**, pinned by **`fh-2f5b84f588973b7c`**; the newly pulled features are not deployed by this operation.
+
+Validation for this reconciliation is conflict-marker review, preservation of both sides' changes, smoke-script syntax and `git diff --check`. Application source and tests were not changed, so application tests/builds were not rerun; the dated feature and deployment results below remain separate evidence. The stash backup is retained. No commit, push, deployment, private-data migration or paid-service activation was performed.
+
 Local core delivered 14 October 2026; map/routing/profile/navigation redesign implemented 15 October. This document records tested behavior and limitations. Full retained scope: [PROJECT_CONTEXT](../PROJECT_CONTEXT.md). Current UX and integration details: [15 October redesign](REDESIGN_2026-10-15.md).
 
 ## Live map and separate Plan ahead — 17 October
@@ -56,6 +62,18 @@ Local Auth/Firestore/API/worker/frontend processes remain available; the local P
 ## Feature branch and handoff — 17 October
 
 Created `codex/feature-development` from `origin/main` at `34e9e4a` after fetching GitHub. The owner and assistant will implement and test features locally, publish branch commits and keep documentation current; the other developer handles integration into `main` and deployment. The initial branch change only records this workflow; it adds no app behavior or deployment. Validation is documentation review and `git diff --check`; application tests/builds are not rerun for this documentation-only change. Existing test/deployment evidence below retains its original scope and date. See [development workflow](DEVELOPMENT_WORKFLOW.md).
+
+## Merged release deployed — 17 October
+
+At the owner's request, deployed the resolved merge's application code **`34e9e4a`** to the existing Singapore service and republished Hosting. Website **https://manzil-app-v1.web.app** now pins healthy API revision **`manzil-api-00004-7t4`** via **`fh-2f5b84f588973b7c`**. Cloud Build **`db299cdc-e48c-4c14-a2d3-35ef51c084d9`** succeeded; runtime image digest is **`sha256:8c764daf0626d4adbf67f3cdfdce2c2b56e301c6f751b63fd588cf987955555a`**. The previous working revision `manzil-api-00003-7zh` / Hosting tag `fh-d2031b7ee0c98b16` is retained for rollback. The earlier merge-only/deployment separation below records the state before this release.
+
+Application code matches the merge that passed **241 cases (229 standard + twelve emulator cases)**; no application source changed during this deployment. Fresh `build:cloud` passes TypeScript, frontend bundling and backend compilation; only the existing map-chunk warning remains. Runtime configuration now explicitly selects the existing public OSRM/Photon defaults for light prototype use; the smoke script gained case/trailing-slash checks and optional national checks. No Firestore rule/index or schema change was needed. Source upload was checked: 154 files, with keys, local data, credentials and `.local-tools` excluded.
+
+**Nineteen live checks pass against the direct API and nineteen through Hosting.** They verify actual local-graph routing, production/project/storage identifiers, empty guest personal state, rejected guest writes/private reads, invalid-token/hostile-origin denial, case/trailing-slash authorization, live Lahore search, OSRM routing and foreign endpoint rejection. Lahore search returned seven places; the Badshahi Mosque road approach → Lahore Museum road approach returned two validated road options, first **2,872.7 m / 241.9 s**. No closure/user/personal records were created by these checks; no raw private GPS was submitted to providers.
+
+Live headless Chromium QA on the published site exercised the guest tour, Lahore autocomplete, coordinate selection and Find routes. It returned seven suggestions and two OSRM route cards, rendered the Lahore map/blue routes, logged zero JavaScript errors/API failures, and had no horizontal overflow at **375×812**. **1280×800** and phone screenshots were visually inspected; ignored evidence is `data/release-desktop.png` and `data/release-mobile.png`. The temporary browser script was removed. This does not newly verify real-user login/session persistence, password-reset delivery, outdoor GPS/audio or OS permissions.
+
+Verified retained resource settings: service/revision max one instance, minimum zero, 1 vCPU/1 GiB, concurrency eight, timeout 60 s, request-based CPU allocation and no startup CPU boost. Cloud speech/source collection stay disabled, no private worker/Scheduler/Gemini was enabled, and no paid model/speech request occurred. Local records were not migrated or uploaded. Public national providers have documented availability/exclusion/usage limitations; see [routing](ROUTING.md) and [release procedure](FIRST_DEPLOYMENT.md). `git diff --check` passes.
 
 ## Merge reconciliation — 17 October
 
@@ -154,12 +172,12 @@ Validation: **136 tests pass across 19 files**, including all existing real-road
 | Shared types / npm scaffolding | Implemented and installed; Node 24.22.0 / npm 11.19.1; required minimum Node 24.12 |
 | Local graph and routing | Local Islamabad graph plus online Pakistan routing; ordered stops and closure/time validation retained |
 | API/storage/source/profile | Shared async repository/API; standalone SQLite and Firebase emulator/production Firestore adapter; local data not migrated |
-| Map/editor/interface | Five map styles, shared timeline, red road coating without enclosing polygons, cached/deduplicated overlays; restored Closures/demo/edit controls and signed-in Activity tab |
-| Accounts and tutorial | Standalone dummy identities or Firebase SDK/Auth emulator; verified token/admin claims and private records in Firebase modes; guest tour behavior retained; full admin dashboard deferred |
+| Map/editor/interface | Local main: Classic/Minimal/Night styles, Live map + separate Plan ahead, road-section editing, role-gated demos, cached overlays and signed-in Activity; newly integrated features await release |
+| Accounts and tutorial | Local main: login-first entry with guest option, regular/verified/admin permissions and admin moderation/directory; hosted core retains Firebase authentication; extended agent audit/override workflow deferred |
 | Personal notifications | Saved + consented inferred journeys; opt-in browser delivery; six notification guard tests pass |
 | Navigation | Bilingual preview/voice controls; automatic foreground recovery, remaining stops, closure revisions and bounded retries |
 | Browser verification | New renderer inspected at 1280×800 and small-phone size; workflow evidence below |
-| Build and tests | Merged checkout: 229 standard + 12 real emulator cases pass (241 total); current cloud build/compiled startup pass; audit and browser evidence remain the dated checks below |
+| Build and tests | Incoming feature evidence: 345 standard tests and production/cloud builds; prior fuel phase: 15 emulator cases. Deployed source evidence: 241 cases + 19 live checks per origin. No application rerun for this documentation reconciliation |
 | Live X collection | Scheduler and collector implemented; this network rejected navigation, so live retrieval is unverified |
 | Cloud deployment, Gemini and external push | Core deployed on Firebase Hosting/Cloud Run with Auth/Firestore; Gemini, cloud speech, private scheduling and external push remain inactive/unimplemented |
 

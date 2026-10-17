@@ -1,4 +1,4 @@
-# Non-secret runtime configuration for the first Singapore deployment.
+# Non-secret runtime configuration for the Singapore prototype deployment.
 # Firebase web API keys belong in ignored .env.cloud.local, not this backend file.
 NODE_ENV: "production"
 MANZIL_MODE: "production"
@@ -12,3 +12,7 @@ TTS_ENABLED: "false"
 PUBLIC_CLOUD_SPEECH: "false"
 TTS_MONTHLY_CHARACTER_LIMIT: "100000"
 X_SCRAPER_ENABLED: "false"
+# Public endpoints for light, non-commercial prototype use. Both clients cache,
+# coalesce and limit remote request starts; replace before larger-scale operation.
+OSRM_BASE_URL: "https://router.project-osrm.org"
+PHOTON_BASE_URL: "https://photon.komoot.io"
