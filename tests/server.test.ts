@@ -59,7 +59,7 @@ describe('local API', () => {
       for (const path of ['/speech/', '/SpEeCh/']) expect((await request(path, 'POST', { language: 'en', prompt: { kind: 'test' } })).status).toBe(401);
       expect((await request('/PrOfIlE/', 'PATCH', { displayName: 'Guest fixture' })).status).toBe(401);
       expect((await request('/COMMUTES/')).status).toBe(401);
-      const shared: [string, string, unknown][] = [['/CLOSURES/', 'POST', closure], ['/NoTiCeS/', 'POST', { text: 'Offline fixture' }], ['/SoUrCe/settings/', 'PATCH', { enabled: false }]];
+      const shared: [string, string, unknown][] = [['/NoTiCeS/', 'POST', { text: 'Offline fixture' }], ['/SoUrCe/settings/', 'PATCH', { enabled: false }]];
       for (const [path, method, body] of shared) {
         expect((await request(path, method, body)).status).toBe(401);
         expect((await request(path, method, body, { Authorization: 'Bearer offline-unit-token' })).status).toBe(403);
@@ -143,6 +143,7 @@ describe('local API', () => {
   });
   it('records real points, excludes GPS jumps from distance, and deletes a trip', async () => {
     const { request } = await setup();
+    expect((await request('/profile', 'PATCH', { collectTravelData: true })).status).toBe(200);
     const start = Date.now() - 60_000;
     const points = [
       { coordinate: [73, 33], timestamp: new Date(start).toISOString(), accuracy: 5 },
@@ -170,7 +171,7 @@ describe('durability, commute time, and privacy retention', () => {
     const notice = store.upsertNotice({ source: 'manual', sourceId: 'durable-notice', url: '', text: 'A public notice',
       publishedAt: null, mediaUrls: [], contentHash: 'fixture-hash' }).notice;
     store.updateSourceStatus({ nextCheckAt: '2026-10-14T12:15:00Z', state: 'partial' });
-    store.updateProfile({ displayName: 'A local traveller', theme: 'dark', mapDetail: 'clean', mapStyle: 'outdoors', inferFrequentRoutes: true });
+    store.updateProfile({ displayName: 'A local traveller', theme: 'dark', mapDetail: 'clean', mapStyle: 'outdoors', collectTravelData: true, inferFrequentRoutes: true });
     store.close(); store = new Store(path); cleanup.push(() => store.close());
     expect(store.get('closure', first.id)).toMatchObject({ title: closure.title, revision: 1 }); expect(store.eventRevision).toBe(1);
     expect(store.pendingAgentNotices()[0].id).toBe(notice.id); expect(store.pendingAgentCount()).toBe(1);

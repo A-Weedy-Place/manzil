@@ -2,21 +2,22 @@
 
 ## Quick guide
 
-1. **Click the clock at the top.** Now is the default. Choose any date/time in Pakistan time, or choose **Back to now**. Closures and route departures use this same instant.
+1. **Map is live.** The compact header shows **Live map**, current PKT time and date. To inspect another instant, open **Plan ahead** from the side/bottom navigation, enter **Date & time · Pakistan**, then **Show map**. Its header clearly says **Planned map**. **Map** or **Return to live map** restores current time; Plan ahead remembers the last applied date.
 2. **Red roads are closed at the displayed time.** Amber warning markers are upcoming closures. Expired events are hidden. Click a marker for its schedule and editing controls.
 3. **Blue routes are validated travel options.** A conflicting original route is pale red and labelled **Blocked**. It is not selectable for navigation.
 4. **Add stop** adds an intermediate location. Search or pick on the map, reorder with arrows, remove with ×, or reverse the entire journey. Up to five stops are supported.
-5. **Demo closures** is directly available in the planner and Closures view and offers six independently toggleable examples. Use **Add all**, or select one at a time. **Clear demos** leaves ordinary closures alone. All generated events say Demo.
-   **Try street detour**, below the planner heading, loads a real Park Road example through Streets 20, 25 and 21. **Reopen demo road** restores the direct route for comparison. Route results also expose **Block a point on this route**. None of these requires opening Help.
-6. Zoom and pan freely around the world. The local routing graph still covers central Islamabad; worldwide routing is not implemented.
+5. Admin **Demo closures** provides ten synthetic examples. **Add defaults** enables the original six; four focused examples have **Try route** for ordinary public-street detours. **Clear demos** leaves ordinary reports alone. A demo route opens the live Map. Admin route results also expose **Block a point on this route**. Guests/ordinary users cannot mutate demo data.
+6. Zoom and pan worldwide. The local detailed graph covers central Islamabad; other Pakistan journeys use validated online routing. Worldwide routing is not implemented. [Provider limits](ROUTING.md).
 
 **Closures** remains a primary tab for everyone; the map's **Add restriction** plus button is always visible. **Activity** appears after sign-in. Guests receive the skippable tutorial each fresh visit/reload and after sign-out, even if previously completed; signed-in users retain remembered first-use behavior. Everyone can replay it from Help or Profile. See [accounts and tour](DEV_ACCOUNTS_AND_TOUR.md).
 
 ## Time and route behavior
 
-There is one authoritative map instant. A scheduled selection stays fixed. Now refreshes roughly once a minute, on returning focus, and when a known published closure starts/ends. An existing planner request automatically recalculates when that instant or the closure revision changes. Previous geometry remains neutral grey with Updating labels while replacing it, and route actions are disabled until a current validated result arrives; a late request cannot replace a newer result. Automatic refresh preserves the camera position and selected option where its ID still exists.
+There is one active instant for the displayed workspace. Only Plan ahead uses the remembered selected date; every other section, including Closures/Profile/Admin/Alerts and Navigation, uses the live clock. A preview is a projection over **currently known published restrictions**, not a reconstruction of archived historical database state. Past dates may be selected without claiming historical completeness.
 
-Choosing an earlier/later departure changes the visible map time and recalculates the journey there. Departure alternatives are never overlaid as if they belonged to the current map snapshot.
+The live clock refreshes roughly once a minute, on focus and at known closure start/end boundaries. A planned selection stays fixed during clock ticks. The date input is an unapplied draft until **Show map**, which reads the native submitted field and validates its PKT calendar value. Header status is never a date-picker button. Switching live/planned contexts clears old route geometry and pending sequences; delayed results must match both the request and current time context. Clock/revision changes within one mode can retain neutral Updating geometry while validation runs. Automatic route requests run only in the two planners, preserving camera and valid option selection; opening settings does not start hidden replanning.
+
+Choosing an earlier/later departure or checking a saved commute opens **Plan ahead** and recalculates at that occurrence. A blocked original remains an inspectable comparison in the same time context. Planned route results offer **View live route**, which returns to Map and obtains a current-time plan; only then is **Navigate** available. A future preview never directly starts GPS. Departure alternatives are never overlaid as if they belonged to the live snapshot.
 
 Map red state uses exact `[startsAt, endsAt)` membership, without the routing margin. Routing evaluates when the vehicle reaches each polygon, with the existing 30-second margin. A road which closes after the trip has passed can remain usable; a road reopening before arrival can also be usable. These time-dependent cases are different from a permanent road exclusion. Future closures intersecting the original route within 24 hours appear as a short upcoming notice, explicitly labelled as applying to the original route.
 

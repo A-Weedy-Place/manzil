@@ -1,0 +1,35 @@
+.vehicle-settings h2, .vehicle-fuel-caption { display: flex; align-items: center; gap: 8px; }
+.vehicle-settings form { display: grid; gap: 12px; }
+.vehicle-settings .field-label { margin: 0; }
+.vehicle-settings form > button { justify-self: start; min-height: 44px; }
+.vehicle-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.vehicle-fields select { width: 100%; }
+.vehicle-settings form > p { margin: 0; line-height: 1.5; }
+.mileage-input { display: flex; align-items: center; gap: 10px; }
+.mileage-input input { min-width: 0; flex: 1; }
+.mileage-input > span { color: var(--muted); font-size: 13px; white-space: nowrap; }
+.vehicle-fuel-caption { margin: 20px 0 9px; color: var(--green); font-size: 13px; }
+.fuel-price-details { margin: 10px 0; padding: 12px; border: 1px solid var(--border); background: var(--surface); border-radius: 12px; color: var(--ink); }
+.fuel-price-details > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer; font-size: 13px; font-weight: 600; min-height: 28px; }
+.fuel-price-details p { line-height: 1.5; overflow-wrap: anywhere; margin: 9px 0 0; }
+.fuel-price-details a, .trip-fuel-details a { color: var(--green); font-size: 12px; overflow-wrap: anywhere; }
+.fuel-price-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 15px 0; }
+.fuel-price-grid dt { font-size: 12px; color: var(--muted); }
+.fuel-price-grid dd { margin: 4px 0 0; font-size: 14px; font-weight: 600; }
+.route-fuel { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin-top: 9px; font-size: 12px; color: var(--muted); }
+.route-fuel strong { font-size: 14px; color: var(--green); font-weight: 600; }
+.activity-period { margin-top: 18px; }
+.activity-period > button { min-height: 44px; font-size: 12px; white-space: normal; line-height: 1.3; }
+.fuel-spending-summary { padding: 14px 16px; margin: -8px 0 24px; background: var(--green-soft); border: 1px solid var(--border); border-radius: 14px; }
+.fuel-spending-summary > div { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.fuel-spending-summary > div > span { font-size: 13px; color: var(--muted); }
+.fuel-spending-summary strong { font-size: 24px; color: var(--green); }
+.fuel-spending-summary p { margin: 9px 0 0; line-height: 1.5; }
+.trip-fuel-details { margin: 0 0 10px; }
+.trip-fuel-details > summary { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; cursor: pointer; min-height: 30px; font-size: 12px; color: var(--muted); }
+.trip-fuel-details > summary > strong { color: var(--green); font-size: 15px; }
+.trip-fuel-details p { margin: 5px 0; line-height: 1.5; }
+.trip-fuel-unavailable { margin: 0 0 12px; }
+.fuel-pipeline { margin-bottom: 22px; border-bottom: 1px solid var(--border); padding-bottom: 15px; }
+.fuel-pipeline .section-heading { flex-wrap: wrap; gap: 10px; }
+.fuel-pipeline button { min-height: 44px; }

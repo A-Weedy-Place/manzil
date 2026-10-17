@@ -2,10 +2,10 @@
 import { useEffect } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import type { AppState, RouteOption } from '../shared/types';
+import type { AppState, Closure, RouteOption } from '../shared/types';
 import type { MapViewProps } from '../src/components/MapView';
 import { setLanguage } from '../src/lib/language';
-import { signOut } from '../src/lib/auth';
+import { getAuthSession, signInDevelopment, signOut } from '../src/lib/auth';
 import App from '../src/App';
 const capture = vi.hoisted(() => ({ props: null as MapViewProps | null, mounts: 0 }));
 vi.mock('../src/components/MapView', () => ({ default: (props: MapViewProps) => { capture.props = props; useEffect(() => { capture.mounts++; }, []); return <div data-testid="map" />; } }));
@@ -18,11 +18,31 @@ const option: RouteOption = { id: 'direct', kind: 'direct', label: 'Recommended'
   departureAt: date, arrivalAt: '2026-10-15T10:02:00Z', steps: [], snappedOrigin: [73, 33.7], snappedDestination: [73, 33.71] };
 const responseFor = (url: string) => new Response(JSON.stringify(url.startsWith('/api/demos?') ? { at: date, scenarios: [] } : state));
 beforeEach(() => {
-  localStorage.clear(); sessionStorage.clear(); signOut(); localStorage.setItem('manzil-tour-v1', 'seen'); setLanguage('en'); capture.props = null; capture.mounts = 0;
+  localStorage.clear(); sessionStorage.clear(); signOut(); sessionStorage.setItem('manzil-entry-guest', 'yes'); localStorage.setItem('manzil-tour-v1', 'seen'); setLanguage('en'); capture.props = null; capture.mounts = 0;
   vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
   Element.prototype.scrollTo = vi.fn();
 });
 afterEach(() => { cleanup(); signOut(); vi.restoreAllMocks(); vi.unstubAllGlobals(); setLanguage('en'); document.documentElement.dir = 'ltr'; });
+it('opens sign-in first and only enters guest planning after an explicit skip', async () => {
+  sessionStorage.removeItem('manzil-entry-guest');
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => responseFor(url)));
+  render(<App />);
+  expect(await screen.findByRole('dialog', { name: 'Your journeys, together.' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Find routes' })).toBeNull();
+  fireEvent.click(screen.getAllByRole('button', { name: 'Continue as guest' }).at(-1)!);
+  expect(await screen.findByRole('button', { name: 'Skip tour' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Skip tour' }));
+  expect(screen.getByRole('button', { name: 'Find routes' })).toBeTruthy();
+});
+it('takes an administrator from sign-in to the control centre', async () => {
+  sessionStorage.removeItem('manzil-entry-guest');
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => responseFor(url)));
+  render(<App />); await screen.findByRole('form', { name: 'Sign in' });
+  fireEvent.click(screen.getByRole('button', { name: /Admin user/ }));
+  fireEvent.submit(screen.getByRole('form', { name: 'Sign in' }));
+  expect(await screen.findByRole('heading', { name: 'Control centre' })).toBeTruthy();
+  expect(screen.getByRole('tab', { name: 'People' })).toBeTruthy();
+});
 it('can request and display online routes when the bundled local graph is unavailable', async () => {
   const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
     if (url === '/api/plan') {
@@ -52,33 +72,146 @@ it('unlocks existing personal screens with a dummy account and returns to guest 
   fireEvent.submit(screen.getByRole('form', { name: 'Sign in' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Demo traveller' }));
   expect(screen.getByText('DEV · Normal user')).toBeTruthy();
+  expect(screen.getByRole('heading', { name: 'Profile & settings' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Map' }));
+  expect(screen.queryByRole('heading', { name: 'Profile & settings' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Demo traveller' }));
+  expect(screen.getByRole('heading', { name: 'Profile & settings' })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Activity' }));
   expect(screen.getByRole('heading', { name: 'Your activity' })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Saved' }));
   expect(screen.queryByRole('heading', { name: 'Sign in for personal features' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Profile' }));
   fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
-  expect(screen.getByRole('button', { name: 'Sign in' })).toBeTruthy();
+  expect(screen.getByRole('dialog', { name: 'Your journeys, together.' })).toBeTruthy();
+  fireEvent.click(screen.getAllByRole('button', { name: 'Continue as guest' }).at(-1)!);
   expect(await screen.findByRole('button', { name: 'Find routes' })).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Activity' })).toBeNull();
   expect(screen.getByRole('dialog', { name: 'Welcome to Manzil' })).toBeTruthy();
 });
-it('restores public closure/demo controls and shows the tutorial on every guest visit despite completion', async () => {
+it('clears a private report editor, its evidence and map selection when signing out into guest mode', async () => {
+  signInDevelopment('user@manzil.test', 'ManzilUser123!');
+  const privateReport: Closure = {
+    id: 'private-report', revision: 3, title: 'Private service road', description: 'Private draft note', reason: 'construction',
+    status: 'draft', moderation: 'pending', startsAt: date, endsAt: null, createdAt: date, updatedAt: date,
+    author: { uid: 'dev-user', displayName: 'Demo traveller', role: 'user' }, photoCount: 1,
+    photos: ['data:image/jpeg;base64,/9j/2Q=='],
+    geometry: { type: 'Polygon', coordinates: [[[73.03, 33.70], [73.031, 33.70], [73.031, 33.701], [73.03, 33.70]]] },
+    drawing: { kind: 'line', coordinates: [[73.03, 33.70], [73.031, 33.70]], widthMeters: 14 },
+  };
+  const { photos: _privatePhotos, ...summary } = privateReport;
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    if (url === '/api/state') return new Response(JSON.stringify({ ...state, closures: getAuthSession().user?.uid === 'dev-user' ? [summary] : [] }));
+    if (url === '/api/closures/private-report') return new Response(JSON.stringify(privateReport));
+    return responseFor(url);
+  }));
+  render(<App />); await screen.findByRole('button', { name: 'Find routes' });
+  fireEvent.click(screen.getByRole('button', { name: 'Closures' }));
+  fireEvent.click(screen.getByRole('button', { name: /Private service road/ }));
+  expect(await screen.findByRole('img', { name: 'Closure photo 1' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+  expect(await screen.findByRole('heading', { name: 'Edit restriction' })).toBeTruthy();
+  expect(screen.getByRole('textbox', { name: 'Road / place' }).getAttribute('value')).toBe(privateReport.title);
+  expect(capture.props?.drawing).toEqual(privateReport.drawing); expect(capture.props?.selectedClosureId).toBe(privateReport.id);
+  fireEvent.click(screen.getByRole('button', { name: 'Demo traveller' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+  await screen.findByRole('dialog', { name: 'Your journeys, together.' });
+  fireEvent.click(screen.getAllByRole('button', { name: 'Continue as guest' }).at(-1)!);
+  await screen.findByRole('button', { name: 'Skip tour' }); fireEvent.click(screen.getByRole('button', { name: 'Skip tour' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Closures' }));
+  expect(screen.getByRole('heading', { name: 'Road closures' })).toBeTruthy();
+  expect(screen.queryByRole('heading', { name: 'Edit restriction' })).toBeNull();
+  expect(screen.queryByDisplayValue(privateReport.title)).toBeNull(); expect(screen.queryByText(privateReport.description)).toBeNull();
+  expect(screen.queryByRole('img', { name: 'Closure photo 1' })).toBeNull();
+  expect(capture.props?.drawing).toBeNull(); expect(capture.props?.selectedClosureId).toBeNull(); expect(capture.props?.closures).toEqual([]);
+});
+it('keeps published closures visible, gates guest reports behind sign-in and repeats guest tours', async () => {
   vi.stubGlobal('fetch', vi.fn(async (url: string) => responseFor(url)));
   const first = render(<App />);
   await screen.findByRole('dialog', { name: 'Welcome to Manzil' });
   fireEvent.click(screen.getByRole('button', { name: 'Skip tour' }));
-  expect(screen.getByRole('button', { name: 'Try street detour' })).toBeTruthy();
-  expect(screen.getByText('Demo closures')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Try street detour' })).toBeNull();
+  expect(screen.queryByText('Demo closures')).toBeNull();
+  expect(capture.props?.mapStyle).toBe('outdoors');
+  expect(document.querySelector('.nav-rail small')).toBeNull();
   expect(screen.getByRole('button', { name: 'Help & demos' }).getAttribute('aria-expanded')).toBe('false');
   fireEvent.click(screen.getByRole('button', { name: 'Closures' }));
   expect(screen.getByRole('heading', { name: 'Road closures' })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Map' }));
   fireEvent.click(screen.getByRole('button', { name: 'Add restriction on map' }));
-  expect(screen.getByRole('heading', { name: 'Add a road restriction' })).toBeTruthy();
-  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.getByRole('form', { name: 'Sign in' })).toBeTruthy();
+  expect(screen.queryByRole('heading', { name: 'Add a road restriction' })).toBeNull();
   first.unmount(); render(<App />);
   expect(await screen.findByRole('dialog', { name: 'Welcome to Manzil' })).toBeTruthy();
+});
+
+it('loads demo endpoints into ordinary planning, clears existing stops and requests the usual plan API', async () => {
+  signInDevelopment('admin@manzil.test', 'ManzilAdmin123!');
+  const journey = { origin: { name: 'Demo start', coordinate: [73.0294, 33.7038] }, destination: { name: 'Demo end', coordinate: [73.0302, 33.7079] } };
+  const scenario = { id: 'park-road-street-detour', title: 'Demo · Park Road', description: 'Synthetic fixture', enabled: false, closureIds: [], coordinates: [[73.03, 33.705]], timing: 'active', startsAt: date, endsAt: '2026-10-15T11:00:00Z', suggestedJourney: journey, includeInBulk: false };
+  let enabled = false;
+  const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === '/api/demos') enabled = true;
+    if (url.startsWith('/api/demos')) return new Response(JSON.stringify({ at: date, scenarios: [{ ...scenario, enabled }] }));
+    if (url === '/api/state') return new Response(JSON.stringify({ ...state, eventRevision: enabled ? 1 : 0 }));
+    if (url === '/api/plan') {
+      const request = JSON.parse(init!.body as string);
+      return new Response(JSON.stringify({ options: [{ ...option, departureAt: request.departureAt }], baseline: null, conflicts: [], warnings: [], evaluatedAt: date, graphVersion: 'test', eventRevision: 1, source: 'local-osm' }));
+    }
+    return responseFor(url);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<App />); await screen.findByRole('heading', { name: 'Control centre' });
+  fireEvent.click(screen.getByRole('button', { name: 'Map' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Add stop' }));
+  expect(capture.props?.waypoints).toEqual([null]);
+  fireEvent.click(screen.getByText('Demo closures'));
+  fireEvent.click(await screen.findByRole('button', { name: 'Try route: Park Road' }));
+  await waitFor(() => expect(capture.props?.routeOptions).toHaveLength(1));
+  expect(capture.props?.origin).toEqual(journey.origin);
+  expect(capture.props?.destination).toEqual(journey.destination);
+  expect(capture.props?.waypoints).toEqual([]);
+  const mutation = fetcher.mock.calls.find(([url]) => url === '/api/demos');
+  expect(JSON.parse(mutation![1]!.body as string)).toMatchObject({ scenario: scenario.id, enabled: true });
+  const plans = fetcher.mock.calls.filter(([url]) => url === '/api/plan');
+  expect(plans).toHaveLength(1);
+  expect(JSON.parse(plans[0][1]!.body as string)).toMatchObject({ ...journey, waypoints: [] });
+  expect(fetcher.mock.calls.some(([url]) => url.includes('/demos/street-route'))).toBe(false);
+  const demoIndex = fetcher.mock.calls.findIndex(([url]) => url === '/api/demos');
+  const planIndex = fetcher.mock.calls.findIndex(([url]) => url === '/api/plan');
+  expect(fetcher.mock.calls.slice(demoIndex + 1, planIndex).some(([url]) => url === '/api/state')).toBe(true);
+});
+
+it('preserves a stop added while a demo mutation is pending instead of replacing the edited journey', async () => {
+  signInDevelopment('admin@manzil.test', 'ManzilAdmin123!');
+  const journey = { origin: { name: 'Demo start', coordinate: [73.0294, 33.7038] }, destination: { name: 'Demo end', coordinate: [73.0302, 33.7079] } };
+  const scenario = { id: 'park-road-street-detour', title: 'Demo · Park Road', description: 'Synthetic fixture', enabled: false, closureIds: [], coordinates: [[73.03, 33.705]], timing: 'active', startsAt: date, endsAt: '2026-10-15T11:00:00Z', suggestedJourney: journey, includeInBulk: false };
+  let resolveMutation!: (response: Response) => void, enabled = false;
+  const fetcher = vi.fn(async (url: string) => {
+    if (url === '/api/demos') return new Promise<Response>(resolve => { resolveMutation = resolve; });
+    if (url.startsWith('/api/demos?')) return new Response(JSON.stringify({ at: date, scenarios: [{ ...scenario, enabled }] }));
+    if (url === '/api/state') return new Response(JSON.stringify({ ...state, eventRevision: enabled ? 1 : 0 }));
+    return responseFor(url);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<App />); await screen.findByRole('heading', { name: 'Control centre' });
+  fireEvent.click(screen.getByRole('button', { name: 'Map' }));
+  const originalOrigin = capture.props?.origin, originalDestination = capture.props?.destination;
+  fireEvent.click(screen.getByText('Demo closures'));
+  const tryRoute = await screen.findByRole('button', { name: 'Try route: Park Road' });
+  fireEvent.click(tryRoute);
+  await waitFor(() => expect(fetcher.mock.calls.some(([url]) => url === '/api/demos')).toBe(true));
+  fireEvent.click(screen.getByRole('button', { name: 'Add stop' }));
+  expect(capture.props?.waypoints).toEqual([null]);
+  enabled = true;
+  await act(async () => resolveMutation(new Response(JSON.stringify({ at: date, scenarios: [{ ...scenario, enabled }] }))));
+  await waitFor(() => expect(tryRoute.matches(':disabled')).toBe(false));
+  expect(capture.props?.origin).toEqual(originalOrigin);
+  expect(capture.props?.destination).toEqual(originalDestination);
+  expect(capture.props?.waypoints).toEqual([null]);
+  expect(fetcher.mock.calls.some(([url]) => url === '/api/plan')).toBe(false);
+  const mutationIndex = fetcher.mock.calls.findIndex(([url]) => url === '/api/demos');
+  expect(fetcher.mock.calls.slice(mutationIndex + 1).some(([url]) => url === '/api/state')).toBe(true);
 });
 it('preserves map identity and handlers across polling, switches the complete shell to Urdu and gates personal screens', async () => {
   const intervals = new Map<number, () => void>();
@@ -111,7 +244,7 @@ it('keeps pending route geometry labelled unavailable instead of blanking the ma
   fireEvent.click(screen.getByRole('button', { name: 'Skip tour' }));
   fireEvent.click(screen.getByRole('button', { name: 'Find routes' }));
   await waitFor(() => expect(capture.props?.routeOptions).toHaveLength(1));
-  expect(screen.getByRole('button', { name: 'Block a point on this route' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Block a point on this route' })).toBeNull();
   const geometry = capture.props!.routeOptions![0].geometry;
   await act(async () => { intervals.get(60000)!(); });
   await waitFor(() => expect(requests).toBe(2));

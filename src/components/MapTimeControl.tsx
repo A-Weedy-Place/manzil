@@ -1,33 +1,22 @@
+import { CalendarClock } from 'lucide-react';
+import { dayDate, time } from '../lib/format';
 import { t } from '../lib/language';
-import { useEffect, useRef, useState } from 'react';
-import { CalendarClock, ChevronDown, Clock3, RotateCcw, X } from 'lucide-react';
-import { dayDate, inputISO, localInput, time } from '../lib/format';
 
-interface Props { at: string; live: boolean; onChange: (value: string | null) => void }
-export default function MapTimeControl({ at, live, onChange }: Props) {
-  const [open, setOpen] = useState(false);
-  const [value, setValue] = useState(localInput(new Date(at)));
-  const [error, setError] = useState('');
-  const container = useRef<HTMLDivElement>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const outside = (event: PointerEvent) => { if (!container.current?.contains(event.target as Node)) setOpen(false); };
-    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { setOpen(false); trigger.current?.focus(); } };
-    document.addEventListener('pointerdown', outside); document.addEventListener('keydown', escape);
-    return () => { document.removeEventListener('pointerdown', outside); document.removeEventListener('keydown', escape); };
-  }, [open]);
-  function close() { setOpen(false); trigger.current?.focus(); }
-  return <div className="map-time-control" ref={container}>
-    <button ref={trigger} className={`map-time-trigger ${live ? 'is-live' : 'is-scheduled'}`} aria-label={`Map time: ${live ? 'Now, ' : ''}${dayDate(at)}, ${time(at)} Pakistan time. Change date and time`} aria-expanded={open} aria-controls="map-time-picker" onClick={() => { setValue(localInput(new Date(at))); setError(''); setOpen(!open); }}>
-      {live ? <Clock3 size={23} aria-hidden="true" /> : <CalendarClock size={23} aria-hidden="true" />}<span><small>{live ? t("Now") : t("Scheduled")}</small><strong>{time(at)} <em>{t("PKT")}</em></strong><span>{dayDate(at)}</span></span><ChevronDown size={17} aria-hidden="true" />
-    </button>
-    {open && <form id="map-time-picker" className="map-time-picker" aria-label={t("Choose map time")} onSubmit={event => { event.preventDefault(); try { inputISO(value); onChange(value); close(); } catch { setError('Choose a valid date and time.'); } }}>
-      <div className="row between"><strong>{t("Map time")}</strong><button type="button" className="icon-button small" aria-label={t("Close map time")} onClick={close}><X size={17} /></button></div>
-      <label className="field-label" htmlFor="map-date-time">{t("Date & time · Pakistan")}<input id="map-date-time" autoFocus type="datetime-local" required value={value} onInput={event => setValue(event.currentTarget.value)} /></label>
-      {error && <p className="error-box" role="alert">{t(error)}</p>}
-      <button className="primary-button full" type="submit">{t("View this time")}</button>
-      <button className="text-button full centered" type="button" onClick={() => { onChange(null); close(); }}><RotateCcw size={16} />{t("Back to now")}</button>
-    </form>}
+interface Props {
+  at: string;
+  live: boolean;
+  /** Retained for callers upgrading from the old header picker. */
+  onChange?: (value: string | null) => void;
+}
+
+/** A status readout. Date selection belongs to the Plan ahead panel. */
+export default function MapTimeControl({ at, live }: Props) {
+  return <div className="map-time-status" data-mode={live ? 'live' : 'planned'}>
+    <span className="map-time-status-label">
+      {live ? <span className="map-time-live-dot" aria-hidden="true" /> : <CalendarClock size={14} aria-hidden="true" />}
+      {t(live ? 'Live map' : 'Planned map')}
+    </span>
+    <time className="map-time-status-clock" dateTime={at}>{time(at)} <small>{t('PKT')}</small></time>
+    <span className="map-time-status-date">{dayDate(at)}</span>
   </div>;
 }

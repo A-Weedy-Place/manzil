@@ -29,7 +29,7 @@ async function tick() {
     const login = await fetch(`http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=demo-api-key`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'admin@manzil.test', password: 'ManzilAdmin123!', returnSecureToken: true }) });
     const token = (await login.json()).idToken;
     if (!token) throw new Error();
-    for (const job of ['commutes', 'source']) {
+    for (const job of ['commutes', 'source', 'fuel']) {
       const result = await fetch(`http://127.0.0.1:${workerPort}/internal/tick`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ job }) });
       if (!result.ok) throw new Error();
     }

@@ -6,7 +6,7 @@ import { checkEnabledCommutes } from './commutes.js';
 const { config, store } = bootstrap();
 // Do not accept traffic with unusable cloud storage/credentials.
 if (config.mode !== 'local') await store.routingSnapshot();
-const { app, source } = createApp(store, { config });
+const { app, source, fuel } = createApp(store, { config });
 let closing = false;
 let activeTick: Promise<void> | undefined;
 function tick(): Promise<void> {
@@ -18,13 +18,14 @@ function tick(): Promise<void> {
 const server = app.listen(config.port, config.host, () => {
   console.log(`Manzil ${config.mode} ${config.role}: ${config.host}:${config.port} (${store.backend})`);
   if (config.mode === 'local') source.start();
+  if (config.mode === 'local' && process.env.NODE_ENV !== 'test') fuel.start();
   if (config.mode === 'local') void tick().catch(() => console.error('Local journey check failed.'));
 });
 const commuteTimer = config.mode === 'local' ? setInterval(() => { void tick().catch(() => console.error('Local journey check failed.')); }, 60_000) : undefined;
 commuteTimer?.unref();
 function shutdown() {
   if (closing) return;
-  closing = true; source.stop(); if (commuteTimer) clearInterval(commuteTimer);
+  closing = true; source.stop(); fuel.stop(); if (commuteTimer) clearInterval(commuteTimer);
   server.close(() => {
     // HTTP requests have drained; also finish any local online commute check
     // before closing its SQLite adapter. Cloud workers have no local timer.

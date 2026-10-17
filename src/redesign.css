@@ -1,5 +1,5 @@
 /* Route-first design. Shared surfaces also drive the profile and map controls. */
-:root { --ink:#192e35; --muted:#596d76; --paper:#fff; --surface:#f4f7f8; --border:#dce4e7; --green:#086b59; --green-hover:#045443; --green-soft:#e4f3ed; --blue:#2164e8; --blue-soft:#edf3ff; --red:#f02339; --red-ink:#ba192d; --red-soft:#fff0f2; --orange:#8c5b14; --rail:76px; --panel:404px; color-scheme:light; }
+:root { --ink:#192e35; --muted:#526577; --paper:#eff5ff; --surface:#e5eefb; --border:#c7d6e8; --green:#086b59; --green-hover:#045443; --green-soft:#e4f3ed; --blue:#2164e8; --blue-soft:#e2ecff; --red:#f02339; --red-ink:#ba192d; --red-soft:#fff0f2; --orange:#8c5b14; --rail:76px; --panel:404px; color-scheme:light; }
 :root[data-theme='dark'] { --ink:#edf3f5; --muted:#b0bec6; --paper:#182730; --surface:#101c24; --border:#344650; --green:#73ddbf; --green-hover:#98ebd2; --green-soft:#1c3d37; --blue:#8ab4ff; --blue-soft:#233a5c; --red:#ff4051; --red-ink:#ffa4af; --red-soft:#44262e; --orange:#f3cc87; color-scheme:dark; }
 body { background:var(--surface); color:var(--ink); }
 h1 { font-size:25px; font-weight:650; line-height:1.25; text-wrap:balance; } h2 { font-size:18px; } h3 { font-size:16px; }
@@ -121,6 +121,12 @@ p.muted { font-size:14px; line-height:1.65; } .small { font-size:12px; } .field-
 @media(prefers-reduced-motion:reduce) { .map-time-trigger { transition:none; } }
 .street-demo-button { font-size:12px; gap:6px; white-space:nowrap; min-height:44px; }
 .journey-heading { gap:8px; }
-.street-route-proof { display:flex; align-items:center; gap:8px; color:var(--green); background:var(--green-soft); border-radius:10px; padding:10px 12px; margin:10px 0; font-size:12px; }
-.street-route-proof>svg { flex-shrink:0; }
+.account-trigger { display:flex; align-items:center; gap:7px; min-height:44px; max-width:200px; padding:6px 10px; border-radius:10px; }
+.account-trigger>span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.account-trigger:hover { background:var(--green-soft); }
+.demo-scenario { flex-wrap:wrap; padding:9px 0; gap:6px; }
+.demo-scenario-controls { display:flex; align-items:center; gap:4px; margin-inline-start:auto; }
+.demo-scenario-controls .text-button { min-height:44px; padding:5px 8px; font-size:12px; }
+.demo-scenario-controls .icon-button { min-width:44px; width:44px; height:44px; }
+.demo-scenario:has(.demo-scenario-controls) > label { flex-basis:calc(100% - 50px); }
 @media(max-width:380px) { .street-demo-button { font-size:11px; gap:4px; } }

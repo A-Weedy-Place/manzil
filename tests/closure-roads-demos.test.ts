@@ -79,20 +79,26 @@ describe('active road display and independently toggled demos', () => {
     expect(await roads('2027-02-01T00:00:00Z')).toHaveLength(1);
     expect((await request('/closures/roads?at=not-a-date')).status).toBe(400);
   });
-  it('offers six actual contiguous road chains and independently schedules current, future and expired examples', async () => {
+  it('offers six road chains and four optional street-route examples with independent schedules', async () => {
     const { store, request } = await setup(getRoutingGraph()!);
     const initial: DemoCatalogue = await (await request(`/demos?at=${at}`)).json();
-    expect(initial.scenarios).toHaveLength(6); expect(initial.scenarios.every(s => !s.enabled && s.coordinates.length >= 3)).toBe(true);
+    expect(initial.scenarios).toHaveLength(10);
+    expect(initial.scenarios.every(s => !s.enabled)).toBe(true);
+    expect(initial.scenarios.filter(s => s.includeInBulk !== false)).toHaveLength(6);
+    for (const scenario of initial.scenarios) {
+      expect(scenario.coordinates.length).toBeGreaterThanOrEqual(scenario.suggestedJourney ? 1 : 3);
+      expect(scenario.suggestedJourney ? scenario.includeInBulk : true).toBe(scenario.suggestedJourney ? false : true);
+    }
     for (const scenario of initial.scenarios) {
       const result = await request('/demos', { scenario: scenario.id, at, enabled: true }); expect(result.status).toBe(200);
     }
-    expect(store.routingClosures()).toHaveLength(6);
+    expect(store.routingClosures()).toHaveLength(10);
     const activeIds = new Set(activeClosureRoads(getRoutingGraph()!, store.routingClosures(), at).features.map(feature => feature.properties.closureId));
     const current: DemoCatalogue = await (await request(`/demos?at=${at}`)).json();
     for (const scenario of current.scenarios) {
       expect(scenario.enabled).toBe(true); expect(scenario.title).toMatch(/^Demo · /);
       expect(activeIds.has(scenario.closureIds[0])).toBe(scenario.timing === 'active');
-      expect(activeClosureRoads(getRoutingGraph()!, [store.get<Closure>('closure', scenario.closureIds[0])!], scenario.startsAt).features.length).toBeGreaterThan(3);
+      expect(activeClosureRoads(getRoutingGraph()!, [store.get<Closure>('closure', scenario.closureIds[0])!], scenario.startsAt).features.length).toBeGreaterThan(0);
     }
   });
   it('keeps repeat toggles idempotent, preserves schedules on timeline moves, and never cancels unrelated closures', async () => {
@@ -117,7 +123,7 @@ describe('active road display and independently toggled demos', () => {
   it('keeps the default destination and Kaghan Road detour junctions clear with every active demo enabled', async () => {
     const store = new Store(':memory:'); cleanup.push(() => store.close());
     const realGraph = getRoutingGraph()!;
-    for (const scenario of (await demoCatalogue(store, realGraph, at)).scenarios.filter(s => s.timing === 'active')) (await toggleDemo(store, realGraph, scenario.id, at, true));
+    for (const scenario of (await demoCatalogue(store, realGraph, at)).scenarios.filter(s => s.timing === 'active' && s.includeInBulk !== false)) (await toggleDemo(store, realGraph, scenario.id, at, true));
     const request = { origin: { name: 'Faisal Mosque', coordinate: [73.0376503, 33.7314163] as Coordinate },
       destination: { name: 'Centaurus', coordinate: [73.0492744, 33.7081776] as Coordinate }, departureAt: at };
     const closures = store.routingClosures(), result = await planJourney(request, closures, store.eventRevision);

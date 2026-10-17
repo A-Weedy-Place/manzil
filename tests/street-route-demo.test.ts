@@ -75,7 +75,7 @@ describe('real F-8 residential street detour demo', () => {
 
   it('still uses the residential detour with all six existing demo scenarios enabled', async () => {
     const store = createStore();
-    for (const scenario of (await demoCatalogue(store, graph, at)).scenarios) (await toggleDemo(store, graph, scenario.id, at, true));
+    for (const scenario of (await demoCatalogue(store, graph, at)).scenarios.filter(item => item.includeInBulk !== false)) (await toggleDemo(store, graph, scenario.id, at, true));
     const demo = (await loadStreetRouteDemo(store, graph, at));
     const result = await planJourney({ origin: demo.origin, destination: demo.destination, departureAt: at, compareDepartures: false }, store.routingClosures(), store.eventRevision);
     expect(store.routingClosures()).toHaveLength(7);
@@ -109,5 +109,18 @@ describe('real F-8 residential street detour demo', () => {
 
   it('reports unavailable if the genuine Park Road node fixture is absent', async () => {
     expect(() => streetRouteDemo({ ...graph, nodes: [], edges: [] }, at)).toThrow('unavailable');
+  });
+
+  it('shares the Park Road event and cancellation history with the ordinary demo catalogue', async () => {
+    const store = createStore();
+    const oldClient = await loadStreetRouteDemo(store, graph, at);
+    const catalogue = await demoCatalogue(store, graph, at);
+    const scenario = catalogue.scenarios.find(item => item.id === oldClient.id)!;
+    expect(scenario.enabled).toBe(true); expect(scenario.closureIds).toEqual([oldClient.closureId]);
+    await toggleDemo(store, graph, scenario.id, at, false);
+    expect(store.get<Closure>('closure', oldClient.closureId!)!.status).toBe('cancelled');
+    await toggleDemo(store, graph, scenario.id, at, true);
+    expect(store.list('closure')).toHaveLength(1);
+    expect((await loadStreetRouteDemo(store, graph, at)).closureId).toBe(oldClient.closureId);
   });
 });

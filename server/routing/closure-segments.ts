@@ -102,6 +102,11 @@ function displayIntervals(a: Coordinate, b: Coordinate, rings: number[][][]): [n
   return intervals;
 }
 
+/** Geometric intervals only: useful for private observed traces without making a routable graph. */
+export function closureSegmentFractions(a: Coordinate, b: Coordinate, geometry: Polygon): [number, number][] {
+  return displayIntervals(a, b, geometry.coordinates);
+}
+
 function geometryFractions(graph: RoutingGraph, geometry: Polygon, deadline = Infinity): GeometryFractions {
   checkDeadline(deadline);
   // Geometry content includes every ring/coordinate. IDs/revisions alone would reuse

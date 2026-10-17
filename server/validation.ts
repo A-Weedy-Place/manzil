@@ -3,6 +3,16 @@ import { z } from 'zod';
 export const coordinateSchema = z.tuple([z.number().finite().min(-180).max(180), z.number().finite().min(-90).max(90)]);
 export const instantSchema = z.string().datetime({ offset: true }).transform(value => new Date(value).toISOString());
 const webUrl = z.string().max(1500).url().refine(value => ['http:', 'https:'].includes(new URL(value).protocol), 'Use an HTTP or HTTPS URL.');
+/** Small raster evidence only. Never accept SVG, remote URLs or arbitrary data URIs. */
+export const photoSchema = z.string().max(205_000).refine(value => {
+  const match = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(value);
+  if (!match || match[2].length % 4 !== 0) return false;
+  const bytes = Buffer.from(match[2], 'base64');
+  if (!bytes.length || bytes.length > 150_000 || bytes.toString('base64') !== match[2]) return false;
+  if (match[1] === 'jpeg') return bytes.length >= 4 && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255 && bytes.at(-2) === 255 && bytes.at(-1) === 217;
+  if (match[1] === 'png') return bytes.length >= 24 && bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])) && bytes.subarray(12,16).toString() === 'IHDR';
+  return bytes.length >= 16 && bytes.subarray(0,4).toString() === 'RIFF' && bytes.subarray(8,12).toString() === 'WEBP';
+}, 'Use a JPEG, PNG or WebP image no larger than 150 KB.');
 export const placeSchema = z.object({ id: z.string().max(200).optional(), name: z.string().trim().min(1).max(160), coordinate: coordinateSchema });
 export const drawingSchema = z.object({
   kind: z.enum(['point', 'line', 'polygon']), coordinates: z.array(coordinateSchema).min(1).max(1000),
@@ -52,7 +62,7 @@ export const closureDraftSchema = z.object({
   title: z.string().trim().min(1).max(180), description: z.string().trim().max(4000),
   reason: z.enum(['protest', 'vip', 'construction', 'accident', 'other']),
   startsAt: instantSchema, endsAt: instantSchema.nullable(), status: z.enum(['published', 'draft', 'cancelled']),
-  geometry: polygonSchema, drawing: drawingSchema.optional(), sourceUrl: webUrl.or(z.literal('')).optional(),
+  geometry: polygonSchema, drawing: drawingSchema.optional(), sourceUrl: webUrl.or(z.literal('')).optional(), photos: z.array(photoSchema).max(2).optional(),
 }).superRefine((value, ctx) => {
   if (value.endsAt && Date.parse(value.endsAt) <= Date.parse(value.startsAt)) ctx.addIssue({ code: 'custom', path: ['endsAt'], message: 'End must be after start.' });
 });
@@ -66,7 +76,7 @@ export const tripSchema = z.object({
   name: z.string().trim().min(1).max(120), startedAt: instantSchema, endedAt: instantSchema,
   points: z.array(z.object({ coordinate: coordinateSchema, timestamp: instantSchema, accuracy: z.number().finite().min(0).max(100_000) })).min(2).max(20_000),
   contributeToRoadDiscovery: z.boolean(),
-}).superRefine((value, ctx) => {
+}).strict().superRefine((value, ctx) => {
   const start = Date.parse(value.startedAt), end = Date.parse(value.endedAt);
   if (end <= start || end - start > 24 * 3600_000) ctx.addIssue({ code: 'custom', message: 'Trip must last between zero and 24 hours.' });
   let last = start;
@@ -77,8 +87,13 @@ export const tripSchema = z.object({
   }
 });
 export const noticeSchema = z.object({ text: z.string().trim().min(1).max(20_000), url: webUrl.optional(), publishedAt: instantSchema.nullable().optional() });
+export const vehicleSchema = z.object({ kind: z.enum(['car', 'motorcycle']), label: z.string().trim().max(80).optional(),
+  fuelType: z.enum(['petrol', 'diesel']), kmPerLitre: z.number().finite().min(1).max(200).nullable() }).strict();
 export const profilePatchSchema = z.object({
   displayName: z.string().trim().min(1).max(60), theme: z.enum(['light', 'dark', 'system']),
   mapDetail: z.enum(['clean', 'standard']), mapStyle: z.enum(['streets', 'outdoors', 'contrast', 'minimal', 'night']), browserNotifications: z.boolean(),
   inferFrequentRoutes: z.boolean(), transport: z.literal('car'),
+  city: z.string().trim().max(80), location: z.string().trim().max(120),
+  photoDataUrl: photoSchema.or(z.literal('')), collectTravelData: z.boolean(),
+  vehicle: vehicleSchema,
 }).partial().strict().refine(value => Object.keys(value).length > 0, 'Provide at least one profile preference.');

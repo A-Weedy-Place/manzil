@@ -2,8 +2,11 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { Alert, Closure, ClosureDraft, LocalProfile, SourceNotice, SourceStatus, Trip } from '../shared/types.js';
+import type { Alert, Closure, ClosureInput, LocalProfile, SourceNotice, SourceStatus, Trip } from '../shared/types.js';
 import { HttpError } from './errors.js';
+import { closureSummary } from './community.js';
+import { sameVehicle } from '../shared/fuel.js';
+import { tripWithCurrentVehicle } from './fuel.js';
 
 type Kind = 'closure' | 'commute' | 'alert' | 'trip';
 const PROFILE_URL = 'https://x.com/shaheryarhassan';
@@ -13,7 +16,7 @@ export class Store {
   readonly backend = 'sqlite' as const;
   get isOpen() { return this.db.isOpen; }
   forUser(_uid: string | null) { return this; }
-  routingSnapshot(includeUnpublished = false) { return { closures: includeUnpublished ? this.list<Closure>('closure', 2000) : this.routingClosures(), revision: this.eventRevision }; }
+  routingSnapshot(includeUnpublished = false) { return { closures: (includeUnpublished ? this.list<Closure>('closure', Number.MAX_SAFE_INTEGER) : this.routingClosures()).map(closureSummary), revision: this.eventRevision }; }
   readonly db: DatabaseSync;
   constructor(path: string) {
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
@@ -50,7 +53,7 @@ export class Store {
       if (!profile) {
         const now = new Date().toISOString();
         this.setMeta('profile', { id: 'local', displayName: 'Traveller', theme: 'system', mapDetail: 'clean', mapStyle: 'streets',
-          browserNotifications: false, inferFrequentRoutes: false, transport: 'car', createdAt: now, updatedAt: now } satisfies LocalProfile);
+          browserNotifications: false, collectTravelData: false, inferFrequentRoutes: false, transport: 'car', createdAt: now, updatedAt: now } satisfies LocalProfile);
       } else if (profile.mapStyle === undefined) {
         // Add the independent basemap preference without resetting older preferences or timestamps.
         this.setMeta('profile', { ...profile, mapStyle: 'streets' });
@@ -78,11 +81,19 @@ export class Store {
     this.db.prepare('INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value')
       .run(key, JSON.stringify(value));
   }
+  claimFuelCheck(day: string): boolean {
+    return this.transaction(() => {
+      if (this.meta<string>('fuel:checkedDay') === day) return false;
+      this.setMeta('fuel:checkedDay', day); return true;
+    });
+  }
   get eventRevision() { return this.meta<number>('eventRevision') ?? 0; }
-  profile(): LocalProfile { return this.meta<LocalProfile>('profile')!; }
+  profile(): LocalProfile { return { collectTravelData: false, ...this.meta<LocalProfile>('profile')! }; }
   updateProfile(patch: Partial<Omit<LocalProfile, 'id' | 'createdAt' | 'updatedAt'>>): LocalProfile {
     return this.transaction(() => {
       const profile: LocalProfile = { ...this.profile(), ...patch, updatedAt: new Date().toISOString() };
+      if (patch.vehicle && !sameVehicle(this.profile().vehicle, patch.vehicle)) profile.vehicleUpdatedAt = profile.updatedAt;
+      if (!profile.collectTravelData) profile.inferFrequentRoutes = false;
       this.setMeta('profile', profile); return profile;
     });
   }
@@ -105,9 +116,15 @@ export class Store {
       FROM records WHERE kind='trip' ORDER BY updated_at DESC LIMIT ?`).all(limit)
       .map(row => JSON.parse(String(row.summary)) as Trip);
   }
+  saveTripIfConsented(trip: Trip) {
+    this.transaction(() => {
+      if (!this.profile().collectTravelData) throw new HttpError(403, 'Allow travel data collection in Profile before saving a trip.');
+      this.put('trip', tripWithCurrentVehicle(trip, this.profile()));
+    });
+  }
   routingClosures(): Closure[] {
     // Display pagination must never silently drop an older, still-active restriction.
-    return this.db.prepare("SELECT data FROM records WHERE kind='closure' AND json_extract(data,'$.status')='published'")
+    return this.db.prepare("SELECT data FROM records WHERE kind='closure' AND json_extract(data,'$.status')='published' AND (json_extract(data,'$.moderation') IS NULL OR json_extract(data,'$.moderation')='approved')")
       .all().map(row => JSON.parse(String(row.data)) as Closure);
   }
   retainTrips(now: number) {
@@ -127,7 +144,7 @@ export class Store {
       .run(kind, value.id, JSON.stringify(value), now);
   }
   delete(kind: Kind, id: string) { this.db.prepare('DELETE FROM records WHERE kind=? AND id=?').run(kind, id); }
-  saveClosure(draft: ClosureDraft, id?: string, expectedRevision?: number): Closure {
+  saveClosure(draft: ClosureInput, id?: string, expectedRevision?: number): Closure {
     return this.transaction(() => {
       const previous = id ? this.get<Closure>('closure', id) : undefined;
       if (id && !previous) throw new HttpError(404, 'Closure not found.');
@@ -209,6 +226,7 @@ export class Store {
     this.db.exec('DELETE FROM source_runs WHERE id NOT IN (SELECT id FROM source_runs ORDER BY created_at DESC LIMIT 100)');
   }
   addAlertOnce(id: string, alert: Omit<Alert, 'id'>) {
+    if (alert.frequentRouteId && (!this.profile().collectTravelData || !this.profile().inferFrequentRoutes)) throw new HttpError(409, 'Usual-journey notifications are disabled.');
     if (!this.get<Alert>('alert', id)) this.put('alert', { ...alert, id });
   }
   speechUsage(month: string) { return this.meta<number>(`speech:${month}`) ?? 0; }

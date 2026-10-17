@@ -3,17 +3,21 @@ import type { MapStyleId } from '../../shared/types';
 
 export type MapTheme = 'light' | 'dark';
 export type MapDetail = 'clean' | 'standard';
+
+/** Keep existing profile/API ids readable without offering retired palettes. */
+export function normalizeMapStyleId(id: MapStyleId | undefined): MapStyleId {
+  return id === 'minimal' || id === 'night' ? id : 'outdoors';
+}
+
 export const MAP_STYLE_URLS: Record<MapStyleId, string> = {
-  streets: 'https://tiles.openfreemap.org/styles/liberty',
+  streets: 'https://tiles.openfreemap.org/styles/bright',
   outdoors: 'https://tiles.openfreemap.org/styles/bright',
-  contrast: 'https://tiles.openfreemap.org/styles/liberty',
+  contrast: 'https://tiles.openfreemap.org/styles/bright',
   minimal: 'https://tiles.openfreemap.org/styles/positron',
   night: 'https://tiles.openfreemap.org/styles/dark',
 };
 export const MAP_STYLES: { id: MapStyleId; name: string; description: string; colours: [string, string, string, string] }[] = [
-  { id: 'streets', name: 'Streets', description: 'Green parks, blue water, warm roads', colours: ['#faf6ed', '#b9dba2', '#98d2ed', '#efbd67'] },
-  { id: 'outdoors', name: 'Outdoors', description: 'Richer greens and natural colour', colours: ['#f1f4e7', '#92c584', '#7bc4df', '#e5ba77'] },
-  { id: 'contrast', name: 'High contrast', description: 'Bold roads and stronger labels', colours: ['#fffaf0', '#aed083', '#65b8df', '#edac39'] },
+  { id: 'outdoors', name: 'Classic', description: 'Green parks, blue water, warm roads', colours: ['#f1f4e7', '#92c584', '#7bc4df', '#e5ba77'] },
   { id: 'minimal', name: 'Minimal', description: 'A quiet, pale backdrop', colours: ['#f2f3f0', '#d7dfd8', '#c4d9e4', '#ffffff'] },
   { id: 'night', name: 'Night', description: 'Deep blue with clear road outlines', colours: ['#15232c', '#1d3832', '#17394b', '#6a8192'] },
 ];
@@ -39,24 +43,37 @@ function simplifyLayer(layer: LayerSpecification, detail: MapDetail): LayerSpeci
   return layer;
 }
 
+function patternFallbackColour(layer: LayerSpecification, mapStyle: MapStyleId): string {
+  const name = `${layer.id} ${'source-layer' in layer ? layer['source-layer'] : ''}`.toLowerCase();
+  if (mapStyle === 'night') return /wetland|park|wood|forest|grass/.test(name) ? '#1d3832' : '#273943';
+  if (/wetland|park|wood|forest|grass/.test(name)) return mapStyle === 'minimal' ? '#d7dfd8' : '#c6dcc6';
+  if (/water/.test(name)) return mapStyle === 'minimal' ? '#c4d9e4' : '#7bc4df';
+  if (/sand/.test(name)) return '#f3e2b2';
+  return mapStyle === 'minimal' ? '#e4e7e3' : '#e8e5db';
+}
+
 /** Copy first, so switching detail restores upstream layers and attribution. */
-export function prepareMapStyle(original: StyleSpecification, detail: MapDetail, mapStyle: MapStyleId = 'streets'): StyleSpecification {
+export function prepareMapStyle(original: StyleSpecification, detail: MapDetail, mapStyle: MapStyleId = 'outdoors'): StyleSpecification {
+  mapStyle = normalizeMapStyleId(mapStyle);
   const style = structuredClone(original);
   delete style.terrain;
   style.layers = style.layers.map(layer => simplifyLayer(layer, detail)).filter((layer): layer is LayerSpecification => layer !== null);
-  if (detail === 'clean') for (const layer of style.layers) if (layer.type === 'fill' && layer.paint) delete layer.paint['fill-pattern'];
-  if (mapStyle === 'streets' || mapStyle === 'outdoors' || mapStyle === 'contrast') for (const layer of style.layers) {
+  if (detail === 'clean') for (const layer of style.layers) if (layer.type === 'fill' && layer.paint?.['fill-pattern'] !== undefined) {
+    // Pattern-only upstream layers have no fill-color: removing their pattern
+    // alone activates MapLibre's default black polygon (notably wetlands).
+    layer.paint['fill-color'] ??= patternFallbackColour(layer, mapStyle);
+    delete layer.paint['fill-pattern'];
+  }
+  if (mapStyle === 'outdoors') for (const layer of style.layers) {
     const name = `${layer.id} ${'source-layer' in layer ? layer['source-layer'] : ''}`.toLowerCase();
-    const nature = mapStyle === 'outdoors', contrast = mapStyle === 'contrast';
-    if (layer.type === 'background') layer.paint = { ...layer.paint, 'background-color': nature ? '#f1f4e7' : contrast ? '#fffaf0' : '#faf6ed' };
-    if (layer.type === 'fill' && /water/.test(name)) layer.paint = { ...layer.paint, 'fill-color': nature ? '#7bc4df' : contrast ? '#65b8df' : '#98d2ed', 'fill-opacity': 1 };
-    if (layer.type === 'line' && /waterway/.test(name)) layer.paint = { ...layer.paint, 'line-color': nature ? '#62aeca' : '#70b9dc' };
-    if (layer.type === 'fill' && /park|wood|forest|grass|cemetery|pitch/.test(name)) layer.paint = { ...layer.paint, 'fill-color': nature ? /wood|forest/.test(name) ? '#92c584' : '#c1dfa7' : contrast ? '#aed083' : /wood|forest/.test(name) ? '#b9dba2' : '#d3e7b9', 'fill-opacity': nature ? .8 : .75 };
+    if (layer.type === 'background') layer.paint = { ...layer.paint, 'background-color': '#f1f4e7' };
+    if (layer.type === 'fill' && /water/.test(name)) layer.paint = { ...layer.paint, 'fill-color': '#7bc4df', 'fill-opacity': 1 };
+    if (layer.type === 'line' && /waterway/.test(name)) layer.paint = { ...layer.paint, 'line-color': '#62aeca' };
+    if (layer.type === 'fill' && /park|wood|forest|grass|cemetery|pitch/.test(name)) layer.paint = { ...layer.paint, 'fill-color': /wood|forest/.test(name) ? '#92c584' : '#c1dfa7', 'fill-opacity': .8 };
     if (layer.type === 'fill' && /sand/.test(name)) layer.paint = { ...layer.paint, 'fill-color': '#f3e2b2' };
-    if (layer.type === 'fill' && /residential|suburb/.test(name)) layer.paint = { ...layer.paint, 'fill-color': nature ? '#f4eddd' : '#f2e8d7', 'fill-opacity': .5 };
-    if (layer.type === 'line' && /motorway|trunk|primary|secondary/.test(name) && !/casing|outline|rail|label/.test(name)) layer.paint = { ...layer.paint, 'line-color': contrast ? '#edac39' : nature ? '#e5ba77' : '#efbd67' };
-    if (contrast && layer.type === 'line' && /casing|outline/.test(name) && /road|highway|transportation/.test(name)) layer.paint = { ...layer.paint, 'line-color': '#a5885d' };
-    if (layer.type === 'symbol' && layer.layout?.['text-field']) layer.paint = { ...layer.paint, 'text-color': contrast ? '#152832' : '#35423a', 'text-halo-color': '#fffdf7', 'text-halo-width': contrast ? 1.6 : 1.1 };
+    if (layer.type === 'fill' && /residential|suburb/.test(name)) layer.paint = { ...layer.paint, 'fill-color': '#f4eddd', 'fill-opacity': .5 };
+    if (layer.type === 'line' && /motorway|trunk|primary|secondary/.test(name) && !/casing|outline|rail|label/.test(name)) layer.paint = { ...layer.paint, 'line-color': '#e5ba77' };
+    if (layer.type === 'symbol' && layer.layout?.['text-field']) layer.paint = { ...layer.paint, 'text-color': '#35423a', 'text-halo-color': '#fffdf7', 'text-halo-width': 1.1 };
   }
   if (mapStyle === 'night') for (const layer of style.layers) {
     const name = `${layer.id} ${'source-layer' in layer ? layer['source-layer'] : ''}`.toLowerCase();
@@ -71,6 +88,7 @@ export function prepareMapStyle(original: StyleSpecification, detail: MapDetail,
 }
 
 export async function loadMapStyle(mapStyle: MapStyleId, detail: MapDetail, signal: AbortSignal): Promise<StyleSpecification> {
+  mapStyle = normalizeMapStyleId(mapStyle);
   const url = MAP_STYLE_URLS[mapStyle];
   let original = originals.get(url);
   if (!original) {

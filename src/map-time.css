@@ -1,0 +1,46 @@
+/* The header reports the current map context; Plan ahead owns date selection. */
+.app-header { height:66px; gap:16px; }
+.map-time-status { display:grid; grid-template-columns:auto auto; column-gap:16px; align-items:center; min-width:0; color:var(--ink); }
+.map-time-status-label { grid-column:1; display:flex; align-items:center; gap:7px; white-space:nowrap; font-size:12px; line-height:1.5; font-weight:650; }
+.map-time-live-dot { width:7px; height:7px; flex-shrink:0; border-radius:50%; background:var(--green); }
+.map-time-status-clock { grid-column:2; grid-row:1 / 3; white-space:nowrap; font-size:20px; font-weight:650; line-height:1.3; font-variant-numeric:tabular-nums; letter-spacing:-.4px; }
+.map-time-status-clock small { color:var(--muted); font-size:10px; font-weight:550; letter-spacing:0; }
+.map-time-status-date { grid-column:1; color:var(--muted); white-space:nowrap; font-size:11px; line-height:1.5; }
+.map-time-status[data-mode='planned'] .map-time-status-label { color:var(--blue); }
+.plan-ahead-time { margin:0 0 22px; padding:16px; border:1px solid var(--border); border-radius:14px; background:var(--surface); }
+.plan-ahead-selected { display:flex; align-items:flex-start; gap:10px; margin-bottom:16px; }
+.plan-ahead-selected>svg { margin-top:3px; flex-shrink:0; color:var(--blue); }
+.plan-ahead-selected>div { display:grid; gap:4px; min-width:0; }
+.plan-ahead-selected>div>span { color:var(--muted); font-size:12px; }
+.plan-ahead-selected time { color:var(--ink); font-size:14px; font-weight:650; line-height:1.6; }
+.plan-ahead-selected time span,.plan-ahead-selected time small { color:var(--muted); font-size:12px; }
+.plan-ahead-time form { display:grid; gap:10px; }
+.plan-ahead-time .field-label { margin:0; color:var(--ink); font-size:13px; }
+.plan-ahead-time input[type='datetime-local'] { min-width:0; max-width:100%; background:var(--paper); border-color:var(--border); color-scheme:light; }
+:root[data-theme='dark'] .plan-ahead-time input[type='datetime-local'] { color-scheme:dark; }
+.plan-ahead-time form .primary-button { min-height:44px; margin-top:2px; justify-content:center; gap:9px; }
+.plan-ahead-time-error { margin:0; color:var(--red-ink); font-size:12px; }
+.plan-ahead-live { display:flex; align-items:center; justify-content:center; gap:7px; width:100%; min-height:44px; padding:8px 0 0; margin-top:4px; font-size:13px; }
+html[dir='rtl'] .plan-ahead-time form .primary-button>svg { transform:rotate(180deg); }
+@media(max-width:760px) {
+  .app-header { height:64px; padding-inline:10px; gap:8px; }
+  .map-time-status { grid-template-columns:1fr; gap:0; }
+  .map-time-status-label { grid-column:1; font-size:10px; gap:5px; line-height:1.4; }
+  .map-time-live-dot { width:6px; height:6px; }
+  .map-time-status-clock { grid-column:1; grid-row:2; font-size:17px; line-height:1.25; }
+  .map-time-status-clock small { font-size:9px; }
+  .map-time-status-date { grid-row:3; font-size:10px; line-height:1.3; }
+  .map-style-picker { top:76px; }
+  .nav-rail { gap:2px; padding-inline:5px; }
+  .nav-rail .nav-item { min-width:0; min-height:56px; padding-inline:2px; }
+  .nav-rail .nav-item span { max-width:100%; font-size:11px; line-height:1.25; white-space:normal; overflow-wrap:normal; }
+  .nav-rail .nav-item svg { width:21px; height:21px; }
+  html[lang='ur'] .nav-rail .nav-item span { font-size:12px; }
+  html[lang='ur'] .map-time-status-label { font-size:12px; }
+  .plan-ahead-time { padding:14px; }
+}
+@media(max-width:760px) and (orientation:landscape) {
+  .app-header { height:58px; }
+  .nav-rail { overflow-y:auto; }
+  .nav-rail .nav-item { min-height:44px; flex-shrink:0; }
+}

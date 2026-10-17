@@ -9,10 +9,10 @@ import { RerouteTracker, StopTracker } from '../lib/rerouting';
 import { speechText, type Language, type SpeechPrompt } from '../../shared/speech';
 import { useLanguage } from '../lib/useLanguage';
 
-interface Props { route: RouteOption; destination: string; stops?: Coordinate[]; stale: boolean; onVisitedStops?: (count: number) => void; onBack: () => void; onPosition: (point: Coordinate | null) => void; onReplan: (coordinate: Coordinate, visitedStops: number) => Promise<RouteOption>; onFocus: (coordinates: Coordinate[]) => void }
+interface Props { route: RouteOption; destination: string; stops?: Coordinate[]; stale: boolean; onVisitedStops?: (count: number) => void; onBack: () => void; onPosition: (point: Coordinate | null) => void; onSample?: (point: import('../../shared/types').RecordedPoint | null) => void; savesTravelData?: boolean; onReplan: (coordinate: Coordinate, visitedStops: number) => Promise<RouteOption>; onFocus: (coordinates: Coordinate[]) => void }
 const recent = (fix: NavigationFix | null) => !!fix && Date.now() - fix.timestamp <= 15000 && fix.timestamp - Date.now() <= 5000;
 
-export default function NavigationPanel({ route, destination, stops = [], stale, onVisitedStops, onBack, onPosition, onReplan, onFocus }: Props) {
+export default function NavigationPanel({ route, destination, stops = [], stale, onVisitedStops, onBack, onPosition, onSample, savesTravelData = false, onReplan, onFocus }: Props) {
   const { language } = useLanguage();
   const [voiceLanguage, setVoiceLanguage] = useState<Language>(() => { try { const saved = localStorage.getItem('manzil-voice-language'); return saved === 'ur' || saved === 'en' ? saved : language; } catch { return language; } });
   const [voiceStatus, setVoiceStatus] = useState('');
@@ -32,7 +32,7 @@ export default function NavigationPanel({ route, destination, stops = [], stale,
   const watch = useRef<number | null>(null), gate = useRef(new GuidanceSession());
   const firstFix = useRef(false), latestProgress = useRef(0), lastProgressTime = useRef(0), badFixes = useRef(0);
   const fix = useRef<NavigationFix | null>(null), staleRef = useRef(stale); staleRef.current = stale;
-  const callbacks = useRef({ onPosition, onReplan, onFocus }); callbacks.current = { onPosition, onReplan, onFocus };
+  const callbacks = useRef({ onPosition, onSample, onReplan, onFocus }); callbacks.current = { onPosition, onSample, onReplan, onFocus };
   const spoken = useRef('');
 
   function stop() {
@@ -40,12 +40,12 @@ export default function NavigationPanel({ route, destination, stops = [], stale,
     if (watch.current !== null) navigator.geolocation.clearWatch(watch.current);
     watch.current = null; firstFix.current = false; fix.current = null;
     setLive(false); setBusy(false); setAccepted(null); setMatched(false); setGpsCurrent(false); setOffRoute(false);
-    callbacks.current.onPosition(null); cancelSpeech();
+    callbacks.current.onPosition(null); callbacks.current.onSample?.(null); cancelSpeech();
   }
   useEffect(() => () => {
     gate.current.stop();
     if (watch.current !== null) navigator.geolocation.clearWatch(watch.current);
-    watch.current = null; callbacks.current.onPosition(null); cancelSpeech();
+    watch.current = null; callbacks.current.onPosition(null); callbacks.current.onSample?.(null); cancelSpeech();
   }, []);
   useEffect(() => {
     setPreview(0);
@@ -169,13 +169,14 @@ export default function NavigationPanel({ route, destination, stops = [], stale,
     deviation.current.reset();
     firstFix.current = true; fix.current = null; latestProgress.current = 0; lastProgressTime.current = 0; badFixes.current = 0;
     setLive(true); setBusy(false); setAccepted(null); setMatched(false); setGpsCurrent(false); setOffRoute(false); setReplanFailed(false); setProgress(0); spoken.current = '';
-    setMessage('Waiting for a recent GPS fix before recalculating. Your position is not saved as trip history.');
+    setMessage(savesTravelData ? 'Waiting for a recent GPS fix. Personal trip history is enabled.' : 'Waiting for a recent GPS fix before recalculating. Your position is not saved as trip history.');
     watch.current = navigator.geolocation.watchPosition(position => {
       if (!gate.current.isSession(session)) return;
       const sample = navigationFix(position);
       if (!sample) { setGpsCurrent(false); setMatched(false); cancelSpeech(); if (!gate.current.busy) setMessage('Waiting for a recent location fix with reported accuracy of 60 m or better.'); return; }
       if (fix.current && sample.timestamp <= fix.current.timestamp) return;
       fix.current = sample; setGpsCurrent(true); callbacks.current.onPosition(sample.coordinate);
+      callbacks.current.onSample?.({ coordinate: sample.coordinate, timestamp: new Date(sample.timestamp).toISOString(), accuracy: sample.accuracy });
       if (firstFix.current) { firstFix.current = false; void replan(sample, true); return; }
       if (gate.current.busy) return;
       const currentRoute = gate.current.acceptedRoute;
@@ -202,7 +203,7 @@ export default function NavigationPanel({ route, destination, stops = [], stale,
     <div className="navigation-metrics"><div><strong>{waiting || stale || !measure.valid ? t("—") : duration(remainingSeconds)}</strong><span>{t("estimated remaining")}</span></div><div><strong>{waiting || stale || !measure.valid ? t("—") : distance(remaining)}</strong><span>{t("to destination")}</span></div></div>
     <div className="navigation-progress"><span style={{ width: `${!stale && (!live || ready) && measure.total ? Math.max(0, Math.min(100, (1 - remaining / measure.total) * 100)) : 0}%` }} /></div>
     <p className="gps-status" role="status">{busy ? t("Finding a fresh clear route…") : message}</p>
-    {!live ? <><button className="primary-button full" disabled={stale || busy || !measure.valid} onClick={start}><LocateFixed size={19} />{t("Start GPS guidance")}</button><p className="small muted navigation-consent">{t("Uses location while this view is open. GPS history is not saved.")}</p>{!stale && <div className="preview-buttons"><button className="secondary-button" disabled={preview <= 0} onClick={() => previewStep(preview - 1)}><ChevronLeft size={18} />{t("Previous")}</button><button className="secondary-button" disabled={preview >= steps.length - 1} onClick={() => previewStep(preview + 1)}>{t("Next step")}<ChevronRight size={18} /></button></div>}</> : <div className="stack"><button className="secondary-button full" disabled={busy || !gpsCurrent || !recent(fix.current)} onClick={() => fix.current && replan(fix.current)}><RefreshCw size={18} />{t("Recalculate from here")}</button><button className="secondary-button full" onClick={() => { stop(); setMessage('Guidance stopped. Route preview remains available.'); }}><Square size={17} />{t("Stop guidance")}</button></div>}
+    {!live ? <><button className="primary-button full" disabled={stale || busy || !measure.valid} onClick={start}><LocateFixed size={19} />{t("Start GPS guidance")}</button><p className="small muted navigation-consent">{t(savesTravelData ? 'Saves your foreground navigation trips for personal statistics. Manage permission in Profile.' : 'Uses location while this view is open. GPS history is not saved.')}</p>{!stale && <div className="preview-buttons"><button className="secondary-button" disabled={preview <= 0} onClick={() => previewStep(preview - 1)}><ChevronLeft size={18} />{t("Previous")}</button><button className="secondary-button" disabled={preview >= steps.length - 1} onClick={() => previewStep(preview + 1)}>{t("Next step")}<ChevronRight size={18} /></button></div>}</> : <div className="stack"><button className="secondary-button full" disabled={busy || !gpsCurrent || !recent(fix.current)} onClick={() => fix.current && replan(fix.current)}><RefreshCw size={18} />{t("Recalculate from here")}</button><button className="secondary-button full" onClick={() => { stop(); setMessage('Guidance stopped. Route preview remains available.'); }}><Square size={17} />{t("Stop guidance")}</button></div>}
     <button className="settings-link voice-setting" onClick={() => { setVoice(!voice); if (voice) cancelSpeech(); }} aria-pressed={voice}>{voice ? <Volume2 size={20} /> : <VolumeX size={20} />}<span>{t("Voice guidance")}</span><strong>{voice ? t("On") : t("Off")}</strong></button>
     <label className="field-label">{t('Voice language')}<select value={voiceLanguage} onChange={event => { const value = event.target.value as Language; setVoiceLanguage(value); spoken.current = ''; cancelSpeech(); try { localStorage.setItem('manzil-voice-language', value); } catch {} }}><option value="en">English</option><option value="ur">اردو</option></select></label>
     <div className="row wrap"><button className="secondary-button" onClick={() => { spoken.current = ''; void speaker.current.speak({ kind: 'test' }, voiceLanguage, setVoiceStatus); }}>{t('Test voice')}</button><button className="text-button" disabled={!ready || !step} onClick={() => { if (step) void speaker.current.speak({ kind: 'turn', turn: step.turn, road: step.roadName }, voiceLanguage, setVoiceStatus); }}>{t('Repeat instruction')}</button></div>

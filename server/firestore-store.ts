@@ -1,13 +1,16 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { Firestore, DocumentReference, CollectionReference } from 'firebase-admin/firestore';
-import type { Alert, Closure, ClosureDraft, LocalProfile, SourceNotice, SourceStatus, Trip } from '../shared/types.js';
+import type { Alert, Closure, ClosureInput, LocalProfile, SourceNotice, SourceStatus, Trip } from '../shared/types.js';
 import { HttpError } from './errors.js';
+import { closureSummary } from './community.js';
+import { sameVehicle } from '../shared/fuel.js';
+import { tripWithCurrentVehicle } from './fuel.js';
 import { defaultProfile, defaultSourceStatus, type RecordKind, type PersonalRecordKind, type Repository, type RoutingSnapshot } from './repository.js';
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const decode = <T>(data: FirebaseFirestore.DocumentData | undefined): T | undefined => data?.json ? JSON.parse(data.json) as T : undefined;
 const pack = (value: unknown) => ({ json: JSON.stringify(value) });
-const sharedMeta = (key: string) => /^(source|demoScenario:|streetRouteDemo:|speech:|eventRevision$)/.test(key);
+const sharedMeta = (key: string) => /^(source|fuel:|demoScenario:|streetRouteDemo:|speech:|community:member:|eventRevision$)/.test(key);
 interface SharedCache { snapshot?: RoutingSnapshot }
 
 /** Durable repository used unchanged by emulators and Cloud Run. No local-file fallback. */
@@ -24,16 +27,35 @@ export class FirestoreStore implements Repository {
   private metaRef(key: string) { return (sharedMeta(key) ? this.root : this.user()).collection('meta').doc(hash(key)); }
   async meta<T>(key: string): Promise<T | undefined> { return decode<T>((await this.metaRef(key).get()).data()); }
   async setMeta(key: string, value: unknown) { await this.metaRef(key).set(pack(value)); }
-  async profile() { return this.uid ? await this.meta<LocalProfile>('profile') ?? await this.updateProfile({}) : defaultProfile(); }
+  async claimFuelCheck(day: string) {
+    const ref = this.metaRef('fuel:checkedDay');
+    return this.db.runTransaction(async tx => {
+      if (decode<string>((await tx.get(ref)).data()) === day) return false;
+      tx.set(ref, pack(day)); return true;
+    });
+  }
+  async profile() { return this.uid ? { collectTravelData: false, ...await this.meta<LocalProfile>('profile') ?? await this.updateProfile({}) } : defaultProfile(); }
   async updateProfile(patch: Partial<Omit<LocalProfile, 'id' | 'createdAt' | 'updatedAt'>>) {
     const ref = this.metaRef('profile');
-    return this.db.runTransaction(async tx => { const old = decode<LocalProfile>((await tx.get(ref)).data()) ?? defaultProfile(); const next = { ...old, ...patch, updatedAt: new Date().toISOString() }; tx.set(ref, pack(next)); tx.set(this.user(), { active: true }, { merge: true }); return next; });
+    return this.db.runTransaction(async tx => { const old = decode<LocalProfile>((await tx.get(ref)).data()) ?? defaultProfile(); const next = { collectTravelData: false, ...old, ...patch, updatedAt: new Date().toISOString() }; if (patch.vehicle && !sameVehicle(old.vehicle, patch.vehicle)) next.vehicleUpdatedAt = next.updatedAt; if (!next.collectTravelData) next.inferFrequentRoutes = false; tx.set(ref, pack(next)); tx.set(this.user(), { active: true }, { merge: true }); return next; });
   }
   async list<T>(kind: RecordKind, limit = 500): Promise<T[]> {
     const snapshot = await this.records(kind).orderBy('updatedAt', 'desc').limit(limit).get();
     return snapshot.docs.map(doc => decode<T>(doc.data())!);
   }
   async listTripSummaries(limit = 50) { return this.list<Trip>('trip', limit); }
+  async saveTripIfConsented(input: Trip) {
+    const ref = this.record('trip', input.id), profileRef = this.metaRef('profile');
+    await this.db.runTransaction(async tx => {
+      const profile = decode<LocalProfile>((await tx.get(profileRef)).data());
+      if (!profile?.collectTravelData) throw new HttpError(403, 'Allow travel data collection in Profile before saving a trip.');
+      const priced = tripWithCurrentVehicle(input, profile);
+      const trip = Date.parse(input.endedAt) < Date.now() - 30 * 86400_000 ? { ...priced, points: [] } : priced;
+      tx.set(this.user(), { active: true }, { merge: true });
+      for (let offset = 0; offset < trip.points.length; offset += 200) tx.set(ref.collection('points').doc(String(offset / 200)), { ...pack(trip.points.slice(offset, offset + 200)), index: offset / 200 });
+      tx.set(ref, { ...pack({ ...trip, pointCount: trip.points.length, points: [] }), updatedAt: trip.createdAt, endedAt: trip.endedAt, hasPoints: !!trip.points.length });
+    });
+  }
   async get<T>(kind: RecordKind, id: string): Promise<T | undefined> {
     const ref = this.record(kind, id), value = decode<T>((await ref.get()).data());
     if (kind !== 'trip' || !value) return value;
@@ -87,13 +109,13 @@ export class FirestoreStore implements Repository {
     const result = await this.db.runTransaction(async tx => {
       const revision = decode<number>((await tx.get(this.metaRef('eventRevision'))).data()) ?? 0;
       if (!includeUnpublished && this.cache.snapshot?.revision === revision) return this.cache.snapshot;
-      const docs = await tx.get(includeUnpublished ? this.records('closure').orderBy('updatedAt', 'desc').limit(2000) : this.records('closure').where('status', '==', 'published'));
-      return { revision, closures: docs.docs.map(doc => decode<Closure>(doc.data())!) };
+      const docs = await tx.get(includeUnpublished ? this.records('closure').orderBy('updatedAt', 'desc') : this.records('closure').where('status', '==', 'published'));
+      return { revision, closures: docs.docs.map(doc => decode<Closure>(doc.data())!).filter(closure => includeUnpublished || !closure.moderation || closure.moderation === 'approved').map(closureSummary) };
     });
     if (!includeUnpublished && (!this.cache.snapshot || result.revision >= this.cache.snapshot.revision)) this.cache.snapshot = result;
     return structuredClone(result);
   }
-  async saveClosure(draft: ClosureDraft, id?: string, expectedRevision?: number): Promise<Closure> {
+  async saveClosure(draft: ClosureInput, id?: string, expectedRevision?: number): Promise<Closure> {
     const updating = id !== undefined; id ??= randomUUID();
     const ref = this.record('closure', id), revisionRef = this.metaRef('eventRevision');
     const closure = await this.db.runTransaction(async tx => {
@@ -151,7 +173,14 @@ export class FirestoreStore implements Repository {
   }
   async addAlertOnce(id: string, alert: Omit<Alert, 'id'>) {
     const ref = this.record('alert', id);
-    await this.db.runTransaction(async tx => { if (!(await tx.get(ref)).exists) tx.set(ref, { ...pack({ ...alert, id }), updatedAt: alert.createdAt }); });
+    await this.db.runTransaction(async tx => {
+      const previous = await tx.get(ref);
+      if (alert.frequentRouteId) {
+        const profile = decode<LocalProfile>((await tx.get(this.metaRef('profile'))).data());
+        if (!profile?.collectTravelData || !profile.inferFrequentRoutes) throw new HttpError(409, 'Usual-journey notifications are disabled.');
+      }
+      if (!previous.exists) tx.set(ref, { ...pack({ ...alert, id }), updatedAt: alert.createdAt });
+    });
   }
   async speechUsage(month: string) { return await this.meta<number>(`speech:${month}`) ?? 0; }
   async reserveSpeech(month: string, characters: number, limit: number) {

@@ -6,6 +6,18 @@ The foreground guide now automatically replans after sustained GPS deviation, cl
 
 Manzil routes over a genuine imported OpenStreetMap road network. It needs no routing API key. The map renderer and its tiles are a separate display system; editing a tile or drawing a line does not modify this graph.
 
+## Road sections and route comparison — 17 October feature branch
+
+The closure editor's **Road** tool takes two clicks and follows the actual connected public-road geometry between them, including bends and split OSM ways. `POST /roads/section` accepts `{from:[longitude,latitude],to:[longitude,latitude]}` and returns `{drawing,roadNames,distanceMeters}`. The drawing remains a normal `kind:"line"` contract with a 14 m editable corridor width; it does not change base tiles or add graph edges. The editor uses the road name as a starting title. Separate roads need separate reports.
+
+Selection uses accepted car-road segments from the bundled Islamabad graph, exact projected endpoints within 45 m, same-name connectivity (same-way identity for unnamed generic roads), a 6 km/400-vertex maximum, and bounded path search. Nearby candidates resolve ambiguous junction/carriageway clicks; no connection is invented at a visual crossing or along a private excluded road. Selection is geometric and may run either direction on a one-way segment because closure polygons have no direction field; this is **not** a driving itinerary or a relaxation of routing one-way/turn checks. Outside the local extract or without its graph, the tool returns **503 unavailable**; unsuitable/disconnected/oversized sections return **422**. Point/advanced drawing tools remain available. It does not acquire national road geometry from OSRM. Changing tools, editing the drawing or leaving the editor cancels a pending selection so its response cannot overwrite newer work.
+
+Blocked originals are now **inspectable comparisons**, with their ordinary unblocked time/distance, hypothetical arrival and affected closure details. Clicking the pale-red exclusive geometry, its **Blocked · N min** badge or its comparison card never makes that route eligible for navigation. Blue routes remain separately selected and validated. Shared open parts of the original/clear routes are removed from the pale-red display, including partial collinear overlaps with differently split nodes. The badge anchors only to exclusive original geometry, away from blue segments; it is omitted at zooms where a clear position is unavailable, while the card remains usable. Bright-red actual closure strokes are unchanged.
+
+Normal planning still requests **up to three**, not three fabricated routes. When fewer choices validate, the result says how many were found and discloses similar corridors, closures/search limits or the online provider's limited alternatives. Fixed a waypoint-specific diversity bug: returning over a node on a later required-stop leg no longer rejects every alternative as a loop. Loops within an individual leg remain excluded; ordered stops still use one continuous search preserving incoming-turn state and traversal-time validation.
+
+Focused regression coverage includes two-click bend/split-way geometry, private/different/disconnected road rejection, exact section clipping, explicit coverage errors, and a publishable selection over the actual Park Road fixture; exclusive blocked-overlay clipping/crossing separation; required-stop return alternatives; and comparison-only blocked cards without navigation eligibility. See `tests/road-selection.test.ts`, `tests/map-overlays.test.ts`, `tests/routing-alternatives.test.ts` and `tests/route-results.test.tsx`.
+
 ## Pakistan-wide coverage — 16 October
 
 Origins, destinations and up to five ordered stops may be anywhere within the bundled Pakistan coverage boundary, including Lahore, Karachi, Peshawar, Quetta, Gilgit and Muzaffarabad. There is no Islamabad endpoint gate at the public planner. The country guard runs before routing, so arbitrary foreign map pins or typed coordinates are rejected without an online route request. A simplified mapped boundary can be imperfect at a border/coast; this is an application coverage check, not a legal boundary statement.
@@ -37,6 +49,12 @@ Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright
 - Node-based `no_*` and `only_*` OSM turn restrictions, including prohibited U-turns. Unsupported via-way sequences conservatively exclude their via roads. Conditional access/one-way and reversible/alternating roads are excluded; conditional turn restrictions are applied continuously. This can remove usable routes.
 - A* search using estimated road-class speeds, posted-speed caps, rough-surface caps and small junction delays. These are ordinary estimates, not measured traffic speeds or a turn-by-turn navigation guarantee.
 - Endpoint snapping to actual road nodes within 220 metres. The response returns snapped coordinates and discloses the distance. Access from the original pin to that point is not routed; choose the correct carriageway on the map.
+
+### Streets are part of ordinary routing
+
+Public residential, living-street and permitted service roads participate in every local search; no street-detour mode, forced waypoint or UI opt-in is needed. Routes optimize ordinary estimated driving time, including the lower street speeds and junction delays. A shorter street is therefore chosen when it saves estimated time; a longer faster main road may still win. Published closures exclude affected traversals through the same ordinary connected search. Private/destination-only roads, footways and other excluded access classes remain unavailable.
+
+The [demo catalogue](DEMOS.md) now supplies optional endpoint pairs and synthetic closures on Park Road, Rohtas Road, Tipu Sultan Road and Sumbal Road. `tests/routing-public-streets.test.ts` checks original directed OSM edges and residential tags for all four (489 m, 361 m, 1,042 m and 396 m of residential detour respectively), cancellation/reopening, travel-time ranking and private/footway exclusion. These are real-graph local test results, not current traffic advice. National OSRM requests use the provider's car profile; candidate filtering there cannot force an arbitrary street detour around Manzil polygons.
 
 ## Scheduled closures in the local router
 

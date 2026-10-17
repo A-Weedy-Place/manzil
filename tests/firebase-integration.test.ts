@@ -10,7 +10,7 @@ import { readConfig } from '../server/config';
 import { SpeechService } from '../server/speech';
 import { createJourneyPlanner } from '../server/routing';
 import type { Planner } from '../server/commutes';
-import type { Alert, Closure, ClosureDraft, Commute, PlanRequest, PlanResponse, Trip } from '../shared/types';
+import type { Alert, Closure, ClosureDraft, Commute, FuelPriceStatus, PlanRequest, PlanResponse, Trip } from '../shared/types';
 
 const enabled = !!process.env.FIRESTORE_EMULATOR_HOST && !!process.env.FIREBASE_AUTH_EMULATOR_HOST;
 describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
@@ -77,7 +77,8 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
     await store.updateSourceStatus({ enabled: false, state: 'disabled' });
     expect((await request('/commutes')).status).toBe(401);
     expect((await request('/closures', undefined, draft)).status).toBe(401);
-    expect((await request('/closures', alice, { ...draft, admin: true })).status).toBe(403);
+    const submitted = await request('/closures', alice, { ...draft, admin: true, moderation: 'approved' });
+    expect(submitted.status).toBe(201); expect(await submitted.json()).toMatchObject({ status: 'draft', moderation: 'pending', author: { uid: 'alice', role: 'user' } });
     expect((await request('/notices', alice)).status).toBe(403);
     expect((await request('/state', 'forged-token')).status).toBe(401);
   });
@@ -85,8 +86,6 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
     const revision = (await store.routingSnapshot()).revision;
     const notices = (await store.listNotices()).length;
     const sharedWrites: [string, unknown, string][] = [
-      ['/CLOSURES', draft, 'POST'],
-      ['/CLOSURES/', draft, 'POST'],
       ['/NoTiCeS', { text: 'Case-variant authorization fixture', url: 'https://example.test/case-variant-notice' }, 'POST'],
       ['/SoUrCe/settings', { enabled: false }, 'PATCH'],
     ];
@@ -112,6 +111,41 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
     expect((await request(`/COMMUTES/${commute.id}`, bob, undefined, 'DELETE')).status).toBe(404);
     expect((await request(`/COMMUTES/${commute.id}`, alice, undefined, 'DELETE')).status).toBe(200);
   });
+  it('moderates community evidence and revokes verification across requests without changing admin claims', async () => {
+    const photo = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/cB8AAAAASUVORK5CYII=';
+    const response = await request('/closures', alice, { ...draft, title: 'Pending photo report', photos: [photo], author: { uid: 'administrator', role: 'admin' } });
+    expect(response.status).toBe(201); const closure = await response.json() as Closure;
+    expect(closure).toMatchObject({ status: 'draft', moderation: 'pending', author: { uid: 'alice', role: 'user' } });
+    expect((await request(`/closures/${closure.id}`, bob)).status).toBe(404);
+    expect((await (await request('/state')).json()).closures.some((item: Closure) => item.id === closure.id)).toBe(false);
+    const own = (await (await request('/state', alice)).json()).closures.find((item: Closure) => item.id === closure.id);
+    expect(own.photoCount).toBe(1); expect(own).not.toHaveProperty('photos');
+    expect((await request(`/closures/${closure.id}/review`, bob, { revision: 1, decision: 'approve' })).status).toBe(403);
+    const directory = await (await request('/admin/users', admin)).json(); expect(directory.users.some((user: { uid: string }) => user.uid === 'bob')).toBe(true);
+    expect((await request('/admin/users/bob', admin, { verified: true }, 'PATCH')).status).toBe(200);
+    expect((await (await request('/state', bob)).json()).membership.role).toBe('verified');
+    expect((await (await request(`/closures/${closure.id}`, bob)).json()).photos).toEqual([photo]);
+    const reviewed = await request(`/closures/${closure.id}/review`, bob, { revision: 1, decision: 'approve' });
+    expect(reviewed.status).toBe(200); expect(await reviewed.json()).toMatchObject({ status: 'published', reviewedBy: { uid: 'bob', role: 'verified' } });
+    expect((await request('/admin/users/bob', admin, { verified: false }, 'PATCH')).status).toBe(200);
+    const pending = await request('/closures', bob, { ...draft, title: 'After revocation' });
+    expect(await pending.json()).toMatchObject({ status: 'draft', moderation: 'pending', author: { uid: 'bob', role: 'user' } });
+    expect((await services.auth.getUser('bob')).customClaims?.admin).toBe(false);
+    expect((await request('/admin/users/administrator', admin, { verified: false }, 'PATCH')).status).toBe(409);
+  });
+  it('stores collection consent per UID and prevents trip and learned-alert writes after opt-out', async () => {
+    const personal = store.forUser('alice');
+    expect((await request('/profile', alice, { collectTravelData: true, inferFrequentRoutes: true }, 'PATCH')).status).toBe(200);
+    expect((await store.forUser('bob').profile()).collectTravelData).toBe(false);
+    expect((await request('/profile', alice, { collectTravelData: false }, 'PATCH')).status).toBe(200);
+    expect(await personal.profile()).toMatchObject({ collectTravelData: false, inferFrequentRoutes: false });
+    const now = Date.now(), trip: Trip = { id: 'optout-atomic-fixture', name: 'Consent race fixture', startedAt: new Date(now-60000).toISOString(), endedAt: new Date(now).toISOString(), createdAt: new Date(now).toISOString(),
+      points: [{ coordinate: [73,33.7], timestamp: new Date(now-60000).toISOString(), accuracy: 8 },{ coordinate: [73.001,33.7], timestamp: new Date(now).toISOString(), accuracy: 8 }], contributeToRoadDiscovery: false, distanceMeters: 90, durationSeconds: 60, gaps: 0 };
+    await expect(personal.saveTripIfConsented(trip)).rejects.toMatchObject({ status: 403 });
+    expect(await personal.get('trip', trip.id)).toBeUndefined();
+    await expect(personal.addAlertOnce('optout-alert-fixture', { title: 'Must not be written', message: 'Synthetic fixture', createdAt: trip.createdAt, read: false, frequentRouteId: 'usual-fixture' })).rejects.toMatchObject({ status: 409 });
+    expect(await personal.get('alert', 'optout-alert-fixture')).toBeUndefined();
+  });
   it('isolates simultaneous users, profiles and saved records and persists across repository instances', async () => {
     await Promise.all([request('/profile', alice, { displayName: 'Alice' }, 'PATCH'), request('/profile', bob, { displayName: 'Bob' }, 'PATCH')]);
     const [a, b] = await Promise.all([request('/state', alice).then(r => r.json()), request('/state', bob).then(r => r.json())]);
@@ -121,6 +155,44 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
     expect((await request(`/commutes/${commute.id}`, bob, undefined, 'DELETE')).status).toBe(404);
     expect(await (await request('/commutes', bob)).json()).toEqual([]);
     expect((await new FirestoreStore(services.db).forUser('alice').list<Commute>('commute')).some(item => item.id === commute.id)).toBe(true);
+  });
+  it('keeps dated fuel estimates private and immutable across vehicle edits in real Firestore', async () => {
+    const now = Date.now(), checked = new Date(now).toISOString(), personal = store.forUser('alice');
+    const fuel: FuelPriceStatus = { state: 'fresh', lastCheckedAt: checked, lastSuccessAt: checked,
+      nextCheckAt: new Date(now + 86400_000).toISOString(), message: 'Synthetic offline integration fixture',
+      records: [{ effectiveFrom: new Date(now - 2 * 86400_000).toISOString(), petrolPerLitre: 300, dieselPerLitre: 350,
+        sourceName: 'Synthetic price fixture', sourceUrl: 'https://example.test/fuel', retrievedAt: checked }] };
+    await store.setMeta('fuel:status', fuel);
+    await store.setMeta('fuel:checkedDay', new Date(now + 5 * 3600_000).toISOString().slice(0, 10));
+    expect((await request('/fuel/check', undefined, {})).status).toBe(401);
+    expect((await request('/FuEl/CHECK/', bob, {})).status).toBe(403);
+    expect((await request('/trips/statistics')).status).toBe(401);
+    expect(await (await request('/fuel/prices')).json()).toMatchObject({ records: fuel.records });
+    const vehicle = { kind: 'car', fuelType: 'petrol', kmPerLitre: 10, label: 'Offline test car' };
+    expect((await request('/profile', alice, { vehicle, collectTravelData: true }, 'PATCH')).status).toBe(200);
+    expect((await request('/profile', alice, { vehicleUpdatedAt: '2000-01-01T00:00:00Z' }, 'PATCH')).status).toBe(400);
+    expect((await request('/profile', alice, { vehicle: { ...vehicle, kmPerLitre: 0 } }, 'PATCH')).status).toBe(400);
+    // Fixture represents a vehicle configured before this recorded journey; the API cannot backdate it.
+    await personal.setMeta('profile', { ...await personal.profile(), vehicleUpdatedAt: new Date(now - 600_000).toISOString() });
+    const draft = { name: 'Synthetic priced journey', startedAt: new Date(now - 120_000).toISOString(), endedAt: new Date(now - 60_000).toISOString(),
+      points: [{ coordinate: [73,33.7], timestamp: new Date(now - 120_000).toISOString(), accuracy: 8 },
+        { coordinate: [73.002,33.7], timestamp: new Date(now - 60_000).toISOString(), accuracy: 8 }], contributeToRoadDiscovery: false };
+    const response = await request('/trips', alice, draft); expect(response.status).toBe(201);
+    const trip = await response.json() as Trip;
+    expect(trip.fuelEstimate).toMatchObject({ vehicle, distanceMeters: trip.distanceMeters });
+    expect(trip.fuelEstimate!.costPkr).toBeCloseTo(trip.distanceMeters / 1000 / 10 * 300, 6);
+    expect((await request(`/trips/${trip.id}`, bob)).status).toBe(404);
+    expect((await (await request('/profile', bob)).json()).vehicle).toBeUndefined();
+    expect((await request('/profile', alice, { vehicle: { ...vehicle, kind: 'motorcycle', kmPerLitre: 40 } }, 'PATCH')).status).toBe(200);
+    const retained = await (await request(`/trips/${trip.id}`, alice)).json() as Trip;
+    expect(retained.fuelEstimate).toEqual(trip.fuelEstimate);
+    expect((await (await request('/trips/statistics', alice)).json()).month).toMatchObject({ pricedTripCount: 1, costPkr: trip.fuelEstimate!.costPkr });
+    const tooOld = await (await request('/trips', alice, { ...draft, name: 'Before current vehicle was configured' })).json() as Trip;
+    expect(tooOld.fuelEstimate).toBeUndefined();
+    expect((await request('/profile', alice, { collectTravelData: false }, 'PATCH')).status).toBe(200);
+    expect((await request('/trips', alice, draft)).status).toBe(403);
+    expect((await request(`/trips/${trip.id}`, alice, undefined, 'DELETE')).status).toBe(200);
+    expect((await request(`/trips/${tooOld.id}`, alice, undefined, 'DELETE')).status).toBe(200);
   });
   it('awaits national place and route providers for guests, preserves stops, and rejects foreign pins before provider access', async () => {
     const online = vi.fn<Planner>().mockImplementation(async (_input, _closures, revision) => onlineResult(revision));
@@ -227,6 +299,7 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
     expect(snapshot.revision).toBeGreaterThanOrEqual(2);
   });
   it('chunks large GPS traces, keeps summaries small and enforces private trace access/deletion', async () => {
+    expect((await request('/profile', alice, { collectTravelData: true }, 'PATCH')).status).toBe(200);
     const now = Date.now(), count = 12000;
     const points = Array.from({ length: count }, (_, index) => ({ coordinate: [73 + index * 0.0000001,33.7], timestamp: new Date(now - 7200_000 + index * 500).toISOString(), accuracy: 5 }));
     const response = await request('/trips', alice, { name: 'Private GPS fixture', startedAt: new Date(now - 7200_000).toISOString(), endedAt: new Date(now).toISOString(), points, contributeToRoadDiscovery: false });
