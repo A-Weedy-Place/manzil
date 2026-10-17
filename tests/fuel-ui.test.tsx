@@ -31,7 +31,8 @@ const route: RouteOption = { id: 'direct', kind: 'direct', label: 'Recommended',
 const plan: PlanResponse = { options: [route, { ...route, id: 'longer', label: 'Alternative 1', kind: 'alternative', distanceMeters: 15_000 }], baseline: { ...route, distanceMeters: 8_000 }, conflicts: [{ closureId: 'closed', title: 'Park Road', entryAt: at, exitAt: at }], warnings: [], evaluatedAt: at, graphVersion: 'test', eventRevision: 0, source: 'local-osm' };
 const routeProps = () => ({ plan, selectedId: 'direct', onSelect: vi.fn(), onSaveCommute: vi.fn(), onNavigate: vi.fn(), onDemo: vi.fn(), demoBusy: false });
 function summary(period: TripStatistics['period'], tripCount: number, costPkr: number): TripStatistics {
-  return { period, from: null, until: at, tripCount, distanceMeters: tripCount * 10_000, durationSeconds: tripCount * 600, pricedTripCount: tripCount - 1, unpricedTripCount: 1, unpricedDistanceMeters: 10_000, costPkr, litres: costPkr / 310, complete: true };
+  return { period, from: null, until: at, tripCount, distanceMeters: tripCount * 10_000, durationSeconds: tripCount * 600, pricedTripCount: tripCount - 1, unpricedTripCount: 1, unpricedDistanceMeters: 10_000, costPkr, litres: costPkr / 310, complete: true,
+    daily: [{ date: '2026-10-16', tripCount: 0, distanceMeters: 0, durationSeconds: 0, pricedTripCount: 0, unpricedTripCount: 0, costPkr: 0, litres: 0 }, { date: '2026-10-17', tripCount, distanceMeters: tripCount * 10_000, durationSeconds: tripCount * 600, pricedTripCount: tripCount - 1, unpricedTripCount: 1, costPkr, litres: costPkr / 310 }] };
 }
 const statistics = { week: summary('week', 61, 18_600), month: summary('month', 100, 31_000), all: summary('all', 150, 46_500) };
 const trip: Trip = { id: 'one', name: 'Recorded commute', startedAt: at, endedAt: '2026-10-17T08:10:00Z', points: [], pointCount: 4, contributeToRoadDiscovery: false, distanceMeters: 10_000, durationSeconds: 600, createdAt: at, gaps: 0, fuelEstimate: estimateRouteFuel(10_000, at, vehicle, fuel.records)! };
@@ -126,12 +127,14 @@ it('keeps an overdue reference visibly cached and never invents prices when no a
 
 it('shows monthly retained-history totals beyond the recent list without reading raw GPS', async () => {
   render(<ActivityPanel {...activityProps()} state={state({ trips: [trip, { ...trip, id: 'old', name: 'Old trip', fuelEstimate: undefined }] })} />);
-  await screen.findByText('≈ PKR 31,000'); expect(screen.getByText('100')).toBeTruthy();
-  expect(screen.queryByRole('button', { name: 'This week' })).toBeNull();
+  await screen.findByText('≈ PKR 31,000'); expect(screen.getByText('100', { selector: 'strong' })).toBeTruthy();
+  expect(screen.getByRole('tab', { name: 'This week' })).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'All retained trips' })).toBeNull();
   expect(calls.api).toHaveBeenCalledWith('/trips/statistics', expect.objectContaining({ signal: expect.any(AbortSignal) }));
   expect(calls.api).toHaveBeenCalledTimes(1);
-  expect(screen.getByText('Trips without an estimate are excluded from cost totals. Older trips are not repriced after changing your vehicle.')).toBeTruthy();
+  expect(screen.queryByText(/Based on recorded distance/)).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'About fuel estimates' }));
+  expect(screen.getByRole('tooltip').textContent).toContain('changing your vehicle never reprices history');
   expect(screen.getByText('Fuel estimate unavailable for this trip.')).toBeTruthy();
 });
 
@@ -141,7 +144,7 @@ it('keeps saved trip costs after the current vehicle changes and reports totals 
   render(<ActivityPanel {...activityProps()} state={state({ profile, trips: [trip] })} />);
   await screen.findByRole('alert'); expect(screen.getByText('≈ PKR 310')).toBeTruthy();
   expect(screen.queryByText('≈ PKR 62')).toBeNull(); expect(screen.queryByText('≈ PKR 18,600')).toBeNull();
-  expect(screen.getByText('Could not load monthly statistics.')).toBeTruthy();
+  expect(screen.getByText('Could not load personal statistics.')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Retry' })); await waitFor(() => expect(calls.api).toHaveBeenCalledTimes(2));
 });
 
@@ -161,6 +164,44 @@ it('opens monthly statistics without requesting GPS, enabling collection or read
   expect(calls.api).toHaveBeenCalledTimes(1); expect(calls.api.mock.calls[0][0]).toBe('/trips/statistics');
   expect(watchPosition).not.toHaveBeenCalled(); expect(calls.send).not.toHaveBeenCalled();
   expect(screen.queryByRole('button', { name: 'Start recording' })).toBeNull();
+});
+
+it('switches weekly and monthly charts without fetching again, and exposes exact daily values', async () => {
+  const current = state(); current.profile.demoData = true;
+  render(<MonthlyStatistics state={current} />);
+  await screen.findByText('≈ PKR 31,000');
+  expect(screen.getAllByRole('img')).toHaveLength(2);
+  expect(screen.getByRole('img', { name: /Distance travelled/ })).toBeTruthy();
+  expect(screen.getByRole('img', { name: /Estimated fuel used/ })).toBeTruthy();
+  expect(screen.queryByText(/Includes sample trips/)).toBeNull();
+  expect(screen.getByRole('tab', { name: 'This month' }).getAttribute('aria-selected')).toBe('true');
+  fireEvent.click(screen.getByRole('tab', { name: 'This week' }));
+  expect(screen.getByText('≈ PKR 18,600')).toBeTruthy(); expect(screen.getByText('61')).toBeTruthy();
+  expect(screen.getByRole('tab', { name: 'This week' }).getAttribute('aria-selected')).toBe('true');
+  fireEvent.click(screen.getAllByText('View daily values')[0]);
+  expect(screen.getAllByRole('table').length).toBeGreaterThan(0);
+  fireEvent.keyDown(screen.getByRole('tab', { name: 'This week' }), { key: 'End' });
+  expect(screen.getByRole('tab', { name: 'This month' })).toBe(document.activeElement);
+  expect(screen.getByText('≈ PKR 31,000')).toBeTruthy();
+  expect(calls.api).toHaveBeenCalledTimes(1); expect(calls.send).not.toHaveBeenCalled();
+});
+
+it('never synthesizes graphs from totals when the daily series is unavailable', async () => {
+  calls.api.mockResolvedValue({ ...statistics, month: { ...statistics.month, daily: undefined } });
+  render(<MonthlyStatistics state={state()} />);
+  await screen.findByText('≈ PKR 31,000');
+  expect(screen.getAllByText('Daily chart unavailable.')).toHaveLength(2);
+  expect(screen.queryByRole('img')).toBeNull();
+});
+
+it('keeps a prior account’s private aggregates hidden while the next account request is pending', async () => {
+  const first = state({ membership: { uid: 'one', role: 'user', verified: false } });
+  const ui = render(<MonthlyStatistics state={first} />);
+  await screen.findByText('≈ PKR 31,000');
+  calls.api.mockReturnValue(new Promise(() => {}));
+  ui.rerender(<MonthlyStatistics state={{ ...first, membership: { uid: 'two', role: 'user', verified: false } }} />);
+  expect(screen.queryByText('≈ PKR 31,000')).toBeNull();
+  expect(screen.getByRole('status').textContent).toContain('Loading trip totals');
 });
 
 it('provides Urdu labels for the new vehicle and price controls', () => {

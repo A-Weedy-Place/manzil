@@ -33,6 +33,15 @@ function savedJourney(store: Store, id = 'async-office'): Commute {
 }
 
 describe('personal travel permission boundary', () => {
+  it('never learns routes or emits observed conflicts from simulated sample traces even with consent', async () => {
+    const store = database();
+    for (const day of [3, 2, 1]) store.put('trip', { ...recordedTrip(day), demoData: true });
+    store.updateProfile({ collectTravelData: true, inferFrequentRoutes: true });
+    expect(await frequentRouteProposals(store, NOW)).toEqual([]);
+    expect(await observedJourneys(store, NOW)).toEqual([]);
+    addRepeated(store);
+    expect(await frequentRouteProposals(store, NOW)).toHaveLength(1);
+  });
   it('does not read retained traces when collection permission is missing, even for a legacy learning preference', async () => {
     const store = database(); addRepeated(store);
     vi.spyOn(store, 'profile').mockReturnValue({ ...store.profile(), inferFrequentRoutes: true, collectTravelData: false });

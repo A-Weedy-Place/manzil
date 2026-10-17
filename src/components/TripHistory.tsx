@@ -58,7 +58,8 @@ export default function TripHistory({ state, reload, notify, onView, showHeading
       if (!operation.current()) return;
       if (full.id !== trip.id || !full.points?.length) throw new Error('This trip’s saved trace is no longer available.');
       if (action === 'view') onView(full);
-      else downloadJSON(`manzil-trip-${full.id}.geojson`, { type: 'Feature', properties: { name: full.name, startedAt: full.startedAt, endedAt: full.endedAt }, geometry: { type: 'LineString', coordinates: full.points.map(point => point.coordinate) } });
+      else downloadJSON(`manzil-trip-${full.id}.geojson`, { type: 'Feature', properties: { name: full.name, startedAt: full.startedAt, endedAt: full.endedAt,
+        ...(full.demoData ? { simulated: true, provenance: 'Fictional trip generated from the public OpenStreetMap road graph; no device GPS was captured.' } : {}) }, geometry: { type: 'LineString', coordinates: full.points.map(point => point.coordinate) } });
     } catch (e) { if (operation.current()) setError(e instanceof Error ? e.message : 'Could not load this trip.'); }
     finally { operation.finish(); if (operation.current()) setBusy(false); }
   }
@@ -70,7 +71,6 @@ export default function TripHistory({ state, reload, notify, onView, showHeading
     {!state.trips.length && <div className="empty-state compact-empty"><Map size={29} /><h3>{t('Every journey has a story')}</h3><p>{t('Your recorded routes, distance and time will appear here. GPS samples require a real device location.')}</p></div>}
     {state.trips.map(trip => <article className="trip-card" key={trip.id}>
       <div className="row between"><h3>{trip.name}</h3><button className="icon-button small" disabled={busy} aria-label={`${t('Delete')} ${trip.name}`} onClick={() => setDeleteId(deleteId === trip.id ? null : trip.id)}><Trash2 size={15} /></button></div>
-      {trip.demoData && <span className="tag neutral">{t('Demo data')}</span>}
       <span className="small muted">{dateTime(trip.startedAt)}</span>
       <div className="trip-metrics"><strong>{distance(trip.distanceMeters)}</strong><span>{duration(trip.durationSeconds)}</span><span>{(trip.pointCount ?? trip.points.length) ? `${(trip.pointCount ?? trip.points.length)} points` : t('Summary only')}</span></div>
       <TripFuel trip={trip} />
@@ -88,7 +88,7 @@ function TripFuel({ trip }: { trip: Trip }) {
   return <details className="trip-fuel-details">
     <summary><strong>≈ {rupees(estimate.costPkr)}</strong><span>{t('Estimated fuel cost')}</span></summary>
     <p className="small muted">{estimate.vehicle.label || t(estimate.vehicle.kind === 'motorcycle' ? 'Motorcycle' : 'Car')} · {t(estimate.vehicle.fuelType === 'diesel' ? 'Diesel' : 'Petrol')} · {estimate.vehicle.kmPerLitre} {t('km/litre')} · {estimate.litres.toFixed(2)} {t('litres')}</p>
-    {estimate.rates.map(rate => <div key={`${rate.effectiveFrom}:${rate.sourceUrl}`}><p className="small muted">{trip.demoData ? <span>{rupees(rate.pricePerLitre, 2)} {t('/ litre')} · {t('Demo fuel price')}</span> : <a href={rate.sourceUrl} target="_blank" rel="noreferrer">{rupees(rate.pricePerLitre, 2)} {t('/ litre')}</a>} · {t('Effective from')} {fuelDate(rate.effectiveFrom)}</p>{rate.retrievedAt && !trip.demoData && <p className="small muted">{t('Reference checked')} {dateTime(rate.retrievedAt)}</p>}</div>)}
+    {estimate.rates.map(rate => <div key={`${rate.effectiveFrom}:${rate.sourceUrl}`}><p className="small muted">{trip.demoData ? <span title={t('Illustrative price used for a simulated trip.')}>{rupees(rate.pricePerLitre, 2)} {t('/ litre')}</span> : <a href={rate.sourceUrl} target="_blank" rel="noreferrer">{rupees(rate.pricePerLitre, 2)} {t('/ litre')}</a>} · {t('Effective from')} {fuelDate(rate.effectiveFrom)}</p>{rate.retrievedAt && !trip.demoData && <p className="small muted">{t('Reference checked')} {dateTime(rate.retrievedAt)}</p>}</div>)}
     <p className="small muted">{t('Saved estimate. Changes to your vehicle or fuel prices do not change this trip.')}</p>
   </details>;
 }

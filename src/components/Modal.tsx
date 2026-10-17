@@ -5,12 +5,12 @@ export default function Modal({ children, titleId, onClose, className = '', over
   const pointerGesture = useRef<{ startOutside: boolean; endOutside?: boolean } | null>(null);
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
-    const focusable = () => Array.from(box.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select, a[href], [tabindex="0"]') ?? []).filter(item => item.getClientRects().length);
+    const focusable = () => Array.from(box.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href], summary, [tabindex="0"]') ?? []).filter(item => item.getClientRects().length);
     (focusable()[0] ?? box.current)?.focus();
     const key = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        // Let an open combobox consume its first Escape before dismissing the dialog.
-        if (event.target instanceof Element && box.current?.contains(event.target) && event.target.closest('[role="combobox"][aria-expanded="true"]')) return;
+        // Let an open picker consume Escape, including its paging buttons and source link.
+        if (event.target instanceof Element && box.current?.contains(event.target) && event.target.closest('[role="combobox"][aria-expanded="true"], [data-escape-scope="open"]')) return;
         event.preventDefault(); close.current();
       }
       if (event.key === 'Tab') {

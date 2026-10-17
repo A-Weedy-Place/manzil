@@ -7,7 +7,7 @@ import { seedSampleAccount } from './lib/demo-user.js';
 let services: ReturnType<typeof firebaseServices> | undefined;
 try {
   const result = await seedSampleAccount(process.env, projectId => services = firebaseServices(projectId));
-  console.log(`Local sample account ${result.email}: ${result.result}${result.tripCount === undefined ? '' : ` (${result.tripCount} fictional trip summaries)`}.`);
+  console.log(`Local sample account ${result.email}: ${result.result}${result.tripCount === undefined ? '' : ` (${result.tripCount} simulated trips with public OSM paths)`}.`);
 } finally {
   if (services) { await services.db.terminate(); await deleteApp(services.app); }
 }

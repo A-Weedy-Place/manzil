@@ -181,6 +181,23 @@ describe('local API', () => {
     expect((await request(`/trips/${trip.id}`, 'DELETE')).status).toBe(200);
     expect(await (await request('/trips')).json()).toHaveLength(0);
   });
+  it('prevents simulated trip contribution without blocking ordinary name edits or removing provenance', async () => {
+    const { store, request } = await setup();
+    const startedAt = new Date(Date.now() - 60_000).toISOString(), endedAt = new Date(Date.now() - 10_000).toISOString();
+    const trip: Trip = { id: 'simulated-private-trip', name: 'Morning commute', startedAt, endedAt,
+      points: [{ coordinate: [73.02, 33.7], timestamp: startedAt, accuracy: 5 }, { coordinate: [73.021, 33.7], timestamp: endedAt, accuracy: 5 }],
+      contributeToRoadDiscovery: false, distanceMeters: 95, durationSeconds: 50, gaps: 0, createdAt: endedAt, demoData: true };
+    store.put('trip', trip);
+    const rejected = await request(`/trips/${trip.id}`, 'PATCH', { name: 'Must not be saved', contributeToRoadDiscovery: true });
+    expect(rejected.status).toBe(400); expect((await rejected.json()).error).toBe('Simulated trips cannot contribute to road discovery.');
+    expect(store.get<Trip>('trip', trip.id)).toEqual(trip);
+    const renamed = await request(`/trips/${trip.id}`, 'PATCH', { name: 'Office journey', contributeToRoadDiscovery: false });
+    expect(renamed.status).toBe(200); expect(await renamed.json()).toEqual({ ...trip, name: 'Office journey' });
+    expect((await request(`/trips/${trip.id}`, 'PATCH', { name: 'Evening journey' })).status).toBe(200);
+    expect(await (await request(`/trips/${trip.id}`)).json()).toMatchObject({ name: 'Evening journey', contributeToRoadDiscovery: false, demoData: true, points: trip.points });
+    expect((await request(`/trips/${trip.id}`, 'PATCH', { demoData: false })).status).toBe(400);
+    expect(store.get<Trip>('trip', trip.id)?.demoData).toBe(true);
+  });
 });
 
 describe('durability, commute time, and privacy retention', () => {

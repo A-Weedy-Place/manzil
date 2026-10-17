@@ -73,6 +73,25 @@ describe('profile secondary-panel dismissal', () => {
     fireEvent.keyDown(document, { key: 'Escape' }); expect(close).toHaveBeenCalledOnce();
   });
 
+  it('lets keyboard users reach daily-value summaries and textareas before wrapping the shared dialog focus', async () => {
+    // JSDOM has no layout; expose the fixture controls as visible to the trap.
+    vi.spyOn(HTMLElement.prototype, 'getClientRects').mockReturnValue([new DOMRect(0, 0, 100, 44)] as unknown as DOMRectList);
+    const user = userEvent.setup(); render(<ProfileSettingsDialog section="statistics" onClose={vi.fn()}>
+      <button>About daily charts</button>
+      <details><summary>View daily distance values</summary><p>17 Oct · 12 km</p></details>
+      <label>Trip note<textarea /></label>
+      <details><summary>View daily fuel values</summary><p>17 Oct · 1 litre</p></details>
+    </ProfileSettingsDialog>);
+    const close = screen.getByRole('button', { name: 'Close settings' }), distanceValues = screen.getByText('View daily distance values'), fuelValues = screen.getByText('View daily fuel values');
+    await user.click(screen.getByRole('button', { name: 'About daily charts' }));
+    await user.tab(); expect(document.activeElement).toBe(distanceValues);
+    await user.tab(); expect(document.activeElement).toBe(screen.getByLabelText('Trip note'));
+    await user.tab(); expect(document.activeElement).toBe(fuelValues);
+    await user.tab(); expect(document.activeElement).toBe(close);
+    await user.tab({ shift: true }); expect(document.activeElement).toBe(fuelValues);
+    await user.tab({ shift: true }); expect(document.activeElement).toBe(screen.getByLabelText('Trip note'));
+  });
+
   it.each(sections)('toggles the active %s row closed and leaves the next opening clean', section => {
     render(<ControlledProfile />); const row = screen.getByRole('button', { name: section === 'identity' ? 'Edit' : profileSectionTitle[section] });
     fireEvent.click(row); expect(screen.getByRole('dialog', { name: profileSectionTitle[section] })).toBeTruthy(); expect(row.getAttribute('aria-expanded')).toBe('true');

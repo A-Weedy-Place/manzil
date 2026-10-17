@@ -18,16 +18,23 @@ export function loadPakistanCities(): Promise<readonly PakistanCity[]> {
   return loaded;
 }
 
-/** The catalogue is population-ranked at build time; a query only renders a capped shortlist. */
-export function findPakistanCities(cities: readonly PakistanCity[], query: string, limit = 60): { items: PakistanCity[]; more: boolean } {
-  const normalized = normalizeCitySearch(query), tokens = normalized.split(' ').filter(Boolean);
-  const prefix: PakistanCity[] = [], other: PakistanCity[] = [];
-  let matches = 0;
-  for (const city of cities) {
-    if (!tokens.every(token => city.search.includes(token))) continue;
-    matches++;
-    const target = !normalized || city.search.startsWith(normalized) ? prefix : other;
-    if (target.length < limit) target.push(city);
+const cityOrder = new Intl.Collator('en', { sensitivity: 'base', numeric: true });
+const orderedCatalogues = new WeakMap<readonly PakistanCity[], PakistanCity[]>();
+const lastSearches = new WeakMap<readonly PakistanCity[], { query: string; matches: PakistanCity[] }>();
+
+/** Alphabetic pages share one lazy sort and the latest search, with a bounded rendered page. */
+export function findPakistanCities(cities: readonly PakistanCity[], query: string, limit = 60, offset = 0): { items: PakistanCity[]; more: boolean; total: number } {
+  let ordered = orderedCatalogues.get(cities);
+  if (!ordered) {
+    ordered = [...cities].sort((a, b) => cityOrder.compare(a.name, b.name) || cityOrder.compare(pakistanRegionName(a.region), pakistanRegionName(b.region)));
+    orderedCatalogues.set(cities, ordered);
   }
-  return { items: [...prefix, ...other].slice(0, limit), more: matches > limit };
+  const normalized = normalizeCitySearch(query), tokens = normalized.split(' ').filter(Boolean);
+  let search = lastSearches.get(cities);
+  if (!search || search.query !== normalized) {
+    search = { query: normalized, matches: tokens.length ? ordered.filter(city => tokens.every(token => city.search.includes(token))) : ordered };
+    lastSearches.set(cities, search);
+  }
+  const start = Math.max(0, Math.floor(offset)), size = Math.max(1, Math.floor(limit));
+  return { items: search.matches.slice(start, start + size), more: search.matches.length > start + size, total: search.matches.length };
 }

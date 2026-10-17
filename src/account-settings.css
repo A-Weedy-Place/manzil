@@ -9,7 +9,11 @@
 .header-theme { width:44px; height:44px; border:1px solid var(--border); border-radius:12px; background:var(--surface); color:var(--ink); flex-shrink:0; }
 .header-theme:hover { background:var(--green-soft); color:var(--green); }
 .header-actions { gap:12px; }
-.workspace-avatar { display:grid; width:44px; height:44px; flex-shrink:0; }
+.workspace-avatar { display:grid; grid-template: minmax(0,1fr) / minmax(0,1fr); width:44px; height:44px; padding:0; aspect-ratio:1; line-height:1; flex-shrink:0; overflow:hidden; }
+.workspace-avatar > img { display:block; width:100%; height:100%; min-width:0; min-height:0; border-radius:inherit; object-fit:cover; object-position:center; }
+.activity-stats { border:0; padding:0; }
+.activity-stats > div { min-width:0; padding:14px 12px; border:1px solid var(--border); border-radius:14px; }
+.settings-section .segmented-control { border:1px solid var(--border); }
 /* Keep the green identity marks distinct on the neutral light panels. */
 :root:not([data-theme='dark']) :is(.brand img,.account-brand .account-logo) { border:2px solid #6e9286; background:#f7fbf8; }
 :root:not([data-theme='dark']) :is(.workspace-avatar,.profile-avatar,.profile-setting-link .profile-setting-icon) { border:1px solid #91b5a6; background:#d7eae0; color:#086b59; }

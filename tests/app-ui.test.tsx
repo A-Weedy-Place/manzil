@@ -214,7 +214,7 @@ it('unlocks existing personal screens with a dummy account and returns to guest 
   fireEvent.click(screen.getByRole('button', { name: /Normal user/ }));
   fireEvent.submit(screen.getByRole('form', { name: 'Sign in' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Open profile' }));
-  expect(screen.getByText('Normal user')).toBeTruthy();
+  expect(screen.getByText('Not verified')).toBeTruthy();
   expect(screen.getByRole('heading', { name: 'User profile' })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Map' }));
   expect(screen.queryByRole('heading', { name: 'User profile' })).toBeNull();
@@ -414,7 +414,7 @@ it('opens profile details and trip history in the same secondary panel without m
   const history = screen.getByRole('dialog', { name: 'Trip history' });
   expect(history.parentElement!.classList.contains('profile-settings-dialog')).toBe(true);
   expect(within(history).getByText('Demo · F-8 commute')).toBeTruthy();
-  expect(within(history).getByText('Demo data')).toBeTruthy();
+  expect(within(history).queryByText('Demo data')).toBeNull();
   expect(within(history).queryByRole('button', { name: 'Start recording' })).toBeNull();
   expect(fetcher.mock.calls.some(([url]) => url.startsWith('/api/trips/'))).toBe(false);
   expect(watch).not.toHaveBeenCalled();

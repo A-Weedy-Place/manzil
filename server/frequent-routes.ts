@@ -13,6 +13,7 @@ export const departureDifference = (a: number, b: number) => Math.abs(((a - b + 
 const wallMinutes = (time: string) => { const [hour, minute] = time.split(':').map(Number); return hour * 60 + minute; };
 
 function usableSample(trip: Trip): Sample | null {
+  if (trip.demoData) return null;
   const started = Date.parse(trip.startedAt), ended = Date.parse(trip.endedAt), duration = ended - started;
   if (!Number.isFinite(duration) || duration < 120_000 || duration > 4 * 3600_000 || trip.points.length > 20_000) return null;
   const points = trip.points.filter(point => point.accuracy <= 50);

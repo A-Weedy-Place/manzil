@@ -6,6 +6,7 @@ import { firebaseServices } from '../../server/firebase.js';
 import { defaultProfile } from '../../server/repository.js';
 import { estimateRouteFuel } from '../../shared/fuel.js';
 import type { Alert, Commute, FuelPriceRecord, LocalProfile, Trip, VehicleProfile } from '../../shared/types.js';
+import { simulatedSampleTrack } from './sample-track.js';
 
 /** Public fictional credentials, available only in the guarded localhost emulator. */
 export const SAMPLE_ACCOUNT = { uid: 'dev-user-123', email: 'user123@manzil.test', password: 'User 123', displayName: 'User 123' } as const;
@@ -24,8 +25,8 @@ export function sampleAccountConfig(env: NodeJS.ProcessEnv = process.env) {
   return config;
 }
 
-/** Summary fixtures only: no synthetic GPS coordinates, no live fuel-source claims. */
-export function sampleAccountData(now = Date.now()) {
+/** Exact v1 payload retained only to recognize untouched, previously seeded rows. */
+export function legacySampleAccountData(now = Date.now()) {
   if (!Number.isFinite(now)) throw new Error('Provide a valid sample-data timestamp.');
   const today = new Date(now + PKT), year = today.getUTCFullYear(), month = today.getUTCMonth();
   const monthStart = Date.UTC(year, month, 1) - PKT, stamped = new Date(now).toISOString();
@@ -68,7 +69,20 @@ export function sampleAccountData(now = Date.now()) {
   return { profile, trips, commutes, alerts };
 }
 
-/** Atomically seed one untouched UID. Restarts never reset edited/deleted samples or consent. */
+/** Local fictional preview: public OSM routes simulated at runtime, never captured GPS. */
+export function sampleAccountData(now = Date.now()) {
+  const data = legacySampleAccountData(now);
+  const trips = data.trips.map((trip, index): Trip => {
+    const track = simulatedSampleTrack(index, Date.parse(trip.startedAt), trip.durationSeconds);
+    const rate = trip.fuelEstimate!.rates[0];
+    const reference: FuelPriceRecord = { effectiveFrom: rate.effectiveFrom, petrolPerLitre: rate.pricePerLitre,
+      dieselPerLitre: 290, retrievedAt: new Date(now).toISOString(), sourceName: 'Simulated historical price — fictional', sourceUrl: rate.sourceUrl };
+    return { ...trip, ...track, fuelEstimate: estimateRouteFuel(track.distanceMeters, trip.startedAt, data.profile.vehicle, [reference], new Date(now).toISOString())! };
+  });
+  return { ...data, profile: { ...data.profile, theme: 'dark' as const, mapStyle: 'night' as const }, trips };
+}
+
+/** Seed one untouched UID or upgrade exact v1 trip rows once; preserve edits and consent. */
 export async function seedSampleAccount(env: NodeJS.ProcessEnv = process.env,
   servicesFactory: (projectId: string) => SeedServices = firebaseServices, now = Date.now()) {
   const config = sampleAccountConfig(env), data = sampleAccountData(now);
@@ -90,21 +104,55 @@ export async function seedSampleAccount(env: NodeJS.ProcessEnv = process.env,
     throw new Error('The sample UID belongs to a different or privileged account; it was left unchanged.');
   const user = db.collection('users').doc(SAMPLE_ACCOUNT.uid);
   const marker = user.collection('meta').doc(hash('demo:sample-user:v1'));
+  const traceMarker = user.collection('meta').doc(hash('demo:sample-user:v2-traces'));
   const profile = user.collection('meta').doc(hash('profile'));
+  const tripRecords = (trips: Trip[]) => trips.map(value => {
+    const ref = user.collection('trip').doc(hash(value.id));
+    return { ref, value, payload: { ...pack({ ...value, points: [] }), updatedAt: value.createdAt, endedAt: value.endedAt, hasPoints: !!value.points.length },
+      chunks: Array.from({ length: Math.ceil(value.points.length / 200) }, (_, index) => ({
+        ref: ref.collection('points').doc(String(index)), payload: { ...pack(value.points.slice(index * 200, (index + 1) * 200)), index },
+      })) };
+  });
+  const trips = tripRecords(data.trips);
   const records = [
-    ...data.trips.map(value => ({ ref: user.collection('trip').doc(hash(value.id)), payload: { ...pack(value), updatedAt: value.createdAt, endedAt: value.endedAt, hasPoints: false } })),
+    ...trips,
+    ...trips.flatMap(record => record.chunks),
     ...data.commutes.map(value => ({ ref: user.collection('commute').doc(hash(value.id)), payload: { ...pack(value), updatedAt: value.updatedAt } })),
     ...data.alerts.map(value => ({ ref: user.collection('alert').doc(hash(value.id)), payload: { ...pack(value), updatedAt: value.createdAt } })),
   ];
   const result = await db.runTransaction(async transaction => {
-    const existing = await transaction.getAll(user, marker, profile, ...records.map(record => record.ref));
-    if (existing[1].exists) return 'already-seeded' as const;
-    if (existing.some(snapshot => snapshot.exists)) return 'preserved-existing-user' as const;
+    const existing = await transaction.getAll(user, marker, profile, traceMarker, ...records.map(record => record.ref));
+    if (existing[3].exists) return { result: 'already-seeded' as const };
+    if (existing[1].exists) {
+      const oldMarker = JSON.parse(existing[1].data()?.json ?? 'null') as { version?: number; synthetic?: boolean; createdAt?: string } | null;
+      if (oldMarker?.version !== 1 || oldMarker.synthetic !== true || !Number.isFinite(Date.parse(oldMarker.createdAt ?? '')))
+        return { result: 'preserved-existing-user' as const };
+      const seededAt = Date.parse(oldMarker.createdAt!);
+      const original = legacySampleAccountData(seededAt), replacement = tripRecords(sampleAccountData(seededAt).trips);
+      const refs = replacement.flatMap(record => [record.ref, ...record.chunks.map(chunk => chunk.ref)]);
+      const snapshots = refs.length ? await transaction.getAll(...refs) : [];
+      let offset = 0, count = 0;
+      for (const [index, record] of replacement.entries()) {
+        const document = snapshots[offset++], chunks = snapshots.slice(offset, offset + record.chunks.length); offset += record.chunks.length;
+        const payload = document.data();
+        // Do not recreate deletions, rename edits, retained traces or any changed row.
+        // A version marker makes even skipped/deleted rows permanently one-shot.
+        if (!document.exists || payload?.json !== pack(original.trips[index]).json || payload.updatedAt !== original.trips[index].createdAt
+          || payload.hasPoints !== false || chunks.some(chunk => chunk.exists) || Date.parse(record.value.endedAt) < now - 30 * DAY) continue;
+        transaction.set(record.ref, record.payload);
+        for (const chunk of record.chunks) transaction.create(chunk.ref, chunk.payload);
+        count++;
+      }
+      transaction.create(traceMarker, pack({ version: 2, createdAt: new Date(now).toISOString(), synthetic: true, upgradedTrips: count }));
+      return { result: 'upgraded-traces' as const, tripCount: count };
+    }
+    if (existing.some(snapshot => snapshot.exists)) return { result: 'preserved-existing-user' as const };
     transaction.create(user, { active: true });
     transaction.create(profile, pack(data.profile));
     for (const record of records) transaction.create(record.ref, record.payload);
     transaction.create(marker, pack({ version: 1, createdAt: new Date(now).toISOString(), synthetic: true }));
-    return 'created' as const;
+    transaction.create(traceMarker, pack({ version: 2, createdAt: new Date(now).toISOString(), synthetic: true }));
+    return { result: 'created' as const, tripCount: data.trips.length };
   });
-  return { result, uid: SAMPLE_ACCOUNT.uid, email: SAMPLE_ACCOUNT.email, tripCount: result === 'created' ? data.trips.length : undefined };
+  return { ...result, uid: SAMPLE_ACCOUNT.uid, email: SAMPLE_ACCOUNT.email };
 }

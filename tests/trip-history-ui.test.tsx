@@ -102,10 +102,23 @@ it('never publishes deletion completion or reloads another account after switchi
   await act(async () => resolve()); expect(callbacks.reload).not.toHaveBeenCalled(); expect(callbacks.notify).not.toHaveBeenCalled();
 });
 
-it('labels individual synthetic trips and their fuel prices without presenting a real-source link', () => {
+it('keeps sample provenance internal while avoiding repeated demo labels or a false real-source link', () => {
   const sample: Trip & { demoData: boolean } = { ...trip, name: 'Demo office journey', demoData: true, fuelEstimate: { costPkr: 150, litres: .5, distanceMeters: 5000, calculatedAt: at, vehicle: { kind: 'car', label: 'Demo car', fuelType: 'petrol', kmPerLitre: 10 }, rates: [{ pricePerLitre: 300, effectiveFrom: at, sourceUrl: 'https://example.invalid/demo', distanceMeters: 5000, litres: .5, costPkr: 150 }] } };
   render(<TripHistory {...props()} state={state([sample])} />);
-  expect(screen.getByText('Demo data')).toBeTruthy(); expect(screen.getByText('≈ PKR 150')).toBeTruthy();
-  expect(screen.getByText(/Demo fuel price/)).toBeTruthy(); expect(screen.queryByRole('link')).toBeNull();
+  expect(screen.queryByText('Demo data')).toBeNull(); expect(screen.getByText('≈ PKR 150')).toBeTruthy();
+  expect(screen.queryByText(/Demo fuel price/)).toBeNull(); expect(screen.queryByRole('link')).toBeNull();
+  expect(screen.getByTitle('Illustrative price used for a simulated trip.')).toBeTruthy();
   expect(screen.getByText('Saved estimate. Changes to your vehicle or fuel prices do not change this trip.')).toBeTruthy();
+});
+
+it('views simulated traces normally and marks their downloaded geometry as simulated', async () => {
+  const callbacks = props(), sample = { ...full, demoData: true };
+  mock.api.mockResolvedValue(sample); render(<TripHistory {...callbacks} state={state([{ ...trip, demoData: true }])} />);
+  fireEvent.click(screen.getByRole('button', { name: 'View on map' }));
+  await waitFor(() => expect(callbacks.onView).toHaveBeenCalledWith(sample));
+  fireEvent.click(screen.getByRole('button', { name: 'Export' }));
+  await waitFor(() => expect(mock.download).toHaveBeenCalledWith('manzil-trip-sample.geojson', expect.objectContaining({
+    properties: expect.objectContaining({ simulated: true, provenance: expect.stringContaining('no device GPS was captured') }),
+    geometry: { type: 'LineString', coordinates: [[73, 33.7], [73.01, 33.71]] },
+  })));
 });

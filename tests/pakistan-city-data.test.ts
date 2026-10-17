@@ -18,6 +18,12 @@ describe('real Pakistan profile place catalogue', () => {
     expect(cities.length).toBeGreaterThan(100_000);
     expect(findPakistanCities(cities, 'کراچی').items.some(city => city.name === 'Karachi')).toBe(true);
     expect(findPakistanCities(cities, 'اسلام آباد').items.some(city => city.name === 'Islamabad' && city.region === '08')).toBe(true);
-    const broad = findPakistanCities(cities, ''); expect(broad.items).toHaveLength(60); expect(broad.more).toBe(true);
+    const broad = findPakistanCities(cities, ''); expect(broad.items).toHaveLength(60); expect(broad.more).toBe(true); expect(broad.total).toBe(117_579);
+    const nextPage = findPakistanCities(cities, '', 60, 60);
+    const order = new Intl.Collator('en', { sensitivity: 'base', numeric: true });
+    expect(broad.items.every((city, index) => index === 0 || order.compare(broad.items[index - 1].name, city.name) <= 0)).toBe(true);
+    expect(order.compare(broad.items.at(-1)!.name, nextPage.items[0].name)).toBeLessThanOrEqual(0);
+    const finalPage = findPakistanCities(cities, '', 60, 117_540);
+    expect(finalPage.items).toHaveLength(39); expect(finalPage.more).toBe(false);
   });
 });

@@ -12,6 +12,7 @@ import './account.css';
 import './entry-doodles.css';
 import './profile.css';
 import './account-settings.css';
+import './statistics.css';
 import './journey-controls.css';
 import App from './App';
 

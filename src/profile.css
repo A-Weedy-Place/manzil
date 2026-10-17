@@ -11,6 +11,9 @@
 .profile-account-card > .secondary-button { margin-top: 16px; }
 .profile-session-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; }
 .profile-session-actions .text-button { min-height: 36px; }
+.profile-verification { display:inline-flex; align-items:center; gap:7px; color:var(--muted); font-size:12px; line-height:1.4; }
+.profile-verification > svg { flex-shrink:0; }
+.profile-verification.is-verified { color:var(--green); }
 .profile-workspace .profile-details-form { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
 .profile-workspace .profile-photo-actions { margin-top: 0; }
 .profile-workspace .profile-photo-actions label { cursor: pointer; }
@@ -88,8 +91,9 @@
 .profile-section-content .setting-toggle { flex-shrink: 0; }
 .profile-section-content .map-style-choices { margin-top: 12px; }
 .profile-section-content .profile-map-style-heading { margin-top: 24px; font-size: 15px; }
-.profile-section-fuel .fuel-price-details { margin: 0; padding: 0; border: 0; border-radius: 0; }
+.profile-section-fuel .fuel-price-details { margin: 0; padding: 16px; border: 1px solid var(--border); border-radius: 16px; }
 .profile-section-fuel .fuel-price-details > summary { display: none; }
+.profile-section-fuel .fuel-effective-date { margin-top: 0; }
 .profile-section-fuel .fuel-price-grid { margin: 0 0 16px; }
 .sample-data-banner { display: grid; gap: 4px; margin: 0 0 16px; padding: 12px 14px; border: 1px solid var(--border); border-inline-start: 3px solid var(--green); border-radius: 11px; background: var(--green-soft); color: var(--ink); font-size: 12px; line-height: 1.5; }
 .sample-data-banner strong { font-size: 13px; }

@@ -2,6 +2,9 @@
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import PakistanCitySelect from '../src/components/PakistanCitySelect';
 import ProfileSettingsDialog from '../src/components/ProfileSettingsDialog';
 import { findPakistanCities, normalizeCitySearch, type PakistanCity } from '../src/lib/pakistanCities';
@@ -39,14 +42,19 @@ describe('Pakistan city picker', () => {
     expect(saved).toHaveBeenCalledWith('Lahore');
   });
 
-  it('does not save a search string, cancels on Tab and preserves unmatched legacy cities', async () => {
+  it('does not save a search string, cancels when Tab leaves the picker and preserves unmatched legacy cities', async () => {
     const saved = vi.fn(); render(<Editor saved={saved} />);
     const city = screen.getByRole('combobox', { name: 'City' });
-    fireEvent.focus(city); await screen.findByRole('listbox');
+    await userEvent.click(city); await screen.findByRole('listbox');
     fireEvent.change(city, { target: { value: 'Not a selected city' } });
     await screen.findByText('No cities found');
     fireEvent.keyDown(city, { key: 'Enter' }); expect(saved).not.toHaveBeenCalled();
-    fireEvent.keyDown(city, { key: 'Tab' });
+    await userEvent.tab();
+    expect(screen.getByRole('listbox')).toBeTruthy();
+    await userEvent.tab();
+    expect(screen.getByRole('listbox')).toBeTruthy();
+    await userEvent.tab();
+    expect(screen.queryByRole('listbox')).toBeNull();
     expect(city).toHaveProperty('value', 'Old city spelling');
     fireEvent.submit(screen.getByRole('button', { name: 'Save' }).closest('form')!);
     expect(saved).toHaveBeenCalledWith('Old city spelling');
@@ -80,21 +88,97 @@ describe('Pakistan city picker', () => {
     await screen.findByRole('option', { name: /Karachi/ }); expect(mock.load).toHaveBeenCalledTimes(2);
   });
 
-  it('does not load the catalogue for a disabled control, and caps rendered results', async () => {
+  it('does not load the catalogue for a disabled control, and browses all alphabetic results in bounded pages', async () => {
     const view = render(<Editor disabled />);
     expect(screen.getByRole('combobox').matches(':disabled')).toBe(true); expect(mock.load).not.toHaveBeenCalled();
-    view.unmount(); mock.load.mockResolvedValue(Array.from({ length: 100 }, (_, index) => ({ name: `Town ${index}`, region: '04', search: `town ${index} punjab` })));
+    view.unmount(); mock.load.mockResolvedValue(Array.from({ length: 125 }, (_, index) => ({ name: `Town ${124 - index}`, region: '04', search: `town ${124 - index} punjab` })));
     render(<Editor initial="" />); fireEvent.focus(screen.getByRole('combobox'));
     await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(60));
-    expect(screen.getByText('More matches. Keep typing to narrow the list.')).toBeTruthy();
+    expect(screen.getByText('125')).toBeTruthy();
+    expect(screen.getAllByRole('option')[0].getAttribute('aria-label')).toBe('Town 0, Punjab');
+    fireEvent.click(screen.getByRole('button', { name: 'Next cities' }));
+    expect(screen.getAllByRole('option')).toHaveLength(60);
+    expect(screen.getAllByRole('option')[0].getAttribute('aria-label')).toBe('Town 60, Punjab');
+    expect(screen.getAllByRole('option')[0].getAttribute('aria-posinset')).toBe('61');
+    expect(screen.getAllByRole('option')[0].getAttribute('aria-setsize')).toBe('125');
+    fireEvent.click(screen.getByRole('button', { name: 'Next cities' }));
+    expect(screen.getAllByRole('option')).toHaveLength(5);
+    expect(screen.getByRole('button', { name: 'Next cities' }).matches(':disabled')).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Previous cities' }));
+    expect(screen.getAllByRole('option')[0].getAttribute('aria-label')).toBe('Town 60, Punjab');
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Town 12' } });
+    expect(screen.getAllByRole('option').map(option => option.getAttribute('aria-label'))).toEqual(['Town 12, Punjab', 'Town 112, Punjab', 'Town 120, Punjab', 'Town 121, Punjab', 'Town 122, Punjab', 'Town 123, Punjab', 'Town 124, Punjab']);
+    expect(screen.queryByRole('button', { name: 'Previous cities' })).toBeNull();
   });
 
-  it('matches accents, Urdu, multiword queries and province qualifiers while prioritising name prefixes', () => {
+  it('matches accents, Urdu, multiword queries and province qualifiers in alphabetic order', () => {
     expect(normalizeCitySearch('  Rāwal-Pindi ’ ')).toBe('rawal pindi');
     expect(findPakistanCities(examples, 'lahore punjab').items[0].name).toBe('Lahore');
     expect(findPakistanCities(examples, 'اسلام آباد').items[0].name).toBe('Islamabad');
     const places = [{ name: 'New Lahore', region: '04', search: 'new lahore punjab' }, ...examples];
     expect(findPakistanCities(places, 'lahore').items.map(city => city.name)).toEqual(['Lahore', 'New Lahore']);
+    const withPrefix = [{ name: 'A New Lahore', region: '04', search: 'a new lahore punjab' }, ...places];
+    expect(findPakistanCities(withPrefix, 'lahore').items.map(city => city.name)).toEqual(['A New Lahore', 'Lahore', 'New Lahore']);
+  });
+
+  it('lets keyboard users cross pages without submitting, and resets paging on reopening', async () => {
+    mock.load.mockResolvedValue(Array.from({ length: 121 }, (_, index) => ({ name: `Town ${index}`, region: '04', search: `town ${index} punjab` })));
+    const saved = vi.fn(); render(<Editor initial="Legacy city" saved={saved} />);
+    const city = screen.getByRole('combobox'); fireEvent.focus(city);
+    await screen.findByRole('option', { name: 'Town 0, Punjab' });
+    fireEvent.keyDown(city, { key: 'End' }); fireEvent.keyDown(city, { key: 'ArrowDown' });
+    expect(screen.getByRole('option', { name: 'Town 60, Punjab' }).id).toBe(city.getAttribute('aria-activedescendant'));
+    fireEvent.keyDown(city, { key: 'ArrowUp' });
+    expect(screen.getByRole('option', { name: 'Town 59, Punjab' }).id).toBe(city.getAttribute('aria-activedescendant'));
+    fireEvent.keyDown(city, { key: 'PageDown' });
+    fireEvent.keyDown(city, { key: 'PageDown' });
+    expect(screen.getAllByRole('option')).toHaveLength(1);
+    fireEvent.keyDown(city, { key: 'Escape' });
+    expect(saved).not.toHaveBeenCalled(); expect(city).toHaveProperty('value', 'Legacy city');
+    fireEvent.click(city);
+    expect(screen.getByRole('option', { name: 'Town 0, Punjab' })).toBeTruthy();
+  });
+
+  it('keeps page controls keyboard reachable without selecting a city', async () => {
+    mock.load.mockResolvedValue(Array.from({ length: 80 }, (_, index) => ({ name: `Town ${index}`, region: '04', search: `town ${index} punjab` })));
+    const saved = vi.fn(); render(<Editor initial="Legacy city" saved={saved} />);
+    const city = screen.getByRole('combobox'); await userEvent.click(city);
+    await screen.findByRole('button', { name: 'Next cities' });
+    await userEvent.tab(); await userEvent.tab();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Next cities' }));
+    await userEvent.keyboard('{Enter}');
+    expect(document.activeElement).toBe(city);
+    expect(screen.getByRole('option', { name: 'Town 60, Punjab' })).toBeTruthy();
+    expect(saved).not.toHaveBeenCalled();
+    await userEvent.tab(); await userEvent.tab();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Previous cities' }));
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('listbox')).toBeNull(); expect(city).toHaveProperty('value', 'Legacy city'); expect(document.activeElement).toBe(city);
+  });
+
+  it.each(['Next cities', 'GeoNames · CC BY 4.0'])('closes only the city list on first Escape from %s inside settings', async name => {
+    mock.load.mockResolvedValue(Array.from({ length: 80 }, (_, index) => ({ name: `Town ${index}`, region: '04', search: `town ${index} punjab` })));
+    const close = vi.fn(); render(<ProfileSettingsDialog section="identity" onClose={close}><Editor /></ProfileSettingsDialog>);
+    const city = screen.getByRole('combobox'); await userEvent.click(city);
+    await screen.findByRole('button', { name: 'Next cities' });
+    const control = name === 'Next cities' ? screen.getByRole('button', { name }) : screen.getByRole('link', { name });
+    control.focus(); await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('listbox')).toBeNull(); expect(close).not.toHaveBeenCalled(); expect(document.activeElement).toBe(city);
+    await userEvent.keyboard('{Escape}'); expect(close).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the city input transparent and borderless against the global field rules', () => {
+    const style = document.createElement('style');
+    style.textContent = readFileSync(resolve('src/components/PakistanCitySelect.css'), 'utf8') + readFileSync(resolve('src/redesign.css'), 'utf8');
+    document.head.append(style);
+    try {
+      render(<Editor />); const city = screen.getByRole('combobox');
+      expect(getComputedStyle(city).borderTopWidth).toBe('0px');
+      expect(getComputedStyle(city).borderRadius).toBe('0px');
+      expect(getComputedStyle(city).backgroundColor).toBe('rgba(0, 0, 0, 0)');
+      fireEvent.focus(city);
+      expect(getComputedStyle(city).boxShadow).toBe('none');
+    } finally { style.remove(); }
   });
 
   it('selects only one regional result for a legacy name and remembers an explicit regional choice in the draft', async () => {

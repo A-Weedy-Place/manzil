@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { BarChart3, Bell, Camera, Car, Check, ChevronRight, Fuel, History, Inbox, Map, Moon, Pencil, ShieldCheck, Sun, UserRound, X, type LucideIcon } from 'lucide-react';
+import { BadgeCheck, BadgeMinus, BarChart3, Bell, Camera, Car, Check, ChevronRight, Fuel, History, Inbox, Map, Moon, Pencil, ShieldCheck, Sun, UserRound, X, type LucideIcon } from 'lucide-react';
 import type { AppState, FrequentRouteProposal, LocalProfile } from '../../shared/types';
 import { api, send } from '../lib/api';
 import { t } from '../lib/language';
@@ -93,7 +93,6 @@ export default function ProfilePanel({ account, onSignOut, personalFeaturesAvail
   const ownDialog = activeSection && activeSection !== 'statistics' && activeSection !== 'history' && (personalFeaturesAvailable || activeSection === 'appearance' || activeSection === 'fuel') ? activeSection : null;
   const pending = busy || preparingPhoto;
   const mapName = t(profile.mapStyle === 'minimal' ? 'Minimal' : !profile.mapStyle || profile.mapStyle === 'night' ? 'Night' : 'Classic');
-  const demoData = !!profile.demoData;
   function settingsRow(key: ProfileSection, Icon: LucideIcon, summary: string, badge?: string) {
     return <button className={`settings-link profile-setting-link ${activeSection === key ? 'is-active' : ''}`} aria-label={t(profileSectionTitle[key])} aria-haspopup="dialog" aria-expanded={activeSection === key} onClick={() => openSection(key)}>
       <span className="profile-setting-icon"><Icon size={20} /></span><span><strong>{t(profileSectionTitle[key])}</strong><small>{summary}</small></span>{badge && <span className={`tag ${profile.collectTravelData ? 'green' : 'neutral'}`}>{badge}</span>}<ChevronRight size={18} />
@@ -103,14 +102,13 @@ export default function ProfilePanel({ account, onSignOut, personalFeaturesAvail
     <div className="section-heading profile-heading"><h1>{t('User profile')}</h1>{personalFeaturesAvailable && <button className="secondary-button profile-edit-button" aria-haspopup="dialog" aria-expanded={editing} onClick={() => openSection('identity')}><Pencil size={15} />{t('Edit')}</button>}</div>
     <section className="profile-account-card">
       <div className="profile-identity"><span className="profile-avatar">{personalFeaturesAvailable && profile.photoDataUrl ? <img src={profile.photoDataUrl} alt={t('Your profile photo')} /> : displayName.trim().slice(0, 1).toUpperCase()}</span><div><h2>{personalFeaturesAvailable ? displayName : t('Guest')}</h2><p>{personalFeaturesAvailable ? account?.email ?? t('Personal profile') : t('Guest preferences')}</p>{personalFeaturesAvailable && (profile.city || profile.location) && <p>{[profile.location, profile.city].filter(Boolean).join(', ')}</p>}</div></div>
-      {demoData && <p className="profile-demo-badge"><span className="tag amber">{t('Demo data')}</span><span>{t('Synthetic journeys. No GPS collected.')}</span></p>}
-      {account && <div className="profile-session-actions"><span className="tag neutral">{t(role === 'admin' ? 'Admin user' : role === 'verified' ? 'Verified contributor' : 'Normal user')}</span><button className="text-button" onClick={onSignOut}>{t('Sign out')}</button></div>}
+      {account && <div className="profile-session-actions"><span className={`profile-verification ${role === 'admin' || role === 'verified' ? 'is-verified' : ''}`}>{role === 'admin' || role === 'verified' ? <BadgeCheck size={17} aria-hidden="true" /> : <BadgeMinus size={17} aria-hidden="true" />}{t(role === 'admin' ? 'Admin' : role === 'verified' ? 'Verified' : 'Not verified')}</span><button className="text-button" onClick={onSignOut}>{t('Sign out')}</button></div>}
       {!personalFeaturesAvailable && <button className="secondary-button full" onClick={onSignIn}>{t('Sign in for personal features')}</button>}
     </section>
     <nav className="profile-settings-menu" aria-label={t('Profile settings')}>
       {personalFeaturesAvailable && <>
         {settingsRow('data', ShieldCheck, t('History & data preferences'), t(profile.collectTravelData ? 'On' : 'Off'))}
-        {settingsRow('statistics', BarChart3, t('This month'))}
+        {settingsRow('statistics', BarChart3, t('Weekly & monthly'))}
         {settingsRow('history', History, t('Recorded journeys'))}
         {settingsRow('vehicle', Car, profile.vehicle ? [profile.vehicle.label || t(profile.vehicle.kind === 'motorcycle' ? 'Motorcycle' : 'Car'), profile.vehicle.kmPerLitre ? `${profile.vehicle.kmPerLitre} ${t('km/litre')}` : t('Mileage not set')].join(' · ') : t('Add a car or motorcycle'))}
       </>}

@@ -320,6 +320,7 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
   routes.patch('/trips/:id', async (request, response) => {
     const body = z.object({ name: z.string().trim().min(1).max(120).optional(), contributeToRoadDiscovery: z.boolean().optional() }).strict().parse(request.body);
     const trip: Trip = { ...await getRecord<Trip>(store, 'trip', id(request)), ...body };
+    if (trip.demoData && trip.contributeToRoadDiscovery) throw new HttpError(400, 'Simulated trips cannot contribute to road discovery.');
     await store.put('trip', trip); response.json(trip);
   });
   routes.delete('/trips/:id', async (request, response) => {

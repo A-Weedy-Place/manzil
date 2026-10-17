@@ -3,8 +3,8 @@
 .city-select-field { display: flex; align-items: center; min-width: 0; padding-inline-start: 0; border: 1px solid var(--border); border-radius: 12px; background: var(--paper); transition: border-color 150ms, box-shadow 150ms; }
 .city-select-field:focus-within { border-color: var(--green); box-shadow: inset 0 0 0 1px var(--green); }
 .city-select-field > svg { margin-inline-start: 12px; color: var(--muted); flex-shrink: 0; }
-.city-select-field input { border: 0; background: transparent; color: var(--ink); min-width: 0; width: 100%; margin: 0; outline: none; box-shadow: none; min-height: 46px; padding: 11px 12px; font-size: 16px; }
-.city-select-field input:focus, .city-select-field input:focus-visible { outline: none; border: 0; box-shadow: none; }
+.pakistan-city-select .city-select-field > input:not([type='checkbox']):not([type='range']) { border: 0; border-radius: 0; background: transparent; color: var(--ink); min-width: 0; width: 100%; margin: 0; outline: none; box-shadow: none; min-height: 46px; padding: 11px 12px; font-size: 16px; }
+.pakistan-city-select .city-select-field > input:focus, .pakistan-city-select .city-select-field > input:focus-visible { outline: none; border: 0; box-shadow: none; }
 .city-select-field button { min-width: 44px; min-height: 44px; display: grid; place-items: center; padding: 8px; flex-shrink: 0; border: 0; border-radius: 10px; background: transparent; color: var(--muted); }
 .city-select-field button:hover { background: var(--surface); color: var(--green); }
 .city-select-field button:focus-visible { outline: 2px solid var(--green); outline-offset: -4px; }
@@ -22,5 +22,9 @@
 .city-select-list button.is-active, .city-select-list button:hover { background: var(--green-soft); }
 .city-select-list button > svg { flex-shrink: 0; color: var(--green); }
 .city-select-message { margin: 0; padding: 14px 10px; color: var(--muted); font-size: 13px; }
-.city-select-more { font-size: 12px; line-height: 1.4; color: var(--muted); margin: 0; padding: 9px 12px; border-top: 1px solid var(--border); }
+.city-select-count { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); margin: 0; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.city-select-pages { display: flex; gap: 8px; justify-content: space-between; padding: 6px 8px; border-top: 1px solid var(--border); }
+.city-select-pages > button { display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 44px; padding: 8px 10px; border-radius: 8px; background: transparent; color: var(--green); font-size: 13px; }
+.city-select-pages > button:hover:not(:disabled) { background: var(--green-soft); }
+[dir='rtl'] .city-select-pages > button > svg { transform: rotate(180deg); }
 .city-select-source { display: block; font-size: 12px; text-align: end; color: var(--muted); padding: 6px 12px 9px; }

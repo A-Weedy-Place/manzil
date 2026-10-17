@@ -87,11 +87,18 @@ export interface FuelEstimate {
   costPkr: number; litres: number; distanceMeters: number; vehicle: VehicleProfile; calculatedAt: string;
   rates: { pricePerLitre: number; effectiveFrom: string; sourceUrl: string; retrievedAt?: string; distanceMeters: number; litres: number; costPkr: number }[];
 }
+/** Private daily aggregates grouped by the trip's departure date in Asia/Karachi. No coordinates. */
+export interface TripStatisticsDay {
+  date: string; tripCount: number; distanceMeters: number; durationSeconds: number;
+  pricedTripCount: number; unpricedTripCount: number; costPkr: number; litres: number;
+}
 export interface TripStatistics {
   period: 'week' | 'month' | 'all'; from: string | null; until: string;
   tripCount: number; distanceMeters: number; durationSeconds: number;
   pricedTripCount: number; unpricedTripCount: number; unpricedDistanceMeters: number;
   costPkr: number; litres: number; complete: boolean;
+  /** Week/month daily series; optional for compatibility with older API responses. */
+  daily?: TripStatisticsDay[];
 }
 export interface TravelStatistics { week: TripStatistics; month: TripStatistics; all: TripStatistics }
 export interface TripDraft {
