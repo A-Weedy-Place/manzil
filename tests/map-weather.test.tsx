@@ -77,3 +77,13 @@ it('keeps existing weather visible during same-hour background refresh and close
   expect(screen.getByText('27°C')).toBeTruthy();
   await act(async () => { resolve(forecast(hour, 28)); }); expect(screen.getByText('28°C')).toBeTruthy();
 });
+
+it('recovers from a transient localhost API restart after one minute without waiting for the next weather hour', async () => {
+  mock.api.mockRejectedValueOnce(new Error('API restarting')).mockResolvedValue(forecast());
+  render(<MapTimeControl at={hour} live />); await settle();
+  expect(screen.getByLabelText(/Weather unavailable/)).toBeTruthy();
+  await act(async () => { await vi.advanceTimersByTimeAsync(59_999); });
+  expect(mock.api).toHaveBeenCalledTimes(1);
+  await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+  expect(mock.api).toHaveBeenCalledTimes(2); expect(screen.getByText('27°C')).toBeTruthy();
+});

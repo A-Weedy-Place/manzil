@@ -4,6 +4,8 @@ import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import type { FeatureCollection } from 'geojson';
 import type { MapViewProps } from '../src/components/MapView';
 import type { Closure, Coordinate, RouteOption } from '../shared/types';
+import type { TransitNetwork } from '../shared/transit';
+import { validateStyleMin, type LayerSpecification } from '@maplibre/maplibre-gl-style-spec';
 
 const maps = vi.hoisted(() => ({ instances: [] as MockMap[], markers: [] as { coordinate: Coordinate; options: { element: HTMLElement }; remove: () => void }[] }));
 
@@ -77,6 +79,25 @@ const props = (): MapViewProps => ({
   selectedRoute: null, baseline: null, drawing: null, departureAt, focus: null,
   showClosures: true, showBaseline: true, recordedPoints: [],
   onPick: vi.fn(), onDraw: vi.fn(), onEndpointMove: vi.fn(), onClosureSelect: vi.fn(),
+});
+
+it('adds and removes transit overlays on the retained map, keeping red closures above bus routes', async () => {
+  const network: TransitNetwork = { version: 'local-test', importedAt: null, evaluatedAt: departureAt, eventRevision: 0, disruptionRevision: 0, sources: [], disruptions: [], limitations: [],
+    routes: [{ id: 'bus', name: 'City bus', shortName: 'B1', agency: 'Test', color: '#2f6fd3', sourceId: 'test', coverage: 'stops-and-shape' }], stops: [{ id: 'a', name: 'First stop', coordinate: [73.03, 33.64] }, { id: 'b', name: 'Last stop', coordinate: [73.05, 33.66] }],
+    patterns: [{ id: 'bus-0', routeId: 'bus', directionId: '0', headsign: 'Last stop', stopIds: ['a', 'b'], geometryQuality: 'provided-shape', geometry: { type: 'LineString', coordinates: [[73.03, 33.64], [73.05, 33.66]] } }], statuses: [{ patternId: 'bus-0', availability: 'uncertain', closureIds: ['road'], disruptionIds: [], closureAssessment: 'provided-shape' }] };
+  const base = props(), result = render(<MapView {...base} />); await act(async () => {});
+  const map = maps.instances[0], source = map.getSource('manzil-transit')!;
+  const validation = validateStyleMin({ version: 8, glyphs: 'https://example.com/{fontstack}/{range}.pbf', sources: Object.fromEntries([...map.sources].map(([id, source]) => [id, { type: 'geojson', data: source.data }])), layers: [...map.layers.values()] as LayerSpecification[] });
+  expect(validation.map(issue => issue.message)).toEqual([]);
+  expect(map.layers.get('manzil-transit-journey-schematic')).toMatchObject({ paint: { 'line-dasharray': [2, 1.8] }, filter: ['all', ['==', ['get', 'kind'], 'ride'], ['==', ['get', 'schematic'], true]] });
+  expect(map.layers.get('manzil-transit-journey-line')).toMatchObject({ filter: ['all', ['==', ['get', 'kind'], 'ride'], ['==', ['get', 'schematic'], false]] });
+  result.rerender(<MapView {...base} transit={{ network, selectedPatternId: 'bus-0', journey: null, stale: false }} />); await act(async () => {});
+  expect(source.data.features[0].properties).toMatchObject({ color: '#8a949e', selected: true, patternId: 'bus-0' });
+  expect(map.getSource('manzil-transit-stops')?.data.features).toHaveLength(2);
+  const layers = [...map.layers.keys()]; expect(layers.indexOf('manzil-closure-roads-line')).toBeGreaterThan(layers.indexOf('manzil-transit-line'));
+  result.rerender(<MapView {...base} transit={null} />); await act(async () => {});
+  expect(source.data.features).toEqual([]); expect(map.getSource('manzil-transit-stops')?.data.features).toEqual([]);
+  expect(maps.instances).toHaveLength(1); expect(map.setStyle).toHaveBeenCalledOnce();
 });
 
 it('retains the map, style and overlay sources across route switches, polling and app theme changes', async () => {

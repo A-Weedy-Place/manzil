@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { Alert, Closure, ClosureInput, LocalProfile, SourceNotice, SourceStatus, Trip } from '../shared/types.js';
+import type { TransitDisruptionState } from '../shared/transit.js';
 import { HttpError } from './errors.js';
 import { closureSummary } from './community.js';
 import { sameVehicle } from '../shared/fuel.js';
@@ -80,6 +81,9 @@ export class Store {
   setMeta(key: string, value: unknown) {
     this.db.prepare('INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value')
       .run(key, JSON.stringify(value));
+  }
+  updateTransitDisruptions(update: (state: TransitDisruptionState) => TransitDisruptionState) {
+    return this.transaction(() => { const next = update(this.meta<TransitDisruptionState>('transit:disruptions') ?? { revision: 0, records: [] }); this.setMeta('transit:disruptions', next); return next; });
   }
   claimFuelCheck(day: string): boolean {
     return this.transaction(() => {

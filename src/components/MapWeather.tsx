@@ -17,6 +17,7 @@ export default function MapWeather({ at }: { at: string }) {
   useEffect(() => {
     if (!hour) return;
     let disposed = false, pending = false, lastAttempt = -Infinity;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
     const controller = new AbortController();
     async function refresh() {
       if (pending || document.visibilityState === 'hidden' || Date.now() - lastAttempt < HOUR) return;
@@ -26,9 +27,15 @@ export default function MapWeather({ at }: { at: string }) {
         const data = await api<WeatherResponse>(`/weather?at=${encodeURIComponent(hour)}`, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(12_000)]) });
         if (!data || data.location !== 'Islamabad' || !['fresh', 'stale', 'unavailable'].includes(data.state)) throw new Error('Weather unavailable.');
         if (data.reading && (data.reading.at !== hour || !Number.isFinite(data.reading.temperatureC))) throw new Error('Weather hour does not match.');
-        if (!disposed) setResult({ hour, data });
+        if (!disposed) { clearTimeout(retryTimer); setResult({ hour, data }); }
       } catch {
-        if (!disposed) setResult({ hour, data: null });
+        if (!disposed) {
+          setResult({ hour, data: null });
+          // Recover a local API restart without spending another upstream call:
+          // the server still enforces its shared hourly provider budget.
+          lastAttempt = Date.now() - HOUR + 60_000;
+          clearTimeout(retryTimer); retryTimer = setTimeout(() => { void refresh(); }, 60_000);
+        }
       } finally { pending = false; }
     }
     void refresh();
@@ -36,7 +43,7 @@ export default function MapWeather({ at }: { at: string }) {
     const timer = setInterval(() => { void refresh(); }, HOUR);
     const visible = () => { if (document.visibilityState === 'visible') void refresh(); };
     document.addEventListener('visibilitychange', visible);
-    return () => { disposed = true; controller.abort(); clearInterval(timer); document.removeEventListener('visibilitychange', visible); };
+    return () => { disposed = true; controller.abort(); clearInterval(timer); clearTimeout(retryTimer); document.removeEventListener('visibilitychange', visible); };
   }, [hour]);
   useEffect(() => {
     const dismiss = (event: PointerEvent | KeyboardEvent) => {

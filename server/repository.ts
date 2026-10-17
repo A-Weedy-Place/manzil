@@ -1,4 +1,5 @@
 import type { Alert, Closure, ClosureInput, LocalProfile, SourceNotice, SourceStatus, Trip } from '../shared/types.js';
+import type { TransitDisruptionState } from '../shared/transit.js';
 
 export type Awaitable<T> = T | Promise<T>;
 export type RecordKind = 'closure' | 'commute' | 'alert' | 'trip';
@@ -13,6 +14,7 @@ export interface Repository {
   close(): void;
   meta<T>(key: string): Awaitable<T | undefined>;
   setMeta(key: string, value: unknown): Awaitable<void>;
+  updateTransitDisruptions(update: (state: TransitDisruptionState) => TransitDisruptionState): Awaitable<TransitDisruptionState>;
   /** Durable global once-per-PKT-day claim, including failed attempts. */
   claimFuelCheck(day: string): Awaitable<boolean>;
   profile(): Awaitable<LocalProfile>;

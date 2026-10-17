@@ -10,6 +10,8 @@ The server requests only `temperature_2m`, `weather_code` and `is_day` at the fi
 
 Freshness is less than one hour after the last successful fetch. Cached readings can be shown as **stale** for less than six hours; afterward they are unavailable. Failures retain the prior dataset and enforce the same hourly backoff. The exact requested hour must exist: no nearest-date substitution, extrapolation or synthetic weather. HTTP/data errors do not change closures, ETAs or road accessibility. Routing and `/state` never request weather. Tests disable default external weather access; injected fixtures remain available for deterministic API tests.
 
+The browser normally requests weather only for a changed map hour or an hourly refresh. A transient local API/network error retries the same lightweight city endpoint after one minute, recovering from development-server restarts without waiting for the next hour. The shared server-side provider limit remains hourly; a known out-of-range forecast response does not trigger minute retries.
+
 The hourly guard is in-process with persisted restart backoff, **not a distributed lease**. Multiple API processes could race to refresh; a release with multiple replicas needs a transactional shared claim. No production timer, worker job, scheduler or deployment is activated by this localhost change. The deployment developer can explicitly wire a bounded worker schedule later. A production API can refresh through `/api/weather` on demand.
 
 ## API

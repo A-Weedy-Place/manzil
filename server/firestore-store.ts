@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { Firestore, DocumentReference, CollectionReference } from 'firebase-admin/firestore';
 import type { Alert, Closure, ClosureInput, LocalProfile, SourceNotice, SourceStatus, Trip } from '../shared/types.js';
+import type { TransitDisruptionState } from '../shared/transit.js';
 import { HttpError } from './errors.js';
 import { closureSummary } from './community.js';
 import { sameVehicle } from '../shared/fuel.js';
@@ -10,7 +11,7 @@ import { defaultProfile, defaultSourceStatus, type RecordKind, type PersonalReco
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const decode = <T>(data: FirebaseFirestore.DocumentData | undefined): T | undefined => data?.json ? JSON.parse(data.json) as T : undefined;
 const pack = (value: unknown) => ({ json: JSON.stringify(value) });
-const sharedMeta = (key: string) => /^(source|fuel:|weather:|demoScenario:|streetRouteDemo:|speech:|community:member:|eventRevision$)/.test(key);
+const sharedMeta = (key: string) => /^(source|fuel:|weather:|transit:|demoScenario:|streetRouteDemo:|speech:|community:member:|eventRevision$)/.test(key);
 interface SharedCache { snapshot?: RoutingSnapshot }
 
 /** Durable repository used unchanged by emulators and Cloud Run. No local-file fallback. */
@@ -27,6 +28,10 @@ export class FirestoreStore implements Repository {
   private metaRef(key: string) { return (sharedMeta(key) ? this.root : this.user()).collection('meta').doc(hash(key)); }
   async meta<T>(key: string): Promise<T | undefined> { return decode<T>((await this.metaRef(key).get()).data()); }
   async setMeta(key: string, value: unknown) { await this.metaRef(key).set(pack(value)); }
+  async updateTransitDisruptions(update: (state: TransitDisruptionState) => TransitDisruptionState) {
+    const ref = this.metaRef('transit:disruptions');
+    return this.db.runTransaction(async tx => { const next = update(decode<TransitDisruptionState>((await tx.get(ref)).data()) ?? { revision: 0, records: [] }); tx.set(ref, pack(next)); return next; });
+  }
   async claimFuelCheck(day: string) {
     const ref = this.metaRef('fuel:checkedDay');
     return this.db.runTransaction(async tx => {

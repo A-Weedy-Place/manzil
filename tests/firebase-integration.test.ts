@@ -11,6 +11,9 @@ import { createApp } from '../server/app';
 import { readConfig } from '../server/config';
 import { SpeechService } from '../server/speech';
 import { createJourneyPlanner } from '../server/routing';
+import { TransitService } from '../server/transit/service';
+import { TRANSIT_AT, transitFixture } from './transit-fixture';
+import type { TransitDisruptionState } from '../shared/transit';
 import type { Planner } from '../server/commutes';
 import type { Alert, Closure, ClosureDraft, Commute, FuelPriceStatus, PlanRequest, PlanResponse, Trip } from '../shared/types';
 
@@ -390,6 +393,42 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
     const snapshot = await reader.routingSnapshot(); expect(snapshot.closures.find(item => item.id === closure.id)?.revision).toBe(2);
     expect(snapshot.revision).toBeGreaterThanOrEqual(2);
   });
+  it('shares transit notices outside private UID paths and atomically rejects concurrent service edits', async () => {
+    // The surrounding harness is explicitly demo-manzil-test on isolated ports.
+    // An otherwise nonexistent UID proves transit: metadata never acquires a
+    // private profile/subcollection, even when called through a scoped adapter.
+    expect(projectId).toBe('demo-manzil-test');
+    const probeUid='transit-shared-probe',data=transitFixture(),scoped=store.forUser(probeUid),reader=new FirestoreStore(services.db),transit=new TransitService(scoped,()=>data);
+    const config=readConfig({MANZIL_MODE:'emulator',FIREBASE_PROJECT_ID:projectId,FIRESTORE_EMULATOR_HOST:process.env.FIRESTORE_EMULATOR_HOST,FIREBASE_AUTH_EMULATOR_HOST:process.env.FIREBASE_AUTH_EMULATOR_HOST});
+    const {app}=createApp(store,{config,transit});
+    const instance=await new Promise<Server>(resolve=>{const running=app.listen(0,'127.0.0.1',()=>resolve(running));});
+    const url=`http://127.0.0.1:${(instance.address() as {port:number}).port}/api`;
+    const call=(path:string,token?:string,body?:unknown,method=body===undefined?'GET':'POST')=>fetch(`${url}${path}`,{method,headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:body===undefined?undefined:JSON.stringify(body)});
+    const draft={routeId:'r1',title:'Isolated bus service fixture',description:'Synthetic integration fixture only',startsAt:TRANSIT_AT,endsAt:'2026-10-18T05:00:00Z',status:'published' as const};
+    let recordId:string|undefined;
+    try{
+      expect((await call('/transit/disruptions',undefined,draft)).status).toBe(401);
+      expect((await call('/transit/disruptions',bob,draft)).status).toBe(403);
+      expect((await request('/admin/users/bob',admin,{verified:true},'PATCH')).status).toBe(200);
+      const created=await call('/transit/disruptions',bob,draft);expect(created.status).toBe(201);const notice=await created.json();recordId=notice.id;
+      expect(notice).toMatchObject({revision:1,author:{uid:'bob',role:'verified'}});
+      expect((await reader.meta<TransitDisruptionState>('transit:disruptions'))?.records.find(record=>record.id===notice.id)?.revision).toBe(1);
+      const competitors=[new TransitService(store.forUser('bob'),()=>data),new TransitService(reader,()=>data)];
+      const results=await Promise.allSettled(competitors.map((service,index)=>service.save({...draft,title:`Concurrent bus edit ${index}`},notice.author,notice.id,1)));
+      expect(results.filter(result=>result.status==='fulfilled')).toHaveLength(1);
+      const rejected=results.find(result=>result.status==='rejected') as PromiseRejectedResult;expect(rejected.reason).toMatchObject({status:409});
+      const state=await scoped.meta<TransitDisruptionState>('transit:disruptions');expect(state?.records.find(record=>record.id===notice.id)?.revision).toBe(2);
+      const guestNetwork=await(await call(`/transit/network?at=${TRANSIT_AT}`)).json();expect(guestNetwork.statuses[0].availability).toBe('suspended');expect(guestNetwork.profile).toBeUndefined();expect(guestNetwork.trips).toBeUndefined();
+      const cancelled=await call(`/transit/disruptions/${notice.id}`,admin,{...draft,status:'cancelled',revision:2},'PUT');expect(cancelled.status).toBe(200);
+      const publicNotices=await(await call('/transit/disruptions')).json();expect(publicNotices.records.some((record:{id:string})=>record.id===notice.id)).toBe(false);
+      expect((await(await call(`/transit/network?at=${TRANSIT_AT}`)).json()).statuses[0].availability).toBe('available');
+      const probe=services.db.collection('users').doc(probeUid);expect((await probe.get()).exists).toBe(false);expect(await probe.listCollections()).toHaveLength(0);
+    }finally{
+      await request('/admin/users/bob',admin,{verified:false},'PATCH');
+      if(recordId)await store.updateTransitDisruptions(state=>({revision:state.revision+1,records:state.records.filter(record=>record.id!==recordId)}));
+      await new Promise<void>(resolve=>{instance.closeAllConnections();instance.close(()=>resolve());});
+    }
+  },30000);
   it('chunks large GPS traces, keeps summaries small and enforces private trace access/deletion', async () => {
     expect((await request('/profile', alice, { collectTravelData: true }, 'PATCH')).status).toBe(200);
     const now = Date.now(), count = 12000;

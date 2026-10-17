@@ -24,6 +24,7 @@ import { RoadSelectionError, selectRoadSection } from './routing/road-selection.
 import { FuelService, travelStatistics, pktDay } from './fuel.js';
 import { estimateTraceFuel } from '../shared/fuel.js';
 import { WeatherService } from './weather.js';
+import { TransitService, transitDisruptionSchema, transitDisruptionUpdateSchema, transitPlanSchema } from './transit/service.js';
 
 interface AppOptions {
   config?: RuntimeConfig;
@@ -32,6 +33,7 @@ interface AppOptions {
   speech?: SpeechService;
   fuel?: FuelService;
   weather?: WeatherService;
+  transit?: TransitService;
   source?: SourceService; planner?: Planner;
   graph?: () => GraphStatus; places?: (query: string) => Place[] | Promise<Place[]>;
   roadGraph?: () => RoutingGraph | null;
@@ -76,6 +78,7 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
   const speech = options.speech ?? new SpeechService(rootStore);
   const fuel = options.fuel ?? new FuelService(rootStore);
   const weather = options.weather ?? new WeatherService(rootStore, undefined, undefined, process.env.NODE_ENV !== 'test');
+  const transit = options.transit ?? new TransitService(rootStore);
   const verifyToken = options.verifyToken ?? (async token => { const decoded = await firebaseServices(config.projectId).auth.verifyIdToken(token, true); return { uid: decoded.uid, admin: decoded.admin === true, name: typeof decoded.name === 'string' ? decoded.name : undefined }; });
   const directory = () => options.userDirectory ?? firebaseServices(config.projectId).auth;
   const planner = options.planner ?? planJourney;
@@ -156,6 +159,23 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
     const query = z.object({ at: instantSchema.optional() }).strict().parse(request.query);
     const at = new Date(query.at ?? Date.now()).toISOString();
     response.json(await weather.get(at));
+  });
+  routes.get('/transit/network', async (request,response) => {
+    const query=z.object({at:instantSchema.optional()}).strict().parse(request.query);
+    response.json(await transit.network(query.at??new Date().toISOString()));
+  });
+  routes.get('/transit/revision', async (request,response) => { z.object({}).strict().parse(request.query);response.json(await transit.revision()); });
+  routes.post('/transit/plan', async (request,response) => response.json(await transit.plan(transitPlanSchema.parse(request.body))));
+  routes.get('/transit/disruptions', async (request,response) => { z.object({}).strict().parse(request.query); const state=await transit.disruptions();response.json({...state,records:isReviewer(response.locals.membership)?state.records:state.records.filter(record=>record.status==='published')}); });
+  routes.post('/transit/disruptions', async (request,response) => {
+    if(!isReviewer(response.locals.membership))throw new HttpError(response.locals.membership?403:401,'A verified contributor or administrator must publish bus service notices.');
+    const draft=transitDisruptionSchema.parse(request.body),author=await actorFor(store,response.locals.membership,response.locals.user);
+    response.status(201).json(await transit.save(draft,author));
+  });
+  routes.put('/transit/disruptions/:id', async (request,response) => {
+    if(!isReviewer(response.locals.membership))throw new HttpError(response.locals.membership?403:401,'A verified contributor or administrator must edit bus service notices.');
+    const {revision,...draft}=transitDisruptionUpdateSchema.parse(request.body),author=await actorFor(store,response.locals.membership,response.locals.user);
+    response.json(await transit.save(draft,author,id(request),revision));
   });
   routes.get('/fuel/prices', async (_request, response) => response.json(await fuel.status()));
   routes.post('/fuel/check', async (request, response) => {

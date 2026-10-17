@@ -10,12 +10,15 @@ import { emptyMapStyle, loadMapStyle, MAP_ATTRIBUTION, normalizeMapStyleId, type
 import { closureMarkerCoordinate, closureRoadKey, exclusiveBaselineSegments, previewClosureRoads, routeMatchesMapSnapshot, visibleClosureRoads, type ClosureRoads } from '../lib/mapOverlays';
 import { preserveMapOverlays, updateSourceIfChanged } from '../lib/mapSourceUpdates';
 import { tripTraceSections, usableTracePoints } from '../lib/tripTrace';
+import { transitOverlayFeatures, type TransitMapState } from '../lib/transitMap';
 import './trip-history.css';
 
 setWorkerUrl(workerUrl);
 setWorkerCount(2);
 
 export interface MapViewProps {
+  transit?: TransitMapState | null;
+  onTransitPatternSelect?: (id: string) => void;
   updating?: boolean;
   refreshing?: boolean;
   mode: MapMode; origin: Place | null; destination: Place | null;
@@ -35,7 +38,7 @@ export interface MapViewProps {
   onClosureSelect: (id: string) => void; onReady?: () => void;
 }
 
-const SOURCE_IDS = ['baseline', 'routes', 'connectors', 'closure-roads', 'upcoming-roads', 'drawing', 'trace', 'trace-end'] as const;
+const SOURCE_IDS = ['transit', 'transit-stops', 'transit-journey', 'baseline', 'routes', 'connectors', 'closure-roads', 'upcoming-roads', 'drawing', 'trace', 'trace-end'] as const;
 const sid = (id: typeof SOURCE_IDS[number]) => `manzil-${id}`;
 const emptyFeatures = (): FeatureCollection => ({ type: 'FeatureCollection', features: [] });
 const feature = (geometry: Geometry, properties: Record<string, unknown> = {}): Feature => ({ type: 'Feature', geometry, properties });
@@ -51,6 +54,16 @@ function updateSource(map: LibreMap, name: typeof SOURCE_IDS[number], data: Feat
 function installOverlays(map: LibreMap) {
   for (const id of SOURCE_IDS) if (!map.getSource(sid(id))) map.addSource(sid(id), { type: 'geojson', data: emptyFeatures() });
   const addLayer = (layer: Parameters<LibreMap['addLayer']>[0]) => { if (!map.getLayer(layer.id)) map.addLayer(layer); };
+  addLayer({ id: 'manzil-transit-casing', type: 'line', source: sid('transit'), layout: { 'line-cap': 'round', 'line-join': 'round', 'line-sort-key': ['get', 'order'] }, paint: { 'line-color': '#ffffff', 'line-width': ['case', ['get', 'selected'], 9, 3.5], 'line-opacity': ['case', ['get', 'selected'], .95, .3] } });
+  addLayer({ id: 'manzil-transit-line', type: 'line', source: sid('transit'), filter: ['==', ['get', 'schematic'], false], layout: { 'line-cap': 'round', 'line-join': 'round', 'line-sort-key': ['get', 'order'] }, paint: { 'line-color': ['get', 'color'], 'line-width': ['case', ['get', 'selected'], 6, 2.2], 'line-opacity': ['case', ['get', 'selected'], 1, .65] } });
+  addLayer({ id: 'manzil-transit-schematic', type: 'line', source: sid('transit'), filter: ['==', ['get', 'schematic'], true], layout: { 'line-cap': 'round', 'line-join': 'round', 'line-sort-key': ['get', 'order'] }, paint: { 'line-color': ['get', 'color'], 'line-width': ['case', ['get', 'selected'], 5, 2.2], 'line-dasharray': [2, 1.8], 'line-opacity': ['case', ['get', 'selected'], 1, .65] } });
+  addLayer({ id: 'manzil-transit-hit', type: 'line', source: sid('transit'), paint: { 'line-color': '#376edb', 'line-width': 17, 'line-opacity': .01 } });
+  addLayer({ id: 'manzil-transit-journey-casing', type: 'line', source: sid('transit-journey'), layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': 12, 'line-opacity': .98 } });
+  addLayer({ id: 'manzil-transit-journey-line', type: 'line', source: sid('transit-journey'), filter: ['all', ['==', ['get', 'kind'], 'ride'], ['==', ['get', 'schematic'], false]], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': 8 } });
+  addLayer({ id: 'manzil-transit-journey-schematic', type: 'line', source: sid('transit-journey'), filter: ['all', ['==', ['get', 'kind'], 'ride'], ['==', ['get', 'schematic'], true]], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': 7, 'line-dasharray': [2, 1.8] } });
+  addLayer({ id: 'manzil-transit-walk-line', type: 'line', source: sid('transit-journey'), filter: ['==', ['get', 'kind'], 'walk'], layout: { 'line-cap': 'round' }, paint: { 'line-color': '#526a7f', 'line-width': 4, 'line-dasharray': [1, 1.4] } });
+  addLayer({ id: 'manzil-transit-stops', type: 'circle', source: sid('transit-stops'), paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, ['case', ['get', 'selected'], 5, 1.6], 16, ['case', ['get', 'selected'], 5, 4]], 'circle-color': '#ffffff', 'circle-stroke-color': ['case', ['get', 'selected'], '#145cc3', '#536a7b'], 'circle-stroke-width': ['case', ['get', 'selected'], 2.5, 1.5], 'circle-opacity': ['interpolate', ['linear'], ['zoom'], 11.5, ['case', ['get', 'selected'], 1, 0], 13, ['case', ['get', 'selected'], 1, .9]], 'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'], 11.5, ['case', ['get', 'selected'], 1, 0], 13, ['case', ['get', 'selected'], 1, .9]] } });
+  addLayer({ id: 'manzil-transit-stop-labels', type: 'symbol', source: sid('transit-stops'), minzoom: 13.5, filter: ['==', ['get', 'selected'], true], layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Regular'], 'text-size': 11, 'text-anchor': 'left', 'text-offset': [.8, 0], 'text-max-width': 14 }, paint: { 'text-color': '#263c48', 'text-halo-color': '#ffffff', 'text-halo-width': 2 } });
   addLayer({ id: 'manzil-baseline-casing', type: 'line', source: sid('baseline'), layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#fff7f8', 'line-width': 12, 'line-opacity': .95 } });
   addLayer({ id: 'manzil-baseline-line', type: 'line', source: sid('baseline'), layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#f3a0ad', 'line-width': ['case', ['boolean', ['get', 'inspected'], false], 11, 8], 'line-opacity': .9 } });
   addLayer({ id: 'manzil-baseline-hit', type: 'line', source: sid('baseline'), paint: { 'line-color': '#f3a0ad', 'line-width': 23, 'line-opacity': .01 } });
@@ -228,17 +241,19 @@ export default function MapView(props: MapViewProps) {
         const coordinates = p.mode === 'point' ? [coordinate] : [...(p.drawing?.kind === p.mode ? p.drawing.coordinates : []), coordinate];
         p.onDraw({ kind: p.mode, coordinates, widthMeters: p.drawing?.widthMeters ?? 35 }); return;
       }
-      const layers = ['manzil-closure-roads-line', 'manzil-route-hit', 'manzil-baseline-hit'].filter(id => map.getLayer(id));
+      const layers = ['manzil-closure-roads-line', 'manzil-route-hit', 'manzil-baseline-hit', 'manzil-transit-hit'].filter(id => map.getLayer(id));
       const found = map.queryRenderedFeatures(event.point, { layers });
       const closure = found.find(item => item.properties?.closureId);
       if (closure) { p.onClosureSelect(String(closure.properties!.closureId)); return; }
+      const transitPattern = found.find(item => item.properties?.patternId);
+      if (p.transit && transitPattern) { p.onTransitPatternSelect?.(String(transitPattern.properties!.patternId)); return; }
       const route = found.find(item => item.properties?.routeId);
       if (route) { p.onRouteSelect?.(String(route.properties!.routeId)); return; }
       if (found.some(item => item.layer.id === 'manzil-baseline-hit')) p.onBaselineSelect?.();
     });
     map.on('mousemove', event => {
       if (current.current.mode !== 'browse') { map.getCanvas().style.cursor = 'crosshair'; return; }
-      const layers = ['manzil-closure-roads-line', 'manzil-route-hit', 'manzil-baseline-hit'].filter(id => map.getLayer(id));
+      const layers = ['manzil-closure-roads-line', 'manzil-route-hit', 'manzil-baseline-hit', 'manzil-transit-hit'].filter(id => map.getLayer(id));
       map.getCanvas().style.cursor = layers.length && map.queryRenderedFeatures(event.point, { layers }).length ? 'pointer' : '';
     });
     const observer = new ResizeObserver(() => map.resize()); observer.observe(container.current);
@@ -343,6 +358,12 @@ export default function MapView(props: MapViewProps) {
     });
     return () => markers.forEach(marker => marker.remove());
   }, [props.waypoints, language, retry]);
+
+  useEffect(() => {
+    const map = mapRef.current; if (!map) return;
+    const transit = transitOverlayFeatures(props.transit);
+    updateSource(map, 'transit', transit.lines); updateSource(map, 'transit-stops', transit.stops); updateSource(map, 'transit-journey', transit.journey);
+  }, [props.transit, styleVersion, retry]);
 
   useEffect(() => {
     const map = mapRef.current; if (!map) return;
