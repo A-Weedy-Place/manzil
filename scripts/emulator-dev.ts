@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { firebaseServices } from '../server/firebase.js';
 import { readConfig } from '../server/config.js';
+import { seedSampleAccount } from './lib/demo-user.js';
 
 const apiPort = process.env.MANZIL_DEV_API_PORT ?? '3001', webPort = process.env.MANZIL_DEV_WEB_PORT ?? '5173', workerPort = process.env.MANZIL_DEV_WORKER_PORT ?? '3002';
 Object.assign(process.env, { MANZIL_MODE: 'emulator', FIREBASE_PROJECT_ID: 'demo-manzil', GOOGLE_CLOUD_PROJECT: 'demo-manzil',
@@ -19,6 +20,7 @@ for (const account of [
   try { await auth.getUser(account.uid); } catch (error) { if ((error as { code: string }).code !== 'auth/user-not-found') throw error; await auth.createUser(user); }
   await auth.setCustomUserClaims(account.uid, { admin: account.admin });
 }
+await seedSampleAccount();
 console.log('Local Firebase accounts seeded. No cloud project or paid APIs are used.');
 const child = spawn(process.execPath, [process.env.npm_execpath!, 'run', 'dev'], { stdio: 'inherit', env: process.env });
 const worker = spawn(process.execPath, ['--import', 'tsx', '--watch', 'server/index.ts'], { stdio: 'inherit', env: { ...process.env, MANZIL_SERVICE_ROLE: 'worker', PORT: workerPort } });

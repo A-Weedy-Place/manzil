@@ -1,5 +1,15 @@
 /** App-owned copy only. User notices, names and original source evidence remain verbatim. */
 export const urdu: Record<string, string> = {
+  'Personal information': 'ذاتی معلومات', 'Close settings': 'ترتیبات بند کریں', 'Close trip history': 'سفر کی تاریخ بند کریں',
+  'Demo data': 'نمونہ معلومات', 'Sample data': 'نمونہ معلومات', 'Demo fuel price': 'نمونہ ایندھن کی قیمت',
+  'Includes sample trips and fuel estimates. No GPS was recorded for these examples.': 'نمونہ سفر اور ایندھن کے تخمینے شامل ہیں۔ ان مثالوں کے لیے جی پی ایس ریکارڈ نہیں کیا گیا۔',
+  'Sign in for personal trip history.': 'ذاتی سفر کی تاریخ کے لیے سائن ان کریں۔', 'Trip deleted.': 'سفر حذف ہو گیا۔',
+  'This trip’s saved trace is no longer available.': 'اس سفر کا محفوظ راستہ اب دستیاب نہیں۔',
+  'Profile settings': 'پروفائل کی ترتیبات', 'History & data preferences': 'تاریخ اور معلومات کی ترجیحات',
+  'Recorded journeys': 'محفوظ سفر', 'Mileage not set': 'مائلیج درج نہیں', 'Add a car or motorcycle': 'کار یا موٹر سائیکل شامل کریں',
+  'Dated PSO reference prices': 'تاریخ کے ساتھ پی ایس او کی حوالہ قیمتیں',
+  'Browser notifications on': 'براؤزر کی اطلاعات فعال', 'Browser notifications off': 'براؤزر کی اطلاعات بند',
+  'Synthetic journeys. No GPS collected.': 'فرضی نمونہ سفر۔ جی پی ایس جمع نہیں کیا گیا۔',
   'Personal statistics': 'ذاتی اعداد و شمار', 'Close statistics': 'اعداد و شمار بند کریں',
   'Allow personal trip data': 'ذاتی سفر کی معلومات کی اجازت دیں', 'Not now': 'ابھی نہیں',
   'Save your trips for monthly statistics and alerts on your usual journeys?': 'ماہانہ اعداد و شمار اور معمول کے راستوں کی اطلاعات کے لیے اپنے سفر محفوظ کرنا چاہتے ہیں؟',

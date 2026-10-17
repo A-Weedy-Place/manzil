@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { useEffect } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import type { AppState, Closure, RouteOption } from '../shared/types';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import type { AppState, Closure, RouteOption, Trip } from '../shared/types';
 import type { MapViewProps } from '../src/components/MapView';
 import { setLanguage } from '../src/lib/language';
 import { getAuthSession, signInDevelopment, signOut } from '../src/lib/auth';
@@ -248,6 +248,67 @@ it('has one header profile control and opens read-only monthly statistics beside
   fireEvent.click(screen.getByRole('button', { name: 'Close statistics' }));
   expect(screen.queryByRole('dialog', { name: 'Personal statistics' })).toBeNull();
   expect(screen.getByRole('heading', { name: 'User profile' })).toBeTruthy();
+});
+it('opens profile details and trip history in the same secondary panel without mounting another recorder', async () => {
+  signInDevelopment('user@manzil.test', 'ManzilUser123!');
+  const watch = vi.fn(); Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { watchPosition: watch, clearWatch: vi.fn() } });
+  const sample = { id: 'demo-summary', name: 'Demo · F-8 commute', startedAt: date, endedAt: date, createdAt: date, distanceMeters: 12000, durationSeconds: 1500, points: [], pointCount: 0, gaps: 0, contributeToRoadDiscovery: false, demoData: true };
+  const fetcher = vi.fn(async (url: string) => url === '/api/state' ? new Response(JSON.stringify({ ...state, profile: { ...state.profile, city: 'Islamabad', location: 'F-8', demoData: true }, trips: [sample] })) : responseFor(url));
+  vi.stubGlobal('fetch', fetcher);
+  render(<App />); await screen.findByRole('button', { name: 'Find routes' });
+  fireEvent.click(screen.getByRole('button', { name: 'Open profile' }));
+  expect(screen.queryByLabelText('City')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+  const details = screen.getByRole('dialog', { name: 'Personal information' });
+  expect(details.parentElement!.classList.contains('profile-settings-dialog')).toBe(true);
+  expect(within(details).getByLabelText('City')).toHaveProperty('value', 'Islamabad');
+  fireEvent.change(within(details).getByLabelText('City'), { target: { value: 'Lahore' } });
+  fireEvent.keyDown(document, { key: 'Escape' });
+  fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+  expect(screen.getByLabelText('City')).toHaveProperty('value', 'Islamabad');
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Trip history' }));
+  const history = screen.getByRole('dialog', { name: 'Trip history' });
+  expect(history.parentElement!.classList.contains('profile-settings-dialog')).toBe(true);
+  expect(within(history).getByText('Demo · F-8 commute')).toBeTruthy();
+  expect(within(history).getByText('Demo data')).toBeTruthy();
+  expect(within(history).queryByRole('button', { name: 'Start recording' })).toBeNull();
+  expect(fetcher.mock.calls.some(([url]) => url.startsWith('/api/trips/'))).toBe(false);
+  expect(watch).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Close trip history' }));
+  expect(screen.queryByRole('dialog')).toBeNull();
+});
+it('shows a selected history trace while preserving a paused recording draft for later resumption', async () => {
+  signInDevelopment('user@manzil.test', 'ManzilUser123!');
+  let clock = Date.now(), location!: PositionCallback;
+  vi.spyOn(Date, 'now').mockImplementation(() => clock);
+  const clear = vi.fn(), watch = vi.fn((callback: PositionCallback) => { location = callback; return 44; });
+  Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { watchPosition: watch, clearWatch: clear } });
+  const saved: Trip = { id: 'saved-trace', name: 'Saved history route', startedAt: date, endedAt: date, createdAt: date, distanceMeters: 500, durationSeconds: 180, points: [{ coordinate: [73.08, 33.72], timestamp: date, accuracy: 10 }, { coordinate: [73.085, 33.72], timestamp: date, accuracy: 10 }], pointCount: 2, gaps: 0, contributeToRoadDiscovery: false };
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    if (url === '/api/state') return new Response(JSON.stringify({ ...state, profile: { ...state.profile, collectTravelData: true }, trips: [{ ...saved, points: [] }] }));
+    if (url === '/api/trips/saved-trace') return new Response(JSON.stringify(saved));
+    return responseFor(url);
+  }));
+  render(<App />); await screen.findByRole('button', { name: 'Find routes' });
+  fireEvent.click(screen.getByRole('button', { name: 'Activity' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Start recording' }));
+  await act(async () => location({ timestamp: clock, coords: { longitude: 73, latitude: 33.7, accuracy: 10 } } as GeolocationPosition));
+  clock += 6000;
+  await act(async () => location({ timestamp: clock, coords: { longitude: 73.001, latitude: 33.7, accuracy: 10 } } as GeolocationPosition));
+  await waitFor(() => expect(capture.props?.recordedPoints).toHaveLength(2));
+  const draft = capture.props!.recordedPoints;
+  fireEvent.click(screen.getByRole('button', { name: 'Open profile' }));
+  expect(clear).toHaveBeenCalledWith(44);
+  fireEvent.click(screen.getByRole('button', { name: 'Trip history' }));
+  fireEvent.click(within(screen.getByRole('dialog', { name: 'Trip history' })).getByRole('button', { name: 'View on map' }));
+  await waitFor(() => expect(capture.props?.recordedPoints).toEqual(saved.points));
+  expect(screen.queryByRole('dialog', { name: 'Trip history' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Hide recorded trip' }));
+  expect(capture.props?.recordedPoints).toEqual(draft);
+  fireEvent.click(screen.getByRole('button', { name: 'Activity' }));
+  expect(screen.getByRole('button', { name: 'Resume recording' })).toBeTruthy();
+  expect(watch).toHaveBeenCalledTimes(1);
 });
 it('asks only a newly registered account for optional trip data before its tour and remembers Not now', async () => {
   sessionStorage.setItem('manzil-travel-data-choice-v1:dev-user', 'pending');

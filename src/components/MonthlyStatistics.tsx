@@ -26,6 +26,7 @@ export default function MonthlyStatistics({ state, active = true }: { state: App
     return () => { current = false; window.clearTimeout(timeout); controller.abort(); };
   }, [active, tripRevision, attempt, calendarDate, owner]);
   return <section className="monthly-statistics" aria-label={t('Monthly statistics')}>
+    {state.profile.demoData && <p className="sample-data-banner">{t('Includes sample trips and fuel estimates. No GPS was recorded for these examples.')}</p>}
     <div className="monthly-statistics-title"><BarChart3 size={19} /><h2>{t('This month')}</h2><span className="tag neutral">{t('Private')}</span></div>
     {loading && <p className="small muted" role="status">{t('Loading trip totals…')}</p>}
     {error && <div className="error-box" role="alert"><p>{t(error)}</p><button className="text-button" onClick={() => setAttempt(value => value + 1)}>{t('Retry')}</button></div>}

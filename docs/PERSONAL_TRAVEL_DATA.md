@@ -4,7 +4,7 @@ This feature is developed on `codex/feature-development`. Publishing the branch 
 
 ## What a person sees
 
-- **User profile** summarizes name, email, optional photo, city and neighbourhood. **Edit** opens the fields; Save persists the draft together and Cancel discards it. Photo selection alone does not persist an image. City/area are manually entered text; saving them does not request GPS.
+- **User profile** summarizes name, email, optional photo, city and neighbourhood. **Edit** opens the fields in the shared secondary panel; Save persists the draft together and Cancel/Close/Escape discards it. Photo selection alone does not persist an image. City/area are manually entered text; saving them does not request GPS.
 - Photos are selected locally, checked as JPEG/PNG/WebP, resized to at most 512 pixels and re-encoded as JPEG before sending. Canvas re-encoding removes embedded metadata. The encoded result is limited to 150,000 characters; profile photos remain private account records.
 - **Personal trip data** is visibly **Off** until the person explicitly allows it. Missing fields on an older profile also mean Off.
 - **Allow personal trip data & usual-route alerts** enables trip history and repeated-journey alerts together. Usual-route learning has a separate switch, available only while trip permission is on.
@@ -15,9 +15,11 @@ This feature is developed on `codex/feature-development`. Publishing the branch 
 
 Successful account creation marks only that new UID as pending in memory/session storage. Once the matching private profile is loaded, the UI asks **Allow personal trip data / Not now** before its first-use tour. Existing sign-ins do not receive a forced prompt just because an older profile lacks acknowledgement. Guests never receive this personal-data prompt.
 
-Either confirmed choice stores `travelDataChoiceMade:true` in the private profile. Allow also sets `collectTravelData:true` and `inferFrequentRoutes:true`; Not now sets both false. Escape/backdrop dismissal follows Not now. Acknowledgement is a strict optional boolean, separate from consent: setting it alone never enables collection or inference. The pending session marker is removed only after the API confirms the matching account's choice. A failed request keeps retry controls visible rather than claiming the preference changed; a lost response can follow a committed write, so retrying either explicit choice is safe. Account changes cannot apply another UID's response.
+Either confirmed choice stores `travelDataChoiceMade:true` in the private profile. Allow also sets `collectTravelData:true` and `inferFrequentRoutes:true`; Not now sets both false. Escape follows Not now. Acknowledgement is a strict optional boolean, separate from consent: setting it alone never enables collection or inference. The pending session marker is removed only after the API confirms the matching account's choice. A failed request keeps retry controls visible rather than claiming the preference changed; a lost response can follow a committed write, so retrying either explicit choice is safe. Account changes cannot apply another UID's response.
 
 Granting the preference does not request browser location or start GPS. The person still starts navigation or manual recording explicitly. Profile keeps the permission near identity setup, with grouped vehicle, appearance/language and journey-alert settings below it. Consent can be changed later; existing stored trips remain available for export/deletion. [Account/profile guide](ACCOUNT_AND_PROFILE.md).
+
+All these settings now open the same secondary panel from compact overview rows. Trip history shares its summary/action component with Activity; opening it does not mount a second recorder or request raw traces. An explicit saved-trace selection can be viewed without losing a paused recording draft. The localhost [User 123](SAMPLE_ACCOUNT.md) profile/trips carry read-only `demoData` provenance, contain fictional summary totals and no GPS points, and retain collection/inference/browser permissions Off. Sample prices are not PSO quotations; no shared live data is replaced.
 
 ## Monthly personal statistics
 

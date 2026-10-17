@@ -12,8 +12,11 @@ Open localhost, expand **Choose a development account**, select a test account t
 | --- | --- | --- |
 | Normal user | `user@manzil.test` | `ManzilUser123!` |
 | Admin user | `admin@manzil.test` | `ManzilAdmin123!` |
+| User 123 — populated sample | `user123@manzil.test` | `User 123` |
 
 These are public fixtures, not production credentials. The emulator admin has a verified custom claim `admin: true`. The normal user starts unverified; use **Control centre → People → Verify** to test contributor access, and **Remove verification** to revoke it. This changes server-owned contributor metadata; it never grants an admin claim. Administrators are provisioned separately by the operator. No live Auth accounts or claims are changed by local tests.
+
+**User 123** is also an ordinary unverified account. The emulator launcher seeds it once with explicitly fictional monthly trip summaries, a vehicle, two disabled saved journeys and a demo notification, while travel collection remains off. Its password contains a space. Seeding never resets an edited account or another UID. The [sample account guide](SAMPLE_ACCOUNT.md) lists exact totals, demo fuel provenance, safe running-emulator setup and calendar/retention limits. Standalone shared SQLite does not provide this populated private emulator dataset.
 
 The picker is limited to Vite development on loopback in development/emulator auth modes. Configured Firebase mode supports actual account creation/password reset; those actions remain disabled in standalone dummy mode. Production bundles omit local fixture credentials. Passwords and editable role objects are not persisted in browser storage. Profile provides Sign out.
 

@@ -70,7 +70,7 @@ export default function AccountPanel({ onClose, entry = false, onAuthenticated, 
           </div>
           {(DEV_AUTH_ENABLED || EMULATOR_AUTH_ENABLED) && screen === 'login' && <details className="account-development">
             <summary tabIndex={0}><span>{t('Choose a development account')}</span><ChevronDown size={16} aria-hidden="true" /></summary>
-            <div className="dev-accounts">{DEV_ACCOUNTS.map(account => <button className="dev-account" key={account.uid} type="button" disabled={busy} onClick={() => { setEmail(account.email); setPassword(account.password); setError(''); }}><strong>{t(account.role === 'admin' ? 'Admin user' : 'Normal user')}</strong><code>{account.email}</code><small>{t('Password')}: <bdi>{account.password}</bdi></small></button>)}</div>
+            <div className="dev-accounts">{DEV_ACCOUNTS.map(account => <button className="dev-account" key={account.uid} type="button" disabled={busy} onClick={() => { setEmail(account.email); setPassword(account.password); setError(''); }}><strong>{account.uid === 'dev-user-123' ? account.displayName : t(account.role === 'admin' ? 'Admin user' : 'Normal user')}</strong><code>{account.email}</code><small>{t('Password')}: <bdi>{account.password}</bdi></small></button>)}</div>
           </details>}
         </div>
       </section>

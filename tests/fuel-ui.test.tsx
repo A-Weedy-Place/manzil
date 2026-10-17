@@ -41,7 +41,7 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); setLanguage('en'); });
 
 it('saves motorcycle, fuel type and decimal km/litre without enabling GPS collection or changing the routing profile', async () => {
   render(<ProfilePanel {...profileProps()} state={state()} />);
-  fireEvent.click(screen.getByText('Your vehicle', { selector: 'summary span' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Your vehicle' }));
   fireEvent.change(screen.getByLabelText('Vehicle type'), { target: { value: 'motorcycle' } });
   fireEvent.change(screen.getByLabelText('Fuel type'), { target: { value: 'diesel' } });
   fireEvent.change(screen.getByLabelText('Vehicle name (optional)'), { target: { value: 'Daily bike' } });

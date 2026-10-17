@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppState, LocalProfile, RecordedPoint } from '../shared/types';
 import { useTravelCapture } from '../src/lib/useTravelCapture';
@@ -65,6 +65,8 @@ describe('personal permission and profile controls', () => {
     fireEvent.click(screen.getByText('Journey alerts'));
     expect(screen.getByRole('switch', { name: 'Learn usual journeys and alert me' }).matches(':disabled')).toBe(true);
     expect(mock.api).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Close settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Personal trip data' }));
     fireEvent.click(screen.getByRole('button', { name: 'Allow personal trip data & usual-route alerts' }));
     await waitFor(() => expect(mock.send).toHaveBeenCalledWith('/profile', { collectTravelData: true, inferFrequentRoutes: true, travelDataChoiceMade: true }, 'PATCH'));
     expect(screen.queryByText('Source updates & collector')).toBeNull();
@@ -77,7 +79,9 @@ describe('personal permission and profile controls', () => {
     fireEvent.change(screen.getByLabelText('Area (optional)'), { target: { value: 'F-8' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save profile' }));
     await waitFor(() => expect(mock.send).toHaveBeenCalledWith('/profile', { displayName: 'Ali', city: 'Islamabad', location: 'F-8' }, 'PATCH'));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Allow personal trip data & usual-route alerts' }).matches(':disabled')).toBe(false));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'Personal trip data' }));
+    expect(screen.getByRole('button', { name: 'Allow personal trip data & usual-route alerts' }).matches(':disabled')).toBe(false);
     ui.rerender(<ProfilePanel {...props} state={state({ collectTravelData: true })} personalFeaturesAvailable />);
     fireEvent.click(screen.getByRole('button', { name: 'Stop collecting trip data' }));
     await waitFor(() => expect(mock.send).toHaveBeenCalledWith('/profile', { collectTravelData: false, inferFrequentRoutes: false, travelDataChoiceMade: true }, 'PATCH'));
@@ -118,6 +122,67 @@ describe('personal permission and profile controls', () => {
     render(<ProfilePanel {...props} onStatistics={onStatistics} state={state()} personalFeaturesAvailable />);
     fireEvent.click(screen.getByRole('button', { name: 'Personal statistics' }));
     expect(onStatistics).toHaveBeenCalledTimes(1); expect(props.onActivity).not.toHaveBeenCalled(); expect(mock.send).not.toHaveBeenCalled();
+  });
+  it('keeps the overview compact and uses the same separate dialog for every settings section', () => {
+    const watch = vi.fn(); Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { watchPosition: watch, clearWatch: vi.fn() } });
+    render(<ProfilePanel {...props} state={state()} personalFeaturesAvailable />);
+    expect(screen.queryByRole('form')).toBeNull();
+    expect(screen.queryByLabelText('Vehicle type')).toBeNull();
+    expect(screen.queryByRole('switch')).toBeNull();
+    const sections = [
+      ['Edit', 'Personal information'], ['Your vehicle', 'Your vehicle'], ['Personal trip data', 'Personal trip data'],
+      ['Appearance & language', 'Appearance & language'], ['Journey alerts', 'Journey alerts'], ['Fuel prices', 'Fuel prices'],
+    ];
+    for (const [buttonName, title] of sections) {
+      const trigger = screen.getByRole('button', { name: buttonName }); trigger.focus(); fireEvent.click(trigger);
+      const panel = screen.getByRole('dialog', { name: title });
+      expect(panel.parentElement?.classList.contains('profile-settings-dialog')).toBe(true);
+      expect(screen.getAllByRole('dialog')).toHaveLength(1);
+      expect(within(panel).getByRole('button', { name: 'Close settings' })).toBeTruthy();
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(screen.queryByRole('dialog')).toBeNull(); expect(document.activeElement).toBe(trigger);
+    }
+    expect(mock.send).not.toHaveBeenCalled(); expect(watch).not.toHaveBeenCalled();
+  });
+  it('routes settings, statistics and history through the parent section controller', () => {
+    const onSectionChange = vi.fn();
+    const ui = render(<ProfilePanel {...props} state={state()} personalFeaturesAvailable section={null} onSectionChange={onSectionChange} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Your vehicle' })); expect(onSectionChange).toHaveBeenLastCalledWith('vehicle');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    ui.rerender(<ProfilePanel {...props} state={state()} personalFeaturesAvailable section="vehicle" onSectionChange={onSectionChange} />);
+    expect(screen.getByRole('dialog', { name: 'Your vehicle' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Close settings' })); expect(onSectionChange).toHaveBeenLastCalledWith(null);
+    ui.rerender(<ProfilePanel {...props} state={state()} personalFeaturesAvailable section={null} onSectionChange={onSectionChange} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Personal statistics' })); expect(onSectionChange).toHaveBeenLastCalledWith('statistics');
+    fireEvent.click(screen.getByRole('button', { name: 'Trip history' })); expect(onSectionChange).toHaveBeenLastCalledWith('history');
+  });
+  it('discards a pending photo on panel close without leaving the next panel busy', async () => {
+    let complete!: (value: string) => void; mock.photo.mockReturnValue(new Promise<string>(resolve => { complete = resolve; }));
+    render(<ProfilePanel {...props} state={state()} personalFeaturesAvailable />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.change(screen.getByLabelText('Choose profile photo'), { target: { files: [new File(['test'], 'profile.jpg', { type: 'image/jpeg' })] } });
+    expect(screen.getByRole('button', { name: 'Save profile' }).matches(':disabled')).toBe(true);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    await act(async () => complete('data:image/jpeg;base64,cHJpdmF0ZQ=='));
+    expect(screen.queryByAltText('Your profile photo')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Save profile' }).matches(':disabled')).toBe(false);
+    expect(mock.send).not.toHaveBeenCalled();
+  });
+  it('keeps an unsaved edit and its error inside the panel after a failed write', async () => {
+    mock.send.mockRejectedValueOnce(new Error('Profile unavailable'));
+    render(<ProfilePanel {...props} state={state()} personalFeaturesAvailable />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.change(screen.getByLabelText('Your name'), { target: { value: 'Unsaved traveller' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save profile' }));
+    const error = await screen.findByRole('alert');
+    expect(error.textContent).toBe('Profile unavailable');
+    expect(screen.getByRole('dialog', { name: 'Personal information' }).contains(error)).toBe(true);
+    expect((screen.getByLabelText('Your name') as HTMLInputElement).value).toBe('Unsaved traveller');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect((screen.getByLabelText('Your name') as HTMLInputElement).value).toBe('Traveller');
+    expect(screen.queryByRole('alert')).toBeNull();
   });
   it('does not start manual recording before permission and clears its watcher after revocation', () => {
     const watch = vi.fn(() => 7), clear = vi.fn(); Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { watchPosition: watch, clearWatch: clear } });

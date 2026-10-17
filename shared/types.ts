@@ -98,13 +98,15 @@ export interface TripDraft {
   name: string; startedAt: string; endedAt: string; points: RecordedPoint[];
   contributeToRoadDiscovery: boolean;
 }
-export interface Trip extends TripDraft { id: string; distanceMeters: number; durationSeconds: number; createdAt: string; gaps: number; pointCount?: number; fuelEstimate?: FuelEstimate }
+export interface Trip extends TripDraft { id: string; distanceMeters: number; durationSeconds: number; createdAt: string; gaps: number; pointCount?: number; fuelEstimate?: FuelEstimate; demoData?: boolean }
 export type MapStyleId = 'streets' | 'outdoors' | 'contrast' | 'minimal' | 'night';
 export interface LocalProfile {
   id: 'local'; displayName: string; theme: 'light' | 'dark' | 'system';
   city?: string; location?: string; photoDataUrl?: string; collectTravelData?: boolean;
   /** Records an explicit Allow/Not now choice; it never grants collection by itself. */
   travelDataChoiceMade?: boolean;
+  /** Server-owned provenance for the explicitly seeded localhost sample account. */
+  demoData?: boolean;
   vehicle?: VehicleProfile; vehicleUpdatedAt?: string;
   mapDetail: 'clean' | 'standard'; mapStyle: MapStyleId; browserNotifications: boolean;
   inferFrequentRoutes: boolean; transport: 'car'; createdAt: string; updatedAt: string;

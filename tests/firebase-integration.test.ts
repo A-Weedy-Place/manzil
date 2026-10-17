@@ -151,6 +151,8 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
     expect(await store.forUser('bob').profile()).toMatchObject({ mapStyle: 'outdoors', collectTravelData: false, travelDataChoiceMade: false });
     expect((await request('/profile', undefined, { travelDataChoiceMade: true }, 'PATCH')).status).toBe(401);
     for (const invalid of ['true', 1, null]) expect((await request('/profile', alice, { travelDataChoiceMade: invalid }, 'PATCH')).status).toBe(400);
+    expect((await request('/profile', alice, { demoData: true }, 'PATCH')).status).toBe(400);
+    expect(await (await request('/profile', alice)).json()).not.toHaveProperty('demoData');
     expect((await request('/profile', alice, { travelDataChoiceMade: true, collectTravelData: false }, 'PATCH')).status).toBe(200);
     expect(await new FirestoreStore(services.db).forUser('alice').profile()).toMatchObject({ travelDataChoiceMade: true, collectTravelData: false, inferFrequentRoutes: false });
     expect(await store.forUser('bob').profile()).toMatchObject({ travelDataChoiceMade: false, collectTravelData: false });

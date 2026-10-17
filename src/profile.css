@@ -50,6 +50,50 @@
 .profile-fuel-section .fuel-price-details > a { font-size: 12px; }
 .profile-utilities { display: grid; gap: 3px; }
 .profile-utilities .settings-link { margin: 0; padding: 9px 3px; min-height: 44px; font-size: 12px; }
+.profile-settings-menu { display: grid; gap: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); }
+.profile-settings-menu .profile-setting-link { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 68px; margin: 0; padding: 12px 14px; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: transparent; text-align: start; }
+.profile-settings-menu .profile-setting-link:last-child { border-bottom: 0; }
+.profile-setting-link .profile-setting-icon { display: grid; flex: 0 0 36px; place-items: center; width: 36px; height: 36px; border-radius: 11px; color: var(--green); background: var(--green-soft); }
+.profile-setting-link > span:nth-child(2) { flex: 1; min-width: 0; }
+.profile-setting-link > .tag { flex: 0 0 auto; }
+.profile-setting-link strong { display: block; font-size: 13px; font-weight: 650; line-height: 1.45; }
+.profile-setting-link small { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
+.profile-setting-link > svg:last-child { flex-shrink: 0; color: var(--muted); }
+.profile-setting-link > .tag { flex-shrink: 0; }
+.profile-settings-menu .profile-setting-link:hover, .profile-settings-menu .profile-setting-link.is-active { background: var(--green-soft); }
+.profile-settings-menu .profile-setting-link:focus-visible { outline: 2px solid var(--green); outline-offset: -3px; }
+.profile-demo-badge { display: flex; align-items: start; flex-wrap: wrap; gap: 6px; margin: 12px 0 0; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.profile-demo-badge .tag { flex-shrink: 0; }
+.profile-section-content { min-width: 0; }
+.profile-section-content .profile-details-form { display: grid; gap: 15px; margin: 0; padding: 0; border: 0; }
+.profile-section-content .profile-details-form .field-label { margin: 0; }
+.profile-edit-photo { display: flex; align-items: center; gap: 15px; margin-bottom: 5px; }
+.profile-edit-photo .profile-avatar { display: grid; place-items: center; flex-shrink: 0; width: 70px; height: 70px; font-size: 27px; }
+.profile-edit-photo .profile-photo-actions { display: grid; gap: 5px; margin: 0; }
+.profile-edit-photo .profile-photo-actions .text-button { justify-self: start; min-height: 36px; }
+.profile-section-content .profile-panel-actions { gap: 9px; flex-wrap: wrap; margin-top: 5px; }
+.profile-panel-actions > button { min-height: 44px; }
+.profile-section-content .settings-section { border: 0; padding: 0; margin: 0; }
+.profile-section-content .vehicle-settings > h2 { display: none; }
+.profile-section-content .vehicle-settings > form { margin-top: 0; }
+.profile-section-content .profile-consent { margin: 0; padding: 16px; border: 1px solid var(--border); border-radius: 14px; }
+.profile-section-content .profile-consent .row > svg { color: var(--green); }
+.profile-section-content .profile-consent > p { font-size: 13px; }
+.profile-section-content .profile-consent .full { font-size: 13px; }
+.profile-section-content .setting-row { gap: 11px; }
+.profile-section-content .setting-row > svg { flex-shrink: 0; color: var(--green); }
+.profile-section-content .setting-row strong { font-size: 14px; }
+.profile-section-content .setting-row p, .profile-section-content > .small { font-size: 12px; line-height: 1.6; }
+.profile-section-content .setting-toggle { flex-shrink: 0; }
+.profile-section-content .map-style-choices { margin-top: 12px; }
+.profile-section-content .profile-map-style-heading { margin-top: 24px; font-size: 15px; }
+.profile-section-fuel .fuel-price-details { margin: 0; padding: 0; border: 0; border-radius: 0; }
+.profile-section-fuel .fuel-price-details > summary { display: none; }
+.profile-section-fuel .fuel-price-grid { margin: 0 0 16px; }
+.profile-section-fuel .fuel-price-grid dd { font-size: 19px; }
+.sample-data-banner { display: grid; gap: 4px; margin: 0 0 16px; padding: 12px 14px; border: 1px solid var(--border); border-inline-start: 3px solid var(--green); border-radius: 11px; background: var(--green-soft); color: var(--ink); font-size: 12px; line-height: 1.5; }
+.sample-data-banner strong { font-size: 13px; }
+.sample-data-banner p { margin: 0; color: var(--muted); }
 .monthly-statistics { min-width: 0; }
 .monthly-statistics-title { display: flex; align-items: center; gap: 9px; margin: 0 0 16px; }
 .monthly-statistics-title h2 { margin: 0; font-size: 16px; }

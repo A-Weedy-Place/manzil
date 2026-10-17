@@ -1,20 +1,20 @@
 import { t } from '../lib/language';
 import { useEffect, useRef, useState } from 'react';
-import { Activity, ArrowUpRight, CircleStop, Download, LocateFixed, Map, Play, ShieldCheck, Trash2, X } from 'lucide-react';
+import { Activity, CircleStop, LocateFixed, Play, ShieldCheck, X } from 'lucide-react';
 import type { AppState, RecordedPoint, Trip, TripDraft } from '../../shared/types';
-import { api, send } from '../lib/api';
-import { dateTime, distance, downloadJSON, duration } from '../lib/format';
+import { send } from '../lib/api';
+import { dateTime } from '../lib/format';
 import { getAuthSession } from '../lib/auth';
-import { fuelDate, rupees } from '../lib/fuel';
 
 import MonthlyStatistics from './MonthlyStatistics';
+import TripHistory from './TripHistory';
 
 interface Props { active?: boolean; state: AppState; points: RecordedPoint[]; setPoints: (points: RecordedPoint[]) => void; reload: () => Promise<void>; notify: (message: string) => void; onView: (trip: Trip) => void }
 export default function ActivityPanel({ active: visible = true, state, points, setPoints, reload, notify, onView }: Props) {
   const consent = state.profile.collectTravelData === true; const [contribute, setContribute] = useState(false);
   const [recording, setRecording] = useState(false); const [started, setStarted] = useState<string | null>(null);
   const [tripName, setTripName] = useState('My recorded trip'); const [error, setError] = useState('');
-  const [gpsMessage, setGpsMessage] = useState(''); const [saving, setSaving] = useState(false); const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [gpsMessage, setGpsMessage] = useState(''); const [saving, setSaving] = useState(false);
   const watch = useRef<number | null>(null); const latest = useRef(points); latest.current = points;
   const active = useRef(false);
   const epoch = useRef(0);
@@ -59,17 +59,6 @@ export default function ActivityPanel({ active: visible = true, state, points, s
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not save your trip. The points remain here so you can retry.'); }
     finally { setSaving(false); }
   }
-  async function remove(id: string) {
-    try { await api(`/trips/${id}`, { method: 'DELETE' }); setDeleteId(null); await reload(); notify('Trip deleted from the local app.'); }
-    catch (e) { setError(e instanceof Error ? e.message : 'Could not delete this trip.'); }
-  }
-  async function fullTrip(trip: Trip, action: 'view' | 'export') {
-    try {
-      const full = await api<Trip>(`/trips/${trip.id}`);
-      if (action === 'view') onView(full);
-      else downloadJSON(`manzil-trip-${full.id}.geojson`, { type: 'Feature', properties: { name: full.name, startedAt: full.startedAt, endedAt: full.endedAt }, geometry: { type: 'LineString', coordinates: full.points.map(p => p.coordinate) } });
-    } catch (e) { setError(e instanceof Error ? e.message : 'Could not load this trip.'); }
-  }
   return <>
     <div className="section-heading"><div><span className="eyebrow">{t("THE JOURNEYS YOU MAKE")}</span><h1>{t("Your activity")}</h1></div><Activity size={23} /></div><p className="muted">{t("Your trip history and personal statistics.")}</p>
     <MonthlyStatistics state={state} active={visible} />
@@ -81,20 +70,7 @@ export default function ActivityPanel({ active: visible = true, state, points, s
       {!started ? <button className="primary-button full" disabled={!consent || !tripName.trim()} onClick={() => start()}><Play size={16} />{t("Start recording")}</button> : <div className="stack"><button className="primary-button full" disabled={saving || !tripName.trim()} onClick={save}><CircleStop size={17} />{saving ? t("Saving trip…") : t("Finish and save")}</button>{recording ? <button className="text-button full centered" onClick={stopWatch}>{t("Pause recording")}</button> : <button className="text-button full centered" disabled={saving} onClick={() => start(true)}>{t("Resume recording")}</button>}<button className="text-button full centered" disabled={saving} onClick={() => { stopWatch(); setPoints([]); latest.current = []; setStarted(null); setGpsMessage(''); setError(''); }}><X size={14} />{t("Discard this recording")}</button></div>}
     </section>
     {error && <div className="error-box" role="alert">{t(error)}</div>}
-    <div className="section-heading compact"><h2>{t("Trip history")}</h2><span className="small muted">{t("Private")}</span></div>
-    {state.trips.length >= 50 && <p className="small muted">{t('Showing the 50 most recent trips. Totals include retained history beyond this list.')}</p>}
-    {!state.trips.length && <div className="empty-state compact-empty"><Map size={29} /><h3>{t("Every journey has a story")}</h3><p>{t("Your recorded routes, distance and time will appear here. GPS samples require a real device location.")}</p></div>}
-    {state.trips.map(trip => <article className="trip-card" key={trip.id}><div className="row between"><h3>{trip.name}</h3><button className="icon-button small" aria-label={`Delete ${trip.name}`} onClick={() => setDeleteId(deleteId === trip.id ? null : trip.id)}><Trash2 size={15} /></button></div><span className="small muted">{dateTime(trip.startedAt)}</span><div className="trip-metrics"><strong>{distance(trip.distanceMeters)}</strong><span>{duration(trip.durationSeconds)}</span><span>{(trip.pointCount ?? trip.points.length) ? `${(trip.pointCount ?? trip.points.length)} points` : t("Summary only")}</span></div><TripFuel trip={trip} />{trip.gaps > 0 && <p className="small muted">{trip.gaps} {t("recording gap")}{trip.gaps > 1 ? t("s") : t("")}{t("; distance may be incomplete.")}</p>}{trip.contributeToRoadDiscovery && <span className="tag neutral">{t("Road review consent")}</span>}<div className="row"><button className="text-button" disabled={!(trip.pointCount ?? trip.points.length)} onClick={() => fullTrip(trip, 'view')}>{t("View on map")}<ArrowUpRight size={14} /></button><button className="text-button" disabled={!(trip.pointCount ?? trip.points.length)} onClick={() => fullTrip(trip, 'export')}><Download size={14} />{t("Export")}</button></div>{deleteId === trip.id && <div className="delete-confirm"><p>{t("Delete this trip and its saved trace?")}</p><button className="danger-button" onClick={() => remove(trip.id)}>{t("Delete trip")}</button><button className="text-button" onClick={() => setDeleteId(null)}>{t("Keep it")}</button></div>}</article>)}
+    <TripHistory state={state} reload={reload} notify={notify} onView={onView} />
     <div className="notice-box soft"><ShieldCheck size={18} /><p>{t("Foreground recording only. Raw points are kept for 30 days; summaries for 90 days. You can export or delete a trip. Local database files are excluded from Git.")}</p></div>
   </>;
-}
-function TripFuel({ trip }: { trip: Trip }) {
-  const estimate = trip.fuelEstimate;
-  if (!estimate) return <p className="small muted trip-fuel-unavailable">{t('Fuel estimate unavailable for this trip.')}</p>;
-  return <details className="trip-fuel-details">
-    <summary><strong>≈ {rupees(estimate.costPkr)}</strong><span>{t('Estimated fuel cost')}</span></summary>
-    <p className="small muted">{estimate.vehicle.label || t(estimate.vehicle.kind === 'motorcycle' ? 'Motorcycle' : 'Car')} · {t(estimate.vehicle.fuelType === 'diesel' ? 'Diesel' : 'Petrol')} · {estimate.vehicle.kmPerLitre} {t('km/litre')} · {estimate.litres.toFixed(2)} {t('litres')}</p>
-    {estimate.rates.map(rate => <div key={`${rate.effectiveFrom}:${rate.sourceUrl}`}><p className="small muted"><a href={rate.sourceUrl} target="_blank" rel="noreferrer">{rupees(rate.pricePerLitre, 2)} {t('/ litre')}</a> · {t('Effective from')} {fuelDate(rate.effectiveFrom)}</p>{rate.retrievedAt && <p className="small muted">{t('Reference checked')} {dateTime(rate.retrievedAt)}</p>}</div>)}
-    <p className="small muted">{t('Saved estimate. Changes to your vehicle or fuel prices do not change this trip.')}</p>
-  </details>;
 }

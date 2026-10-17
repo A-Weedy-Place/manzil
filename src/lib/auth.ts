@@ -11,6 +11,7 @@ export const FIREBASE_AUTH_ENABLED = AUTH_MODE === 'firebase' || EMULATOR_AUTH_E
 export const DEV_ACCOUNTS = DEV_AUTH_ENABLED || EMULATOR_AUTH_ENABLED ? [
   { uid: 'dev-user', displayName: 'Demo traveller', email: 'user@manzil.test', password: 'ManzilUser123!', role: 'user' as const },
   { uid: 'dev-admin', displayName: 'Demo administrator', email: 'admin@manzil.test', password: 'ManzilAdmin123!', role: 'admin' as const },
+  { uid: 'dev-user-123', displayName: 'User 123', email: 'user123@manzil.test', password: 'User 123', role: 'user' as const },
 ] : [];
 const KEY = 'manzil-dev-session';
 const TRAVEL_CHOICE_KEY = 'manzil-travel-data-choice-v1:';

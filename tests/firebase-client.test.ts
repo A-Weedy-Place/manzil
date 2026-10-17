@@ -29,7 +29,8 @@ it('uses real SDK tokens and signed claims in Firebase mode, without dummy ident
 it('explicitly connects emulator mode to loopback and retains the test account picker only in development', async () => {
   const auth = await client('emulator');
   expect(fixture.emulator).toHaveBeenCalledWith(fixture.auth, 'http://127.0.0.1:9099', { disableWarnings: true });
-  expect(auth.DEV_ACCOUNTS).toHaveLength(2); expect(auth.DEV_AUTH_ENABLED).toBe(false);
+  expect(auth.DEV_ACCOUNTS).toHaveLength(3); expect(auth.DEV_AUTH_ENABLED).toBe(false);
+  expect(auth.DEV_ACCOUNTS.find(account => account.uid === 'dev-user-123')).toMatchObject({ displayName: 'User 123', email: 'user123@manzil.test', password: 'User 123', role: 'user' });
   expect(() => auth.signInDevelopment('admin@manzil.test', 'ManzilAdmin123!')).toThrow('unavailable');
 });
 it('prompts only a successfully registered UID and remembers its optional choice across reloads', async () => {
