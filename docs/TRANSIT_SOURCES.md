@@ -2,6 +2,8 @@
 
 Research and local source inspection: **18 October 2026, Asia/Karachi**. This is a static public-transit dataset, not live vehicle tracking or a guarantee of current operation. Manzil keeps operator/service suspensions separate from the route catalogue and treats road intersections as uncertainty rather than asserting an operator has cancelled a bus.
 
+**Expanded official verification, 18 October:** all 42 CDA directional PDFs and the official Punjab eTransit public planner's 10 Rawalpindi entries / 20 directions / 313 stop-coordinate occurrences were checked. Source agreement and conflicts now appear in each route's **Official references** disclosure. Older CDA documents and official source defects do not certify current operations or field coordinates. FR-05/ST-01 are additional unmapped references; contradictory partial RLRT03 patterns are excluded from recommendations. See [CDA comparison](CDA_TRANSIT_VERIFICATION.md), [PMA comparison and public acquisition](PMA_TRANSIT_VERIFICATION.md), and [current reviewed dataset](TRANSIT_DATA.md). The following initial source research remains useful provenance.
+
 ## What is usable now
 
 1. **PakBus** publishes downloadable, reusable transit data. Its current Twin Cities catalogue contains **32 routes / 63 directions**. Its underlying published sources include CDA and PITB. Use the downloadable data, rather than copying Safar's software or private application endpoints. [Downloads and noncommercial permission](https://pakbus.app/data), [publisher's source and timing method](https://pakbus.app/about).

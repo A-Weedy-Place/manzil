@@ -9,7 +9,17 @@ Manzil **Local** uses a compact, source-attributed Islamabad–Rawalpindi snapsh
 - **Orange corridor:** an independent OSM derivative adds Orange BRT and airport corridors, four independently solved directions and 17 mapped platform records. These use actual connected relation highway ways and one-way constraints, with explicitly inferred stop order and unknown timetable. Its source is the mapped infrastructure, not proof of current operation or operator stop nomenclature.
 - **FR-12:** CDA's older public reference is catalogued, but its 25 named stops lack trustworthy supplied coordinates. It is not silently geocoded, drawn or used in the planner. Missing EV-3/6/7/8 and informal van networks are not invented from numbering gaps.
 
-The initial combined snapshot has **35 route references, 67 mapped patterns and 1,210 mapped stop records**. Route-specific identifiers include physically co-located platforms/stops; **1,210 is not a count of distinct bus stations**. The planner can connect distinct co-located stop IDs with a transfer allowance.
+The reviewed combined snapshot has **37 route references, 67 mapped patterns and 1,210 mapped stop records**. FR-05 and ST-01 join FR-12 as **unmapped historical references**, not new routable buses. Route-specific identifiers include physically co-located platforms/stops; **1,210 is not a count of distinct bus stations**. The planner can connect distinct co-located stop IDs with a transfer allowance.
+
+## Official authority comparison — 18 October
+
+The verified PMA domain is **pma.punjab.gov.pk**; its official eTransit public planner exposes the same seven Rawalpindi EV entries and three full/partial PMBS entries as the current snapshot. **20 directional lists / 313 published coordinate occurrences** agree with the source catalogue. This is source agreement, not field measurement: its Rahimabad return location is still near Lahore, and two partial-Metro lists contradict the full-corridor order. The invalid location remains a gap; **RLRT03 patterns `vtvpb` / `me5tv` are visible grey but excluded from recommendations**, while full RLRT01 remains available subject to ordinary closures/access.
+
+All **42 CDA directional PDFs** from its 22-entry portal were parsed and checked. Their creation dates are **16 July 2025**, and many named sequences differ from the newer community snapshot. FR-05's actual NUST–D-12 sequence even disagrees with its Golara–Taxila title. CDA's October 2026 announcement reports 21 operating routes without enumerating them. Neither the aggregate count nor the old PDFs proves all listed services are currently operating. No coordinates or current validity calendar are supplied by these PDFs.
+
+Every route has a scoped, dated **Official references** disclosure: ten comparisons agree on the explicitly stated stop fields, nineteen record differences, four are reference-only and four lack route-level confirmation. Blue/FR-08C textual agreement normalizes only punctuation and generic `station`/`stop` suffixes; it does not guess different places. Existing named geometry and calendars are not silently overwritten by older documents. Source disagreements appear in journey information. [CDA evidence](CDA_TRANSIT_VERIFICATION.md), [PMA evidence and acquisition](PMA_TRANSIT_VERIFICATION.md).
+
+Committed factual comparison derivatives are `cda-verification.json`, `pma-verification.json` and `official-review.json`; raw source pages/PDFs/API responses remain ignored. The review manifest is bound to the unreviewed dataset version and exact normalized-byte SHA, and its own SHA is incorporated into the final dataset version/provenance. Importing a comparison against another base version fails. Authority hyperlinks require exact reviewed HTTPS domains; no credentials, lookalike hosts or automatic background data fetch are accepted by the review disclosure.
 
 ## Source defects and safeguards
 
@@ -22,7 +32,7 @@ All 2,064 GTFS trips have first-stop timepoints; **43,101 intermediate stop-time
 The importer uses Python's standard library. Raw downloads belong in ignored **`.local-tools/transit/`**; do not commit the GTFS ZIP, CDA PDFs, raw OSM XML or source-page captures.
 
 ```powershell
-python scripts/import-transit.py --download --supplement assets/transit/supplement.json
+python scripts/import-transit.py --download --supplement assets/transit/supplement.json --official-review assets/transit/official-review.json
 ```
 
 This fetches only the publisher's fixed `https://pakbus.app/gtfs/{feeds.json,catalogue.json,pakbus.zip}` URLs, applies download/archive bounds, and validates both catalogue and ZIP against the published SHA-256 values. It filters the twin-city subset, preserves source order and unusable links, validates timetable identity/monotonicity and rejects inconsistent shapes. It writes **`assets/transit/islamabad.json.gz`** and **`assets/transit/provenance.json`**, with a gzip timestamp of zero. `--source-dir`, `--retrieved-at` and `--output` support reproducible offline review. Source retrieval time otherwise comes from the feed-listing file's timestamp, so unchanged offline runs reproduce the same output.
@@ -31,8 +41,20 @@ Use the pinned Orange generator separately before merging reviewed source change
 
 ```powershell
 python scripts/build-orange-transit.py --help
-python scripts/import-transit.py --supplement assets/transit/supplement.json
+python scripts/import-transit.py --supplement assets/transit/supplement.json --official-review assets/transit/official-review.json
 ```
+
+For a new authority audit, first build an **unreviewed base into ignored storage**, then run the bounded source collectors against that base and inspect their differences. The PMA collector pins the reviewed responses and intentionally fails when a source changes; deliberate review is required before updating pins. `verify-cda-transit.py` uses `pdfplumber` from the documented bundled runtime, while the other scripts use Python's standard library. Existing reviewed evidence can be reimported without downloading/processing 1,244 PDF pages at runtime.
+
+```powershell
+python scripts/import-transit.py --supplement assets/transit/supplement.json --output .local-tools/transit-official/base/islamabad.json.gz
+python scripts/verify-cda-transit.py --dataset .local-tools/transit-official/base/islamabad.json.gz --checked-at 2026-10-17T22:41:29.300Z
+python scripts/verify-pma-transit.py --dataset .local-tools/transit-official/base/islamabad.json.gz --checked-at 2026-10-17T22:40:41.847612+00:00
+python scripts/build-transit-official-review.py --dataset .local-tools/transit-official/base/islamabad.json.gz
+python scripts/import-transit.py --supplement assets/transit/supplement.json --official-review assets/transit/official-review.json
+```
+
+Those checked instants reproduce this review; a new actual source review must use its own date. Collector `--help` explains explicit `--fetch` (CDA) / `--download` (PMA), raw directories and output paths. Compare source hashes/ordered stops/date validity before replacing the committed evidence. References have no guessed shapes/trips. Only the 306 KB normalized network asset is read by the runtime; these collectors are development tools, not client requests or production cron jobs.
 
 The Orange generator validates the pinned OSM XML checksum, derives directed paths only from relation-member highway edges and verifies each resulting edge and platform order. The normalized supplement is committed for review; raw XML remains ignored. A changed upstream OSM relation needs deliberate source/algorithm review rather than bypassing the pinned checksum. [Exact source URLs and generator evidence](TRANSIT_SOURCES.md).
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { BadgeCheck, BadgeMinus, BarChart3, Bell, Camera, Car, Check, ChevronRight, Fuel, History, Inbox, Map, Moon, Pencil, ShieldCheck, Sun, UserRound, X, type LucideIcon } from 'lucide-react';
+import { BadgeCheck, BadgeMinus, BarChart3, Bell, Camera, Car, Check, ChevronRight, FileText, Fuel, History, Inbox, LockKeyhole, Map, Moon, Pencil, ShieldCheck, Sun, UserRound, X, type LucideIcon } from 'lucide-react';
 import type { AppState, FrequentRouteProposal, LocalProfile } from '../../shared/types';
 import { api, send } from '../lib/api';
 import { t } from '../lib/language';
@@ -13,6 +13,7 @@ import VehicleSettings from './VehicleSettings';
 import FuelPrices from './FuelPrices';
 import ProfileSettingsDialog, { profileSectionTitle, type ProfileSection } from './ProfileSettingsDialog';
 import PakistanCitySelect from './PakistanCitySelect';
+import LegalPolicy from './LegalPolicy';
 export type { ProfileSection } from './ProfileSettingsDialog';
 
 interface Props { account?: AccountUser | null; onSignOut?: () => void; personalFeaturesAvailable?: boolean; onSignIn?: () => void; onTour?: () => void; state: AppState; reload: () => Promise<void>; notify: (text: string) => void; onSources: () => void; onActivity: () => void; onStatistics?: () => void; section?: ProfileSection | null; onSectionChange?: (section: ProfileSection | null) => void; onSaveProposal: (proposal: FrequentRouteProposal) => Promise<void> }
@@ -90,7 +91,7 @@ export default function ProfilePanel({ account, onSignOut, personalFeaturesAvail
     catch (e) { if (owner === getAuthSession().user?.uid && generation === panelGeneration.current) setError(e instanceof Error ? e.message : 'Could not enable notifications.'); }
     finally { if (owner === getAuthSession().user?.uid) { setPermission(notificationPermission()); setBusy(false); } }
   }
-  const ownDialog = activeSection && activeSection !== 'statistics' && activeSection !== 'history' && (personalFeaturesAvailable || activeSection === 'appearance' || activeSection === 'fuel') ? activeSection : null;
+  const ownDialog = activeSection && activeSection !== 'statistics' && activeSection !== 'history' && (personalFeaturesAvailable || ['appearance', 'fuel', 'terms', 'privacy'].includes(activeSection)) ? activeSection : null;
   const pending = busy || preparingPhoto;
   const mapName = t(profile.mapStyle === 'minimal' ? 'Minimal' : profile.mapStyle === 'night' ? 'Night' : 'Classic');
   function settingsRow(key: ProfileSection, Icon: LucideIcon, summary: string, badge?: string) {
@@ -116,8 +117,13 @@ export default function ProfilePanel({ account, onSignOut, personalFeaturesAvail
       {settingsRow('appearance', Sun, `${t(profile.theme === 'light' ? 'Light' : !profile.theme || profile.theme === 'dark' ? 'Dark' : 'System')} · ${mapName} · ${language === 'ur' ? 'اردو' : 'English'}`)}
       {personalFeaturesAvailable && settingsRow('alerts', Bell, t(profile.browserNotifications ? 'Browser notifications on' : 'Browser notifications off'))}
     </nav>
+    <nav className="profile-settings-menu profile-legal-menu" aria-label={t('Policies')}>
+      {settingsRow('terms', FileText, t('Using Manzil'))}
+      {settingsRow('privacy', LockKeyhole, t('Your data & controls'))}
+    </nav>
     <section className="profile-utilities"><button className="settings-link" onClick={onTour}><UserRound size={19} /><span>{t('Replay tour')}</span><ChevronRight size={18} /></button>{role === 'admin' && <button className="settings-link" onClick={onSources}><Inbox size={20} /><span>{t('Source updates & collector')}</span><ChevronRight size={18} /></button>}{AUTH_MODE === 'development' && <p className="small muted">{t('Development accounts share this local workspace.')}</p>}</section>
     {ownDialog && <ProfileSettingsDialog section={ownDialog} onClose={closeSection}>
+      {(ownDialog === 'terms' || ownDialog === 'privacy') && <LegalPolicy kind={ownDialog} onPolicyChange={openSection} />}
       {busy && <p className="small muted" role="status">{t('Saving changes…')}</p>}{preparingPhoto && <p className="small muted" role="status">{t('Preparing photo…')}</p>}{error && <div className="error-box" role="alert">{t(error)}</div>}
       {ownDialog === 'identity' && <form className="profile-details-form" aria-label={t('Edit profile')} aria-busy={pending} onSubmit={event => { event.preventDefault(); if (!pending) void saveProfile(); }}>
         <div className="profile-edit-photo"><span className="profile-avatar">{photoDraft ? <img src={photoDraft} alt={t('Your profile photo')} /> : name.trim().slice(0, 1).toUpperCase()}</span><div className="profile-photo-actions"><label className="secondary-button"><Camera size={17} />{t('Change photo')}<input type="file" accept="image/jpeg,image/png,image/webp" aria-label={t('Choose profile photo')} disabled={pending} onChange={event => { void photo(event.target.files?.[0]); event.target.value = ''; }} /></label>{photoDraft && <button type="button" className="text-button" disabled={pending} onClick={() => setPhotoDraft('')}>{t('Remove photo')}</button>}</div></div>

@@ -30,6 +30,19 @@ describe('local buses, stop order, timetable and restriction validation',()=>{
     data.trips[0].pickupAllowed![0]=true;data.trips[0].dropOffAllowed![2]=false;expect(planTransit(data,request(data),[],[],0,0).options).toHaveLength(0);
     data.patterns[0].restrictedAccess=true;expect(planTransit(data,request(data),[],[],0,0).options).toHaveLength(0);
   });
+  it('keeps a source-conflicted pattern visible as uncertain but excludes it from planning without suppressing the verified corridor',async()=>{
+    const data=transitFixture(),store=new Store(':memory:');try{
+      data.patterns[0].routingUnavailableReason='Official partial pattern conflicts with the ordered full corridor.';
+      expect(planTransit(data,request(data),[],[],0,0).options).toHaveLength(0);
+      const network=await new TransitService(store,()=>data).network(TRANSIT_AT);expect(network.patterns[0].routingUnavailableReason).toContain('conflicts');expect(network.statuses[0]).toMatchObject({availability:'uncertain',disruptionIds:[],closureIds:[]});
+      data.routes.push({...data.routes[0],id:'full-corridor'});data.patterns.push({...data.patterns[0],id:'p-correct',routeId:'full-corridor',routingUnavailableReason:undefined});data.trips.push({...data.trips[0],id:'t-correct',patternId:'p-correct'});
+      expect(planTransit(data,request(data),[],[],0,0).options[0].legs.filter(leg=>leg.kind==='ride').map(leg=>leg.patternId)).toEqual(['p-correct']);
+    }finally{store.close();}
+  });
+  it('carries scoped official-source differences into an otherwise eligible ride without claiming the whole line is suspended',()=>{
+    const data=transitFixture();data.routes[0].officialReview={checkedAt:TRANSIT_AT,status:'differences',summary:'An official document differs on an older stop name.',references:[{label:'Official reference',url:'https://example.test/reference'}]};
+    const result=planTransit(data,request(data),[],[],0,0);expect(result.options[0].warnings).toContain('Official sources differ from this route snapshot; check the linked references before travelling.');
+  });
   it('checks a road closure at bus traversal time, not only at departure, and ignores unpublished reports',()=>{
     const data=transitFixture();expect(planTransit(data,request(data),[transitClosure()],[],0,0).options).toHaveLength(0);
     expect(planTransit(data,request(data),[transitClosure('2026-10-18T03:31:00Z','2026-10-18T04:00:00Z')],[],0,0).options).toHaveLength(1);

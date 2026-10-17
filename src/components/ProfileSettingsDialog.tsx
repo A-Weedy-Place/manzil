@@ -3,11 +3,12 @@ import { X } from 'lucide-react';
 import { t } from '../lib/language';
 import Modal from './Modal';
 
-export type ProfileSection = 'identity' | 'vehicle' | 'data' | 'appearance' | 'alerts' | 'fuel' | 'statistics' | 'history';
+export type ProfileSection = 'identity' | 'vehicle' | 'data' | 'appearance' | 'alerts' | 'fuel' | 'statistics' | 'history' | 'terms' | 'privacy';
 export const profileSectionTitle: Record<ProfileSection, string> = {
   identity: 'Personal information', vehicle: 'Your vehicle', data: 'Personal trip data',
   appearance: 'Appearance & language', alerts: 'Journey alerts', fuel: 'Fuel prices',
   statistics: 'Personal statistics', history: 'Trip history',
+  terms: 'Terms & Conditions', privacy: 'Privacy Policy',
 };
 
 /** One adjacent, keyboard-accessible panel for every personal setting. */

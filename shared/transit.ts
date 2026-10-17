@@ -2,9 +2,10 @@ import type { LineString } from 'geojson';
 import type { ClosureAuthor, Coordinate, Place } from './types.js';
 
 export interface TransitSource { id: string; name: string; url: string; license: string; retrievedAt: string; limitations: string[] }
-export interface TransitRoute { id: string; shortName: string; name: string; agency: string; color: string; sourceId: string; coverage: 'stops-and-shape' | 'stops-only' | 'catalogue-only'; unplacedStopNames?: string[] }
+export interface TransitOfficialReview { checkedAt: string; status: 'consistent' | 'differences' | 'reference-only' | 'not-established'; summary: string; references: { label: string; url: string }[] }
+export interface TransitRoute { id: string; shortName: string; name: string; agency: string; color: string; sourceId: string; coverage: 'stops-and-shape' | 'stops-only' | 'catalogue-only'; unplacedStopNames?: string[]; officialReview?: TransitOfficialReview }
 export interface TransitStop { id: string; name: string; coordinate: Coordinate }
-export interface TransitPattern { id: string; routeId: string; directionId: string; headsign: string; stopIds: string[]; geometry: LineString; geometryQuality: 'provided-shape' | 'mapped-corridor' | 'stops-only'; geometrySegments?: LineString[]; breakAfterStopIndexes?: number[]; unplacedStops?: string[]; restrictedAccess?: boolean; /** Distance along supplied shape for each stop, metres. Optional importer convenience. */ stopDistancesMeters?: number[] }
+export interface TransitPattern { id: string; routeId: string; directionId: string; headsign: string; stopIds: string[]; geometry: LineString; geometryQuality: 'provided-shape' | 'mapped-corridor' | 'stops-only'; geometrySegments?: LineString[]; breakAfterStopIndexes?: number[]; unplacedStops?: string[]; restrictedAccess?: boolean; /** A documented source conflict can leave a pattern visible without making it routable. */ routingUnavailableReason?: string; /** Distance along supplied shape for each stop, metres. Optional importer convenience. */ stopDistancesMeters?: number[] }
 export interface TransitCalendar { id: string; startDate: string; endDate: string; weekdays: number[]; exceptions: { date: string; added: boolean }[] }
 /** GTFS service-day seconds, including times greater than 24:00. */
 export interface TransitTrip { id: string; patternId: string; serviceId: string; times: [number, number][]; pickupAllowed?: boolean[]; dropOffAllowed?: boolean[]; timepoint?: boolean[] }

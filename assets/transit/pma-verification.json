@@ -1,0 +1,1063 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-10-17T22:40:41.847612+00:00",
+  "datasetVersion": "pakbus-2026-10-17-a17c931a9d85-81b022db",
+  "normalizedDatasetSha256": "1e53bef0c7f17f5290ff21d126d8dfd88f4e0e30056b9d37cd6a59ac7a902832",
+  "officialDomain": "https://pma.punjab.gov.pk",
+  "publicPortal": "https://etransit.punjab.gov.pk/public/route-planner?city=97",
+  "accessMethod": "Unauthenticated public homepage/planner requests explicitly used by the publisher web client; no login, keys or bypass.",
+  "license": "No bulk redistribution/open-data licence identified; this is a source-verification audit, not operator GTFS or a live service certificate.",
+  "scope": [
+    "route endpoints",
+    "ordered source stop names",
+    "coordinates as published including defects",
+    "returned-date schedule summaries only"
+  ],
+  "notVerified": [
+    "physical platform placement",
+    "street geometry",
+    "actual vehicle operation",
+    "real-time arrivals",
+    "future schedule validity"
+  ],
+  "catalogue": {
+    "url": "https://etransit.punjab.gov.pk/repo/backend/public/api/home-page/districts-with-lines?page=planner",
+    "sha256": "d67e4331ed831703b1f78120907f469e135241b750b8ea9a28a486c8c9f9de5a",
+    "districtId": 97,
+    "evLineId": 26,
+    "metroLineId": 30,
+    "rawalpindiRouteCount": 10
+  },
+  "conflicts": [
+    {
+      "id": "ev2-rahimabad-return",
+      "routeId": "bbjvx",
+      "patternId": "eqyn8",
+      "officialRouteId": 140,
+      "officialStopId": 2061,
+      "officialSequence": 9,
+      "coordinate": [
+        74.236084,
+        31.44535
+      ],
+      "status": "official-source-defect-persists",
+      "action": "Retain excluded/unplaced stop and routing gap. Opposite-direction stop2059 is not a verified replacement."
+    },
+    {
+      "id": "rlrt03-stop-order",
+      "routeId": "csvb2",
+      "patternIds": [
+        "vtvpb",
+        "me5tv"
+      ],
+      "officialMainRouteId": 537,
+      "status": "official-source-conflicts-with-full-corridor",
+      "action": "Partial service places IJP/Potohar in opposite order to full PMBS136 and official PMBS map. Exclude partial-service journey planning pending verification rather than guess a reordered route."
+    }
+  ],
+  "routes": [
+    {
+      "routeId": "bhtqx",
+      "sourceCode": "EV05101",
+      "officialMainRouteId": 91,
+      "lineId": 26,
+      "url": "https://etransit.punjab.gov.pk/public/route-planner?city=97&line=26",
+      "readOnlyDataRequest": {
+        "method": "POST",
+        "url": "https://etransit.punjab.gov.pk/repo/backend/public/api/home-page/get-line-schedules",
+        "body": {
+          "line_id": 26,
+          "main_route_id": 91
+        }
+      },
+      "rawSha256": "63726b2c79a46eb20fc874940e80de33e01532cb67832f4e2c735f4de2a016b2",
+      "reviewStatus": "official-stop-records-match-publisher-snapshot",
+      "directions": [
+        {
+          "patternId": "nvej4",
+          "officialDirection": "forward",
+          "officialDirectionId": 137,
+          "title": "Rawalpindi Railway Station To Hamrahi Stop",
+          "sourceStopCount": 15,
+          "matchingPublisherCoordinates": 15,
+          "publisherStopCount": 15,
+          "schedule": {
+            "returnedDate": "2026-10-18",
+            "count": 97,
+            "first": "2026-10-18 06:00:00",
+            "last": "2026-10-18 22:00:00",
+            "firstExamples": [
+              "2026-10-18 06:00:00",
+              "2026-10-18 06:10:00",
+              "2026-10-18 06:20:00"
+            ],
+            "confidence": "Publisher records only; not real-time or complete-service guarantee"
+          },
+          "usableCoordinateSha256": "90f9dd8eec40a0b005a7ff95f1f1c0f512135686efdaf2bf71d9d0ba42ec0576",
+          "stopNames": [
+            "Rawalpindi Railway Station Up",
+            "Station Mor Up",
+            "GPO Chowk, Rawalpindi Up",
+            "Saddar Stop Up",
+            "Sarwar Park Up",
+            "Adiala Park Up",
+            "Katchery Up",
+            "Golf Club Up",
+            "Ayub National Park Up",
+            "Sports Complex Up",
+            "Morgah Stop Up",
+            "Al Shifa Trust Eye Hospital Up",
+            "Fouji Foundation Hospital Up",
+            "High Court Up",
+            "Hamrahi Bus Stop Up"
+          ],
+          "unusableStops": []
+        },
+        {
+          "patternId": "tfd28",
+          "officialDirection": "backward",
+          "officialDirectionId": 138,
+          "title": "Hamrahi Stop To Rawalpindi Railway Station",
+          "sourceStopCount": 15,
+          "matchingPublisherCoordinates": 15,
+          "publisherStopCount": 15,
+          "schedule": {
+            "returnedDate": "2026-10-18",
+            "count": 97,
+            "first": "2026-10-18 06:50:00",
+            "last": "2026-10-18 22:50:00",
+            "firstExamples": [
+              "2026-10-18 06:50:00",
+              "2026-10-18 07:00:00",
+              "2026-10-18 07:10:00"
+            ],
+            "confidence": "Publisher records only; not real-time or complete-service guarantee"
+          },
+          "usableCoordinateSha256": "bb37df24bcc2ead3dabce59d86f19e85df8a3d179b8d47368bb18403cb910b3d",
+          "stopNames": [
+            "Hamrahi Bus Stop Down",
+            "High Court Down",
+            "Fouji Foundation Hospital Down",
+            "Al Shifa Trust Eye Hospital Down",
+            "Morgah Stop Down",
+            "Sports Complex Down",
+            "Ayub National Park Down",
+            "Golf Club Down",
+            "Katchery Down",
+            "Adiala Park Down",
+            "Sarwar Park Down",
+            "Saddar Stop Down",
+            "GPO Chowk, Rawalpindi Down",
+            "Station Mor Down",
+            "Rawalpindi Railway Station  Down"
+          ],
+          "unusableStops": []
+        }
+      ]
+    },
+    {
+      "routeId": "bbjvx",
+      "sourceCode": "EV05102",
+      "officialMainRouteId": 92,
+      "lineId": 26,
+      "url": "https://etransit.punjab.gov.pk/public/route-planner?city=97&line=26",
+      "readOnlyDataRequest": {
+        "method": "POST",
+        "url": "https://etransit.punjab.gov.pk/repo/backend/public/api/home-page/get-line-schedules",
+        "body": {
+          "line_id": 26,
+          "main_route_id": 92
+        }
+      },
+      "rawSha256": "bebaeee50f2c062312a1529698b98618d00df478030b02846f155b9c0ee77ebb",
+      "reviewStatus": "official-stop-records-match-publisher-snapshot",
+      "directions": [
+        {
+          "patternId": "ap3cz",
+          "officialDirection": "forward",
+          "officialDirectionId": 139,
+          "title": "Fawara Chowk to Koral Chowk",
+          "sourceStopCount": 20,
+          "matchingPublisherCoordinates": 20,
+          "publisherStopCount": 20,
+          "schedule": {
+            "returnedDate": "2026-10-18",
+            "count": 84,
+            "first": "2026-10-18 05:30:00",
+            "last": "2026-10-18 22:00:00",
+            "firstExamples": [
+              "2026-10-18 05:30:00",
+              "2026-10-18 05:40:00",
+              "2026-10-18 05:50:00"
+            ],
+            "confidence": "Publisher records only; not real-time or complete-service guarantee"
+          },
+          "usableCoordinateSha256": "ded82e31cfe6b999f93d5caec0569a6cbd7ac3a6978c89b02aa29d3cb92e8814",
+          "stopNames": [
+            "Rwp Fawara Chowk Up",
+            "Gawalmandi Up",
+            "Liaqat Bagh Station Up",
+            "Marrir Chowk Metrobus Up",
+            "Marrir Hassan Stop Up",
+            "Punjab House Up",
+            "Katchery Stop Up",
+            "Jinah Park Up",
+            "Jhanda Chichi Up",
+            "Ammar Chowk Up",
+            "Rahimabad Up",
+            "Umar Baig Chowk Up",
+            "Chaklala Stop Up",
+            "ANF Stop Up",
+            "NASTP Up",
+            "Old Airport Up",
+            "Shah Khalid Colony Up",
+            "MAZEN School Quaid Campus Up",
+            "Gulzar e Quaid Up",
+            "Koral Chowk Up"
+          ],
+          "unusableStops": []
+        },
+        {
+          "patternId": "eqyn8",
+          "officialDirection": "backward",
+          "officialDirectionId": 140,
+          "title": "Koral Chowk to Fawara Chowk",
+          "sourceStopCount": 20,
+          "matchingPublisherCoordinates": 20,
+          "publisherStopCount": 20,
+          "schedule": {
+            "returnedDate": "2026-10-18",
+            "count": 84,
+            "first": "2026-10-18 06:35:00",
+            "last": "2026-10-18 23:05:00",
+            "firstExamples": [
+              "2026-10-18 06:35:00",
+              "2026-10-18 06:45:00",
+              "2026-10-18 06:55:00"
+            ],
+            "confidence": "Publisher records only; not real-time or complete-service guarantee"
+          },
+          "usableCoordinateSha256": "6305e02d2df6640541abea7b2836444d9f93cbaedbb74f64a440aa4308d38ecc",
+          "stopNames": [
+            "Koral Chowk Down",
+            "Gulzar e Quaid Down",
+            "MAZEN School Quaid Campus Down",
+            "Shah Khalid Colony Down",
+            "Old Airport Down",
+            "NASTP Down",
+            "ANF Stop Down",
+            "Chaklala Stop Down",
+            "Umar Baig Chowk Down",
+            "Rahimabad Down",
+            "Ammar Chowk Down",
+            "Jhanda Chichi Down",
+            "Jinah Park Down",
+            "Katchery Stop Down",
+            "Punjab House Down",
+            "Marrir Hassan Stop Down",
+            "Marrir Chowk Metrobus Down",
+            "Liaqat Bagh Station Down",
+            "Gawalmandi Down",
+            "Rwp Fawara Chowk Down"
+          ],
+          "unusableStops": [
+            "Rahimabad Down"
+          ]
+        }
+      ]
+    },
+    {
+      "routeId": "y86sm",
+      "sourceCode": "EV05104",
+      "officialMainRouteId": 93,
+      "lineId": 26,
+      "url": "https://etransit.punjab.gov.pk/public/route-planner?city=97&line=26",
+      "readOnlyDataRequest": {
+        "method": "POST",
+        "url": "https://etransit.punjab.gov.pk/repo/backend/public/api/home-page/get-line-schedules",
+        "body": {
+          "line_id": 26,
+          "main_route_id": 93
+        }
+      },
+      "rawSha256": "dd4a2abd7fe0e28b6128223e6eecb0a2eb3957cbb4373e24b3418dd6f46c5244",
+      "reviewStatus": "official-stop-records-match-publisher-snapshot",
+      "directions": [
+        {
+          "patternId": "kq9fh",
+          "officialDirection": "forward",
+          "officialDirectionId": 141,
+          "title": "Saddar Metrobus Station to Munawar Colony",
+          "sourceStopCount": 12,
+          "matchingPublisherCoordinates": 12,
+          "publisherStopCount": 12,
+          "schedule": {
+            "returnedDate": "2026-10-18",
+            "count": 82,
+            "first": "2026-10-18 05:55:00",
+            "last": "2026-10-18 22:10:00",
+            "firstExamples": [
+              "2026-10-18 05:55:00",
+              "2026-10-18 06:05:00",
+              "2026-10-18 06:15:00"
+            ],
+            "confidence": "Publisher records only; not real-time or complete-service guarantee"
+          },
+          "usableCoordinateSha256": "91e0d5624a7d624507e280f9a3f8d4965d2f1ba27dd8dde1ebaef60358ce88d4",
+          "stopNames": [
+            "Saddar Metro Station Up",
+            "CSD Up",
+            "CMH Gate No 2 Up",
+            "Dheri Hasanabad-1 Up",
+            "Dheri Hasanabad-2 Up",
+            "Mahfooz Shaheed Park Up",
+            "Zia Ul Haq Park Up",
+            "Askari VII Up",
+            "Khawja Corporation Up",
+            "Dharma Syedan Up",
+            "Ali Town Up",
+            "Munawar Colony Up"
+          ],
+          "unusableStops": []
+        },
+        {
+          "patternId": "k64rt",
+          "officialDirection": "backward",
+          "officialDirectionId": 142,
+          "title": "Munawar Colony to Saddar Metrobus Station",
+          "sourceStopCount": 12,
+          "matchingPublisherCoordinates": 12,
+          "publisherStopCount": 12,
+          "schedule": {
+            "returnedDate": "2026-10-18",
+            "count": 82,
+            "first": "2026-10-18 06:35:00",
+            "last": "2026-10-18 22:50:00",
+            "firstExamples": [
+              "2026-10-18 06:35:00",
+              "2026-10-18 06:45:00",
+              "2026-10-18 06:55:00"
+            ],
+            "confidence": "Publisher records only; not real-time or complete-service guarantee"
+          },
+          "usableCoordinateSha256": "d50c4f0106b138f571a62f24f8b629086d4f7f4630d77969856305f9515d0c01",
+          "stopNames": [
+            "Munawar Colony Down",
+            "Ali Town Down",
+            "Dharma Syedan Down",
+            "Khawja Corporation Down",
+            "Askari VII  Down",
+            "Zia Ul Haq Park Down",
+            "Mahfooz Shaheed Park Down",
+            "Dheri Hasanabad-2 Down",
+            "Dheri Hasanabad-1 Down",
+            "CMH Gate No 2 Down",
+            "CSD Down",
+            "Saddar Metro Station Down"
+          ],
+          "unusableStops": []
+        }
+      ]
+    },
+    {
+      "routeId": "p4bp5",
+      "sourceCode": "EV05105",
+      "officialMainRouteId": 94,
+      "lineId": 26,
+      "url": "https://etransit.punjab.gov.pk/public/route-planner?city=97&line=26",
+      "readOnlyDataRequest": {
+        "method": "POST",
+        "url": "https://etransit.punjab.gov.pk/repo/backend/public/api/home-page/get-line-schedules",
+        "body": {
+          "line_id": 26,
+          "main_route_id": 94
+        }
+      },
+      "rawSha256": "a60bb18194c6fe7543be99b70f7ecf5ba175ba7d8e142f9acbc9060ef9676bef",
+      "reviewStatus": "official-stop-records-match-publisher-snapshot",
+      "directions": [
+        {
+          "patternId": "nf4fg",
+          "officialDirection": "forward",
+          "officialDirectionId": 143,
+          "title": "Marrir Metrobus Station to Motorway Chowk 26 No",
+          "sourceStopCount": 22,
+          "matchingPublisherCoordinates": 22,
+          "publisherStopCount": 22,
+          "schedule": {
+            "returnedDate": "2026-10-18",
+            "count": 2,
+            "first": "2026-10-18 05:00:00",
+            "last": "2026-10-18 05:01:00",
+            "firstExamples": [
+              "2026-10-18 05:00:00",
+              "2026-10-18 05:01:00"
+            ],
+            "confidence": "Publisher records only; not real-time or complete-service guarantee",
+            "warning": "Sparse/suspicious placeholder-like records. Keep untimed rather than infer all-day service."
+          },
+          "usableCoordinateSha256": "145f58e834982abfeb4e6e8d933d1397f78d337b6efe94df9e6f9027beee202e",
+          "stopNames": [
+            "Marrir Metrobus Station Up",
+            "Kamran Market Up",
+            "GPO Stop, Rawalpindi Up",
+            "MH Up",
+            "Roomi Park Up",
+            "Qasim Market Up",
+            "Radio Pakistan Up",
+            "Lane No 4 Up",
+            "Chairing Cross Up",
+            "Chur Chowk Up",
+            "Chur Harpal Up",
+            "Model Bazar Up",
+            "Kainat Bus Terminal Up",
+            "Pir Wadahi Mor Up",
+            "Kohinoor Bus Terminal Up",
+            "Kohinoor Mills Up",
+            "Chistianabad Up",
+            "Golra Mor Up",
+            "Daewoo Bus Terminal Up",
+            "Jhangi Syedan Up",
+            "Motorway Bus Terminal Up",
+            "Motorway Chowk (26 No) Up"
+          ],
+          "unusableStops": []
+        },
+        {
+          "patternId": "ftswb",
+          "officialDirection": "backward",
+          "officialDirectionId": 144,
+          "title": "Motorway Chowk 26 No to Marrir Metrobus Station",
+          "sourceStopCount": 22,
+          "matchingPublisherCoordinates": 22,
+          "publisherStopCount": 22,
+          "schedule": {
+            "returnedDate": "2026-10-18",
+            "count": 2,
+            "first": "2026-10-18 05:00:00",
+            "last": "2026-10-18 05:01:00",
+            "firstExamples": [
+              "2026-10-18 05:00:00",
+              "2026-10-18 05:01:00"
+            ],
+            "confidence": "Publisher records only; not real-time or complete-service guarantee",
+            "warning": "Sparse/suspicious placeholder-like records. Keep untimed rather than infer all-day service."
+          },
+          "usableCoordinateSha256": "de25b226b658dfd42c7fb03e20bd77e4bd43ae06067632c6c5eecbb6c9ce7bad",
+          "stopNames": [
+            "Motorway Chowk (26 No) Down",
+            "Motorway Bus Terminal Down",
+            "Jhangi Syedan Down",
+            "Daewoo Bus Terminal Down",
+            "Golra Mor Down",
+            "Chistianabad Down",
+            "Kohinoor Mills Down",
+            "Kohinoor Bus Terminal Down",
+            "Pir Wadahi Mor Down",
+            "Kainat Bus Terminal Down",
+            "Model Bazar Down",
+            "Chur Harpal Down",
+            "Chur Chowk Down",
+            "Chairing Cross Down",
+            "Lane No 4 Down",
+            "Radio Pakistan Down",
+            "Qasim Market Down",
+            "Roomi Park Down",
+            "MH Down",
+            "GPO Stop, Rawalpindi Down",
+            "Kamran Market Down",
+            "Marrir Metrobus Station Down"
+          ],
+          "unusableStops": []
+        }
+      ]
+    },
+    {
+      "routeId": "dfneb",
+      "sourceCode": "EV05109",
+      "officialMainRouteId": 99,
+      "lineId": 26,
+      "url": "https://etransit.punjab.gov.pk/public/route-planner?city=97&line=26",
+      "readOnlyDataRequest": {
+        "method": "POST",
+        "url": "https://etransit.punjab.gov.pk/repo/backend/public/api/home-page/get-line-schedules",
+        "body": {
+          "line_id": 26,
+          "main_route_id": 99
+        }
+      },
+      "rawSha256": "cfaeb8d32e4241513c89286ee6d97b67636b091df36c4cfd0820b2285ed02e66",
+      "reviewStatus": "official-stop-records-match-publisher-snapshot",
+      "directions": [
+        {
+          "patternId": "d9zrg",
+          "officialDirection": "forward",
+          "officialDirectionId": 147,
+          "title": "Umar Baig Chowk to TB Hospital",
+          "sourceStopCount": 11,
+          "matchingPublisherCoordinates": 11,
+          "publisherStopCount": 11,
+          "schedule": {
+            "returnedDate": "2026-10-18",
+            "count": 81,
+            "first": "2026-10-18 06:00:00",
+            "last": "2026-10-18 22:00:00",
+            "firstExamples": [
+              "2026-10-18 06:00:00",
+              "2026-10-18 06:10:00",
+              "2026-10-18 06:20:00"
+            ],
+            "confidence": "Publisher records only; not real-time or complete-service guarantee"
+          },
+          "usableCoordinateSha256": "a41e3b2ffc4a895abc5c2a0d5168d1c136c02e017d7bb9dfcffa0eb437eb1187",
+          "stopNames": [
+            "Umar Baig Chowk Up",
+            "Fauji Tower Stop Up",
+            "PAF Chowk Up",
+            "Rawalpindi Institute of Cardiology Up",
+            "Qureshi Mor Up",
+            "Chah Sultan Up",
+            "Chandni Chowk Metrobus Station Up",
+            "Pine Banquet Hall Up",
+            "Asghar Mall Main Chowk Up",
+            "Eid Gah Sharif Up",
+            "T.B Hospital Up"
+          ],
+          "unusableStops": []
+        },
+        {
+          "patternId": "dh7gf",
+          "officialDirection": "backward",
+          "officialDirectionId": 148,
+          "title": "TB Hospital to Umar Baig Chowk",
+          "sourceStopCount": 11,
+          "matchingPublisherCoordinates": 11,
+          "publisherStopCount": 11,
+          "schedule": {
+            "returnedDate": "2026-10-18",
+            "count": 81,
+            "first": "2026-10-18 06:50:00",
+            "last": "2026-10-18 22:50:00",
+            "firstExamples": [
+              "2026-10-18 06:50:00",
+              "2026-10-18 07:00:00",
+              "2026-10-18 07:10:00"
+            ],
+            "confidence": "Publisher records only; not real-time or complete-service guarantee"
+          },
+          "usableCoordinateSha256": "d24cba00878e28f40a51cd12edce2df727cbd41a9aa5a9db10ff40093be6e029",
+          "stopNames": [
+            "T.B Hospital Down",
+            "Eid Gah Sharif Down",
+            "Asghar Mall Main Chowk Down",
+            "Pine Banquet Hall Down",
+            "Chandni Chowk Metrobus Station Down",
+            "Chah Sultan Down",
+            "Qureshi Mor Down",
+            "Rawalpindi Institute of Cardiology Down",
+            "PAF Chowk Down",
+            "Fauji Tower Stop Down",
+            "Umar Baig Chowk Down"
+          ],
+          "unusableStops": []
+        }
+      ]
+    },
+    {
+      "routeId": "ch88m",
+      "sourceCode": "EV05110",
+      "officialMainRouteId": 100,
+      "lineId": 26,
+      "url": "https://etransit.punjab.gov.pk/public/route-planner?city=97&line=26",
+      "readOnlyDataRequest": {
+        "method": "POST",
+        "url": "https://etransit.punjab.gov.pk/repo/backend/public/api/home-page/get-line-schedules",
+        "body": {
+          "line_id": 26,
+          "main_route_id": 100
+        }
+      },
+      "rawSha256": "0f2642cb584d4edc06544f0a6167eab39d5ffba2e9a80161a62214de97e86f3a",
+      "reviewStatus": "official-stop-records-match-publisher-snapshot",
+      "directions": [
+        {
+          "patternId": "qpwrb",
+          "officialDirection": "forward",
+          "officialDirectionId": 145,
+          "title": "Saddar Stop to Qabristan Chowk",
+          "sourceStopCount": 13,
+          "matchingPublisherCoordinates": 13,
+          "publisherStopCount": 13,
+          "schedule": {
+            "returnedDate": "2026-10-18",
+            "count": 1,
+            "first": "2026-10-18 04:00:00",
+            "last": "2026-10-18 04:00:00",
+            "firstExamples": [
+              "2026-10-18 04:00:00"
+            ],
+            "confidence": "Publisher records only; not real-time or complete-service guarantee",
+            "warning": "Sparse/suspicious placeholder-like records. Keep untimed rather than infer all-day service."
+          },
+          "usableCoordinateSha256": "d19dac7059d6e067fabadd5c21c56b34710b8e6f744918d994fa10613c0436b5",
+          "stopNames": [
+            "Saddar Stop Up",
+            "GPO Chowk, Rawalpindi Up",
+            "MH Stop Up",
+            "Qasim Market Stop Up",
+            "Askari 11 Up",
+            "Farid Family Hospital Up",
+            "Afzal Town Lane No 4 Up",
+            "Malik Azam Street Up",
+            "Noor Hospital Up",
+            "Hakeem Plaza Street No 4 Up",
+            "Misriyal Chowk Up",
+            "Qabristan Chowk Up",
+            "Qabristan Chowk Down"
+          ],
+          "unusableStops": []
+        },
+        {
+          "patternId": "bmc3b",
+          "officialDirection": "backward",
+          "officialDirectionId": 146,
+          "title": "Qabristan Chowk to Saddar Stop",
+          "sourceStopCount": 12,
+          "matchingPublisherCoordinates": 12,
+          "publisherStopCount": 12,
+          "schedule": {
+            "returnedDate": "2026-10-18",
+            "count": 1,
+            "first": "2026-10-18 04:00:00",
+            "last": "2026-10-18 04:00:00",
+            "firstExamples": [
+              "2026-10-18 04:00:00"
+            ],
+            "confidence": "Publisher records only; not real-time or complete-service guarantee",
+            "warning": "Sparse/suspicious placeholder-like records. Keep untimed rather than infer all-day service."
+          },
+          "usableCoordinateSha256": "612a3d6bc41b581b44b49a7a82cb84f147d31fdb557630ede2314797bba6a045",
+          "stopNames": [
+            "Qabristan Chowk Down",
+            "Misriyal Chowk Down",
+            "Hakeem Plaza Street No 4 Down",
+            "Noor Hospital Down",
+            "Malik Azam Street Down",
+            "Afzal Town Lane No 4 Down",
+            "Farid Family Hospital Down",
+            "Askari 11 Down",
+            "Qasim Market Stop Down",
+            "MH Stop Down",
+            "GPO Chowk, Rawalpindi Down",
+            "Saddar Stop Down"
+          ],
+          "unusableStops": []
+        }
+      ]
+    },
+    {
+      "routeId": "ja8z3",
+      "sourceCode": "EV0511A",
+      "officialMainRouteId": 172,
+      "lineId": 26,
+      "url": "https://etransit.punjab.gov.pk/public/route-planner?city=97&line=26",
+      "readOnlyDataRequest": {
+        "method": "POST",
+        "url": "https://etransit.punjab.gov.pk/repo/backend/public/api/home-page/get-line-schedules",
+        "body": {
+          "line_id": 26,
+          "main_route_id": 172
+        }
+      },
+      "rawSha256": "5423f8f0c92118c76279a057c6eb01629e412254a9ee773a7b5bb46f262d0f01",
+      "reviewStatus": "official-stop-records-match-publisher-snapshot",
+      "directions": [
+        {
+          "patternId": "krwaj",
+          "officialDirection": "forward",
+          "officialDirectionId": 275,
+          "title": "Saddar Stop to Bhatta Chowk",
+          "sourceStopCount": 16,
+          "matchingPublisherCoordinates": 16,
+          "publisherStopCount": 16,
+          "schedule": {
+            "returnedDate": "2026-10-18",
+            "count": 2,
+            "first": "2026-10-18 05:00:00",
+            "last": "2026-10-18 05:01:00",
+            "firstExamples": [
+              "2026-10-18 05:00:00",
+              "2026-10-18 05:01:00"
+            ],
+            "confidence": "Publisher records only; not real-time or complete-service guarantee",
+            "warning": "Sparse/suspicious placeholder-like records. Keep untimed rather than infer all-day service."
+          },
+          "usableCoordinateSha256": "ae21b1ca66c5bd84f210463c12ede515a9b6078205db82abb13b86edafb743a2",
+          "stopNames": [
+            "Saddar Stop Up",
+            "GPO Chowk, Rawalpindi Up",
+            "MH Stop Up",
+            "Qasim Market Stop Up",
+            "Askari 11 Up",
+            "Farid Family Hospital Up",
+            "Afzal Town Lane No 4 Up",
+            "Malik Azam Street Up",
+            "Noor Hospital Up",
+            "Hakeem Plaza Street No 4 Up",
+            "Islamic Nazriyati Council Up",
+            "Misriyal Chowk Up",
+            "Qabristan Chowk Up",
+            "PSO Pump Up",
+            "Lane No 5 Up",
+            "Bhatta Chowk Up"
+          ],
+          "unusableStops": []
+        },
+        {
+          "patternId": "cphf7",
+          "officialDirection": "backward",
+          "officialDirectionId": 276,
+          "title": "Bhatta Chowk to Saddar Stop",
+          "sourceStopCount": 16,
+          "matchingPublisherCoordinates": 16,
+          "publisherStopCount": 16,
+          "schedule": {
+            "returnedDate": "2026-10-18",
+            "count": 2,
+            "first": "2026-10-18 05:00:00",
+            "last": "2026-10-18 05:01:00",
+            "firstExamples": [
+              "2026-10-18 05:00:00",
+              "2026-10-18 05:01:00"
+            ],
+            "confidence": "Publisher records only; not real-time or complete-service guarantee",
+            "warning": "Sparse/suspicious placeholder-like records. Keep untimed rather than infer all-day service."
+          },
+          "usableCoordinateSha256": "e6e0fa7e2a73e498b28110d06d992333e7a2907a918337a64ff511a0b20a314a",
+          "stopNames": [
+            "Bhatta Chowk Down",
+            "Lane No 5 Down",
+            "PSO Pump Down",
+            "Qabristan Chowk Down",
+            "Misriyal Chowk Down",
+            "Islamic Nazriyati Council Down",
+            "Hakeem Plaza Street No 4 Down",
+            "Noor Hospital Down",
+            "Malik Azam Street Down",
+            "Afzal Town Lane No 4 Down",
+            "Farid Family Hospital Down",
+            "Askari 11 Down",
+            "Qasim Market Stop Down",
+            "MH Stop Down",
+            "GPO Chowk, Rawalpindi Down",
+            "Saddar Stop Down"
+          ],
+          "unusableStops": []
+        }
+      ]
+    },
+    {
+      "routeId": "rqq4r",
+      "sourceCode": "RLRT01",
+      "officialMainRouteId": 136,
+      "lineId": 30,
+      "url": "https://etransit.punjab.gov.pk/public/route-planner?city=97&line=30",
+      "readOnlyDataRequest": {
+        "method": "POST",
+        "url": "https://etransit.punjab.gov.pk/repo/backend/public/api/home-page/get-line-schedules",
+        "body": {
+          "line_id": 30,
+          "main_route_id": 136
+        }
+      },
+      "rawSha256": "e62ac020d639ab8a1be4434c8e6f44f1610903ac76fcb2129529d58338fee3f7",
+      "reviewStatus": "official-stop-records-match-publisher-snapshot",
+      "directions": [
+        {
+          "patternId": "xa6yp",
+          "officialDirection": "forward",
+          "officialDirectionId": 207,
+          "title": "Saddar to Pak Secretariate",
+          "sourceStopCount": 24,
+          "matchingPublisherCoordinates": 24,
+          "publisherStopCount": 24,
+          "schedule": {
+            "returnedDate": "2026-10-18",
+            "count": 261,
+            "first": "2026-10-18 06:15:00",
+            "last": "2026-10-18 21:59:00",
+            "firstExamples": [
+              "2026-10-18 06:15:00",
+              "2026-10-18 06:23:00",
+              "2026-10-18 06:31:00"
+            ],
+            "confidence": "Publisher records only; not real-time or complete-service guarantee"
+          },
+          "usableCoordinateSha256": "fedc7840e473e94d6641a66299c700041d8d25d6f9315acc83cde69fc0565d0e",
+          "stopNames": [
+            "Saddar",
+            "Marrir Chowk",
+            "Liaquat Bagh",
+            "Committee Chowk",
+            "Waris Khan",
+            "Chandni Chowk",
+            "Rehmanabad",
+            "Sixth Road",
+            "Khatam-e-Nabuwat",
+            "Faizabad",
+            "IJP",
+            "Potohar",
+            "Khayaban-e-Johar",
+            "Faiz Ahmad Faiz",
+            "Kashmir Highway",
+            "Chaman",
+            "Ibn e Sena",
+            "Katchery.",
+            "PIMS",
+            "Stock Exchange",
+            "Seventh Avenue",
+            "Shaheed e Millat",
+            "Parade Ground",
+            "Pak Secretariat"
+          ],
+          "unusableStops": []
+        },
+        {
+          "patternId": "a8ae7",
+          "officialDirection": "backward",
+          "officialDirectionId": 208,
+          "title": "Pak Secretariate to Saddar",
+          "sourceStopCount": 24,
+          "matchingPublisherCoordinates": 24,
+          "publisherStopCount": 24,
+          "schedule": {
+            "returnedDate": "2026-10-18",
+            "count": 267,
+            "first": "2026-10-18 06:15:00",
+            "last": "2026-10-18 22:02:30",
+            "firstExamples": [
+              "2026-10-18 06:15:00",
+              "2026-10-18 06:23:00",
+              "2026-10-18 06:31:00"
+            ],
+            "confidence": "Publisher records only; not real-time or complete-service guarantee"
+          },
+          "usableCoordinateSha256": "90a82c3844618bcce308ccb92fea205ec488c7f2907651b205b7d89eb5f08322",
+          "stopNames": [
+            "Pak Secretariat Down",
+            "Parade Ground Down",
+            "Shaheed E Millat Down",
+            "Seventh Avenue Down",
+            "Stock Exchange Down",
+            "PIMS Down",
+            "Katchery Down .",
+            "Ibn e Sina Down",
+            "Chaman Down",
+            "Kashmir Highway Down",
+            "Faiz Ahmad Faiz Down",
+            "Khayaban-e-Johar Down",
+            "Potohar Down",
+            "IJP Down",
+            "Faizabad Down",
+            "Khatam-e-Nabuwat Down",
+            "Sixth Road Down",
+            "Rehmanabad Down",
+            "Chandni Chowk Down",
+            "Waris Khan Down",
+            "Committee Chowk Down",
+            "Liaquat Bagh Down",
+            "Marrir Chowk Down",
+            "Saddar Down"
+          ],
+          "unusableStops": []
+        }
+      ]
+    },
+    {
+      "routeId": "csvb2",
+      "sourceCode": "RLRT03",
+      "officialMainRouteId": 537,
+      "lineId": 30,
+      "url": "https://etransit.punjab.gov.pk/public/route-planner?city=97&line=30",
+      "readOnlyDataRequest": {
+        "method": "POST",
+        "url": "https://etransit.punjab.gov.pk/repo/backend/public/api/home-page/get-line-schedules",
+        "body": {
+          "line_id": 30,
+          "main_route_id": 537
+        }
+      },
+      "rawSha256": "68e7e0da05a6ae98363581c1bf5f88bd96d41fcdef27ae1cc509d6da560eb9fd",
+      "reviewStatus": "official-stop-records-match-publisher-snapshot",
+      "directions": [
+        {
+          "patternId": "vtvpb",
+          "officialDirection": "forward",
+          "officialDirectionId": 877,
+          "title": "Saddar to Faiz Ahmed Faiz",
+          "sourceStopCount": 14,
+          "matchingPublisherCoordinates": 14,
+          "publisherStopCount": 14,
+          "schedule": {
+            "returnedDate": "2026-10-18",
+            "count": 2,
+            "first": "2026-10-18 05:00:00",
+            "last": "2026-10-18 05:01:00",
+            "firstExamples": [
+              "2026-10-18 05:00:00",
+              "2026-10-18 05:01:00"
+            ],
+            "confidence": "Publisher records only; not real-time or complete-service guarantee",
+            "warning": "Sparse/suspicious placeholder-like records. Keep untimed rather than infer all-day service."
+          },
+          "usableCoordinateSha256": "4bb51d1c173cee55721d1f181852a3c90a29fef5a5bb26d778e52b0eb3310c8a",
+          "stopNames": [
+            "Saddar",
+            "Marrir Chowk",
+            "Liaqat Bagh Station Up",
+            "Committee Chowk",
+            "Waris Khan",
+            "Chandni Chowk",
+            "Rehmanabad",
+            "Sixth Road",
+            "Khatam-e-Nabuwat",
+            "Faizabad",
+            "Potohar",
+            "IJP",
+            "Khayaban-e-Johar",
+            "Faiz Ahmad Faiz"
+          ],
+          "unusableStops": []
+        },
+        {
+          "patternId": "me5tv",
+          "officialDirection": "backward",
+          "officialDirectionId": 878,
+          "title": "Faiz Ahmed Faiz to Saddar",
+          "sourceStopCount": 14,
+          "matchingPublisherCoordinates": 14,
+          "publisherStopCount": 14,
+          "schedule": {
+            "returnedDate": "2026-10-18",
+            "count": 17,
+            "first": "2026-10-18 06:00:00",
+            "last": "2026-10-18 07:04:00",
+            "firstExamples": [
+              "2026-10-18 06:00:00",
+              "2026-10-18 06:04:00",
+              "2026-10-18 06:08:00"
+            ],
+            "confidence": "Publisher records only; not real-time or complete-service guarantee"
+          },
+          "usableCoordinateSha256": "d15c3afd4a71992ef068f16d9843924c4519d2791048cc9ced9617da15c5c4d0",
+          "stopNames": [
+            "Faiz Ahmad Faiz Down",
+            "Khayaban-e-Johar Down",
+            "IJP Down",
+            "Potohar Down",
+            "Faizabad Down",
+            "Khatam-e-Nabuwat Down",
+            "Sixth Road Down",
+            "Rehmanabad Down",
+            "Chandni Chowk Metrobus Station Down",
+            "Waris Khan Down",
+            "Committee Chowk Down",
+            "Liaqat Bagh Station Down",
+            "Marrir Chowk Down",
+            "Saddar Down"
+          ],
+          "unusableStops": []
+        }
+      ]
+    },
+    {
+      "routeId": "cdghm",
+      "sourceCode": "RLRT04",
+      "officialMainRouteId": 538,
+      "lineId": 30,
+      "url": "https://etransit.punjab.gov.pk/public/route-planner?city=97&line=30",
+      "readOnlyDataRequest": {
+        "method": "POST",
+        "url": "https://etransit.punjab.gov.pk/repo/backend/public/api/home-page/get-line-schedules",
+        "body": {
+          "line_id": 30,
+          "main_route_id": 538
+        }
+      },
+      "rawSha256": "e4358d7d6c07bba09468ab777fda5dcb60bd845fbab03c2e7143dee9f94dc70e",
+      "reviewStatus": "official-stop-records-match-publisher-snapshot",
+      "directions": [
+        {
+          "patternId": "npbta",
+          "officialDirection": "forward",
+          "officialDirectionId": 879,
+          "title": "Kashmir Highway to Pak Secretariat",
+          "sourceStopCount": 10,
+          "matchingPublisherCoordinates": 10,
+          "publisherStopCount": 10,
+          "schedule": {
+            "returnedDate": "2026-10-18",
+            "count": 6,
+            "first": "2026-10-18 06:00:00",
+            "last": "2026-10-18 06:40:00",
+            "firstExamples": [
+              "2026-10-18 06:00:00",
+              "2026-10-18 06:08:00",
+              "2026-10-18 06:16:00"
+            ],
+            "confidence": "Publisher records only; not real-time or complete-service guarantee"
+          },
+          "usableCoordinateSha256": "c37f4d9ac7bb07936baad7dc2014ffe20d50a8c40fa02c0d36c0ee6cc7ad0043",
+          "stopNames": [
+            "Kashmir Highway",
+            "Chaman",
+            "Ibn e Sena",
+            "Katchery.",
+            "PIMS",
+            "Stock Exchange",
+            "Seventh Avenue",
+            "Shaheed e Millat",
+            "Parade Ground",
+            "Pak Secretariat"
+          ],
+          "unusableStops": []
+        },
+        {
+          "patternId": "haj2j",
+          "officialDirection": "backward",
+          "officialDirectionId": 880,
+          "title": "Pak Secretariat to Kashmir Highway",
+          "sourceStopCount": 10,
+          "matchingPublisherCoordinates": 10,
+          "publisherStopCount": 10,
+          "schedule": {
+            "returnedDate": "2026-10-18",
+            "count": 2,
+            "first": "2026-10-18 05:00:00",
+            "last": "2026-10-18 05:01:00",
+            "firstExamples": [
+              "2026-10-18 05:00:00",
+              "2026-10-18 05:01:00"
+            ],
+            "confidence": "Publisher records only; not real-time or complete-service guarantee",
+            "warning": "Sparse/suspicious placeholder-like records. Keep untimed rather than infer all-day service."
+          },
+          "usableCoordinateSha256": "2412d46a670de3eee64bcc4acc4bcf471e45312a73c46d13e70dd70390e10040",
+          "stopNames": [
+            "Pak Secretariat Down",
+            "Parade Ground Down",
+            "Shaheed E Millat Down",
+            "Seventh Avenue Down",
+            "Stock Exchange Down",
+            "PIMS Down",
+            "Katchery Down .",
+            "Ibn e Sina Down",
+            "Chaman Down",
+            "Kashmir Highway Down"
+          ],
+          "unusableStops": []
+        }
+      ]
+    }
+  ]
+}

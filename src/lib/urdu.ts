@@ -1,5 +1,14 @@
 /** App-owned copy only. User notices, names and original source evidence remain verbatim. */
 export const urdu: Record<string, string> = {
+  'Terms & Conditions': 'شرائط و ضوابط', 'Privacy Policy': 'رازداری کی پالیسی', 'Policies': 'پالیسیاں',
+  'Using Manzil': 'منزل کا استعمال', 'Your data & controls': 'آپ کا ڈیٹا اور اختیارات', 'Policy documents': 'پالیسی کی دستاویزات',
+  'Opens in a new tab': 'نئے ٹیب میں کھلتا ہے',
+  'Last updated': 'آخری ترمیم',
+  'Official references': 'سرکاری حوالہ جات', 'Stops compared': 'اسٹاپوں کا موازنہ کیا گیا', 'Differences noted': 'اختلافات ملے',
+  'Reference only': 'صرف حوالہ', 'No route-level confirmation': 'اس راستے کی سرکاری تصدیق نہیں', 'Checked': 'جانچ کی تاریخ',
+  'This comparison does not certify map coordinates or live service.': 'یہ موازنہ نقشے کے نقاط یا موجودہ سروس کی تصدیق نہیں کرتا۔',
+  'Official references differ from this route snapshot; confirm its stops and operating times with the operator.': 'سرکاری حوالہ جات اور اس محفوظ راستے میں فرق ہے؛ اسٹاپ اور چلنے کے اوقات آپریٹر سے معلوم کریں۔',
+  'Official sources differ from this route snapshot; check the linked references before travelling.': 'سرکاری ذرائع اور اس محفوظ راستے میں فرق ہے؛ سفر سے پہلے منسلک حوالہ جات دیکھ لیں۔',
   'Local transport': 'مقامی ٹرانسپورٹ', 'Islamabad · Rawalpindi': 'اسلام آباد · راولپنڈی',
   'Refresh local transport': 'مقامی ٹرانسپورٹ تازہ کریں', 'Reverse local journey': 'مقامی سفر الٹائیں',
   'Find local routes': 'مقامی راستے تلاش کریں', 'Finding local routes…': 'مقامی راستے تلاش ہو رہے ہیں…',

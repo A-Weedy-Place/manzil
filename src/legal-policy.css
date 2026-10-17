@@ -1,0 +1,20 @@
+.profile-legal-menu { border-top:1px solid var(--border); padding-top:17px; margin-top:18px; }
+.legal-policy { min-width:0; color:var(--ink); }
+.legal-policy-tabs { display:flex; gap:5px; border:1px solid var(--border); border-radius:12px; padding:4px; background:var(--surface); }
+.legal-policy-tabs>button { display:flex; flex:1; align-items:center; justify-content:center; gap:6px; min-height:44px; min-width:0; padding:8px 6px; border-radius:9px; color:var(--muted); background:transparent; font-size:11px; font-weight:600; }
+.legal-policy-tabs>button[aria-pressed='true'] { color:var(--green); background:var(--green-soft); }
+.legal-policy-tabs>button>span { overflow-wrap:anywhere; }
+.legal-policy-updated { margin:16px 0 12px; color:var(--muted); font-size:11px; }
+.legal-policy-intro { padding:14px; border:1px solid var(--border); border-radius:13px; background:var(--surface); font-size:13px; line-height:1.7; }
+.legal-policy-section { margin-top:24px; }
+.legal-policy-section h2 { font-size:15px; line-height:1.5; margin-bottom:11px; letter-spacing:0; text-wrap:balance; }
+.legal-policy-section p,.legal-policy-section li { font-size:14px; line-height:1.8; overflow-wrap:anywhere; }
+.legal-policy-section p { margin-bottom:12px; }
+.legal-policy-section ul { padding-inline-start:19px; margin:8px 0 14px; }
+.legal-policy-section li { margin:9px 0; }
+.legal-policy-links { list-style:none; padding-inline-start:0!important; }
+.legal-policy-links a { display:inline-flex; align-items:center; gap:7px; min-height:36px; text-decoration:underline; text-underline-offset:3px; }
+.legal-policy-links svg { flex-shrink:0; }
+.legal-policy-sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+[dir='rtl'] .legal-policy-section p,[dir='rtl'] .legal-policy-section li { line-height:2; }
+@media(max-width:760px) { .legal-policy-tabs { gap:3px; } .legal-policy-tabs>button { font-size:11px; gap:5px; } .legal-policy-section h2 { font-size:15px; } }

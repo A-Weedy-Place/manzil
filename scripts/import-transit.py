@@ -12,6 +12,7 @@ import math
 from pathlib import Path
 from datetime import datetime, timezone
 from urllib.request import Request, urlopen
+from urllib.parse import urlparse
 from zipfile import ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -219,6 +220,7 @@ def main():
     parser.add_argument("--output", type=Path, default=ROOT / "assets/transit/islamabad.json.gz")
     parser.add_argument("--download", action="store_true", help="Download the publisher's fixed public URLs")
     parser.add_argument("--supplement", type=Path, help="Reviewed source-attributed normalized additions")
+    parser.add_argument("--official-review", type=Path, help="Scoped authority comparison bound to this base dataset version")
     parser.add_argument("--retrieved-at", help="UTC source retrieval instant; retained on unchanged re-import")
     args = parser.parse_args()
     args.source_dir.mkdir(parents=True, exist_ok=True)
@@ -239,6 +241,49 @@ def main():
         dataset["limitations"].extend(supplement.get("limitations", []))
         provenance["supplementSha256"] = sha(args.supplement.read_bytes())
         dataset["version"] += "-" + provenance["supplementSha256"][:8]
+    if args.official_review:
+        review = read_json(args.official_review)
+        if review["datasetVersion"] != dataset["version"]:
+            raise ValueError("Official review belongs to a different dataset snapshot")
+        base_bytes = json.dumps(dataset, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")
+        if review.get("normalizedDatasetSha256") != sha(base_bytes):
+            raise ValueError("Official review does not match the exact normalized base data")
+        catalogue = review.get("catalogue", {})
+        for key in ["sources", "routes"]:
+            known_ids = {record["id"] for record in dataset[key]}
+            for record in catalogue.get(key, []):
+                if record["id"] in known_ids:
+                    raise ValueError("Duplicate official catalogue reference")
+                if key == "routes" and (record.get("coverage") != "catalogue-only" or not 2 <= len(record.get("unplacedStopNames", [])) <= 100):
+                    raise ValueError("Official reference additions cannot invent mapped services")
+                dataset[key].append(record)
+                known_ids.add(record["id"])
+        route_by_id = {route["id"]: route for route in dataset["routes"]}
+        seen = set()
+        official_hosts = {"cda.gov.pk", "lists.cda.gov.pk", "pma.punjab.gov.pk", "etransit.punjab.gov.pk", "transport.punjab.gov.pk", "punjab.gov.pk", "cmta.pk"}
+        for item in review["reviews"]:
+            if item["routeId"] not in route_by_id or item["routeId"] in seen:
+                raise ValueError("Unknown or duplicate officially compared route")
+            seen.add(item["routeId"])
+            if item["status"] not in {"consistent", "differences", "reference-only", "not-established"} or not 1 <= len(item["summary"]) <= 2000:
+                raise ValueError("Invalid official comparison scope")
+            checked = datetime.fromisoformat(review["checkedAt"].replace("Z", "+00:00"))
+            if checked.tzinfo is None or not 1 <= len(item["references"]) <= 6:
+                raise ValueError("Official comparison needs a date and references")
+            for reference in item["references"]:
+                parsed = urlparse(reference["url"])
+                if parsed.scheme != "https" or not parsed.hostname or parsed.hostname.removeprefix("www.") not in official_hosts or parsed.username or parsed.password or parsed.port or not 1 <= len(reference["label"]) <= 180 or len(reference["url"]) > 1500:
+                    raise ValueError("Official references must link directly to reviewed authorities")
+            route_by_id[item["routeId"]]["officialReview"] = {"checkedAt": review["checkedAt"], "status": item["status"], "summary": item["summary"], "references": item["references"]}
+        patterns = {pattern["id"]: pattern for pattern in dataset["patterns"]}
+        for conflict in review.get("unavailablePatterns", []):
+            pattern = patterns.get(conflict["patternId"])
+            if not pattern or not 1 <= len(conflict["reason"].strip()) <= 1000 or route_by_id[pattern["routeId"]].get("officialReview", {}).get("status") != "differences":
+                raise ValueError("Source-conflict exclusions require a reviewed known pattern")
+            pattern["routingUnavailableReason"] = conflict["reason"]
+        dataset["limitations"].extend(review.get("limitations", []))
+        provenance["officialReviewSha256"] = sha(args.official_review.read_bytes())
+        dataset["version"] += "-review-" + provenance["officialReviewSha256"][:8]
     encoded = json.dumps(dataset, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("wb") as output:

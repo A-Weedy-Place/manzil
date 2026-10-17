@@ -25,7 +25,7 @@ export class TransitService {
       // road closure or clearance. It is still grey/excluded when that risk hits.
       const hits:Closure[]=closures.filter(closure=>overlap(closure.startsAt,closure.endsAt,instant)&&(pattern.geometrySegments??[pattern.geometry]).some(line=>lineHitsClosure(line,closure)));
       const relevant=alerts.filter(alert=>alert.routeId===pattern.routeId&&(alert.directionId===undefined||alert.directionId===pattern.directionId)&&overlap(alert.startsAt,alert.endsAt,instant)&&(!alert.fromStopId||pattern.stopIds.includes(alert.fromStopId)&&pattern.stopIds.includes(alert.toStopId!)));
-      return{patternId:pattern.id,availability:relevant.length?'suspended':hits.length?'uncertain':'available',closureIds:hits.map(closure=>closure.id),disruptionIds:relevant.map(alert=>alert.id),closureAssessment:pattern.geometryQuality==='stops-only'?'unavailable':pattern.geometryQuality};
+      return{patternId:pattern.id,availability:relevant.length?'suspended':hits.length||pattern.routingUnavailableReason?'uncertain':'available',closureIds:hits.map(closure=>closure.id),disruptionIds:relevant.map(alert=>alert.id),closureAssessment:pattern.geometryQuality==='stops-only'?'unavailable':pattern.geometryQuality};
     })??[];
     return result;
   }

@@ -28,10 +28,21 @@ export function validateTransitDataset(value: unknown): TransitDataset {
     const [red,green,blue]=[1,3,5].map(index=>Number.parseInt(route.color.slice(index,index+2),16));
     if(red>150&&green<115&&blue<115&&red>green*1.4&&red>blue*1.4)throw new Error('Red is reserved for road closures.');
     if(!sources.has(route.sourceId)||!route.name||!route.shortName||!['stops-and-shape','stops-only','catalogue-only'].includes(route.coverage))throw new Error('Invalid transit route source.');
+    if (route.officialReview) {
+      const review = route.officialReview;
+      const officialHosts = new Set(['cda.gov.pk', 'lists.cda.gov.pk', 'pma.punjab.gov.pk', 'etransit.punjab.gov.pk', 'transport.punjab.gov.pk', 'punjab.gov.pk', 'cmta.pk']);
+      if (typeof review.checkedAt !== 'string' || !Number.isFinite(Date.parse(review.checkedAt)) || !['consistent', 'differences', 'reference-only', 'not-established'].includes(review.status) || typeof review.summary !== 'string' || !review.summary.length || review.summary.length > 2000 || !Array.isArray(review.references) || !review.references.length || review.references.length > 6) throw new Error('Invalid official transit comparison.');
+      for (const reference of review.references) {
+        if (!reference || typeof reference.url !== 'string') throw new Error('Invalid official transit reference.');
+        const url = new URL(reference.url);
+        if (url.protocol !== 'https:' || url.username || url.password || url.port || !officialHosts.has(url.hostname.replace(/^www\./, '')) || typeof reference.label !== 'string' || !reference.label.length || reference.label.length > 180 || reference.url.length > 1500) throw new Error('Invalid official transit reference.');
+      }
+    }
   }
   for (const pattern of data.patterns) {
     if (!routes.has(pattern.routeId) || pattern.stopIds.some(id => !stops.has(id)) || pattern.stopIds.length < 2 || !shape(pattern.geometry)||pattern.geometrySegments?.some(line=>!shape(line))||!['provided-shape','mapped-corridor','stops-only'].includes(pattern.geometryQuality)) throw new Error('Invalid transit pattern.');
     if (pattern.breakAfterStopIndexes?.some(index => !Number.isInteger(index) || index < 0 || index >= pattern.stopIds.length - 1)) throw new Error('Invalid transit gap.');
+    if (pattern.routingUnavailableReason !== undefined && (typeof pattern.routingUnavailableReason !== 'string' || !pattern.routingUnavailableReason.trim() || pattern.routingUnavailableReason.length > 1000)) throw new Error('Invalid source-conflict explanation.');
   }
   for(const calendar of data.calendars)if(!date(calendar.startDate)||!date(calendar.endDate)||calendar.startDate>calendar.endDate||!Array.isArray(calendar.weekdays)||calendar.weekdays.some(day=>!Number.isInteger(day)||day<0||day>6)||!Array.isArray(calendar.exceptions)||calendar.exceptions.some(exception=>!date(exception.date)||typeof exception.added!=='boolean'))throw new Error('Invalid transit calendar.');
   const patternById = new Map(data.patterns.map(pattern => [pattern.id,pattern]));
