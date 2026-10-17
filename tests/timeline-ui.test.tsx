@@ -202,7 +202,7 @@ it.each(['Profile', 'Alerts'])('restores live closure time and removes future ro
   await waitFor(() => expect(capture.props!.routeOptions).toHaveLength(1));
   expect(capture.props!.departureAt).toBe(future);
   fireEvent.click(screen.getByRole('button', { name: destination }));
-  expect(screen.getByRole('heading', { name: destination === 'Profile' ? 'Profile & settings' : 'Journey alerts' })).toBeTruthy();
+  expect(screen.getByRole('heading', { name: destination === 'Profile' ? 'User profile' : 'Journey alerts' })).toBeTruthy();
   expect(capture.props!.departureAt).toBe(now);
   expect(capture.props!.routeOptions).toEqual([]);
   expect(capture.props!.selectedRoute).toBeNull();

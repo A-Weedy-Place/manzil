@@ -62,14 +62,16 @@ describe('personal permission and profile controls', () => {
   const props = { reload: vi.fn(async () => {}), notify: vi.fn(), onSources: vi.fn(), onActivity: vi.fn(), onSaveProposal: vi.fn(async () => {}) };
   it('makes trip permission explicit, defaults off, and enables learning only with the same permission action', async () => {
     render(<ProfilePanel {...props} state={state({ inferFrequentRoutes: true })} personalFeaturesAvailable account={{ uid: 'one', displayName: 'Ali', email: 'ali@example.test', role: 'user', provider: 'firebase' }} />);
+    fireEvent.click(screen.getByText('Journey alerts'));
     expect(screen.getByRole('switch', { name: 'Learn usual journeys and alert me' }).matches(':disabled')).toBe(true);
     expect(mock.api).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Allow personal trip data & usual-route alerts' }));
-    await waitFor(() => expect(mock.send).toHaveBeenCalledWith('/profile', { collectTravelData: true, inferFrequentRoutes: true }, 'PATCH'));
+    await waitFor(() => expect(mock.send).toHaveBeenCalledWith('/profile', { collectTravelData: true, inferFrequentRoutes: true, travelDataChoiceMade: true }, 'PATCH'));
     expect(screen.queryByText('Source updates & collector')).toBeNull();
   });
   it('saves name and coarse city/area together and disables collection with learning', async () => {
     const ui = render(<ProfilePanel {...props} state={state()} personalFeaturesAvailable />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
     fireEvent.change(screen.getByLabelText('Your name'), { target: { value: 'Ali' } });
     fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Islamabad' } });
     fireEvent.change(screen.getByLabelText('Area (optional)'), { target: { value: 'F-8' } });
@@ -78,7 +80,44 @@ describe('personal permission and profile controls', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Allow personal trip data & usual-route alerts' }).matches(':disabled')).toBe(false));
     ui.rerender(<ProfilePanel {...props} state={state({ collectTravelData: true })} personalFeaturesAvailable />);
     fireEvent.click(screen.getByRole('button', { name: 'Stop collecting trip data' }));
-    await waitFor(() => expect(mock.send).toHaveBeenCalledWith('/profile', { collectTravelData: false, inferFrequentRoutes: false }, 'PATCH'));
+    await waitFor(() => expect(mock.send).toHaveBeenCalledWith('/profile', { collectTravelData: false, inferFrequentRoutes: false, travelDataChoiceMade: true }, 'PATCH'));
+  });
+  it('stages a profile photo and name until Save, and Cancel discards both', async () => {
+    mock.photo.mockResolvedValue('data:image/jpeg;base64,cHJldmlldw==');
+    render(<ProfilePanel {...props} state={state()} personalFeaturesAvailable />);
+    expect(screen.queryByLabelText('Your name')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.change(screen.getByLabelText('Your name'), { target: { value: 'Unsaved name' } });
+    fireEvent.change(screen.getByLabelText('Choose profile photo'), { target: { files: [new File(['test'], 'profile.jpg', { type: 'image/jpeg' })] } });
+    await waitFor(() => expect(screen.getByAltText('Your profile photo').getAttribute('src')).toBe('data:image/jpeg;base64,cHJldmlldw=='));
+    expect(mock.send).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByAltText('Your profile photo')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect((screen.getByLabelText('Your name') as HTMLInputElement).value).toBe('Traveller');
+    fireEvent.change(screen.getByLabelText('Your name'), { target: { value: 'Ali' } });
+    fireEvent.change(screen.getByLabelText('Choose profile photo'), { target: { files: [new File(['test'], 'profile.jpg', { type: 'image/jpeg' })] } });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save profile' }).matches(':disabled')).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: 'Save profile' }));
+    await waitFor(() => expect(mock.send).toHaveBeenCalledWith('/profile', { displayName: 'Ali', city: '', location: '', photoDataUrl: 'data:image/jpeg;base64,cHJldmlldw==' }, 'PATCH'));
+  });
+  it('discards an asynchronous photo draft across an account change', async () => {
+    let complete!: (value: string) => void;
+    mock.photo.mockReturnValue(new Promise<string>(resolve => { complete = resolve; }));
+    const ui = render(<ProfilePanel {...props} state={state()} personalFeaturesAvailable />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.change(screen.getByLabelText('Choose profile photo'), { target: { files: [new File(['test'], 'profile.jpg', { type: 'image/jpeg' })] } });
+    mock.userId = 'two'; ui.rerender(<ProfilePanel {...props} state={state({ displayName: 'Second user' })} personalFeaturesAvailable />);
+    await act(async () => complete('data:image/jpeg;base64,cHJpdmF0ZQ=='));
+    expect(screen.queryByAltText('Your profile photo')).toBeNull();
+    expect(screen.queryByLabelText('Your name')).toBeNull();
+    expect(mock.send).not.toHaveBeenCalled();
+  });
+  it('opens personal monthly statistics separately without enabling collection', () => {
+    const onStatistics = vi.fn();
+    render(<ProfilePanel {...props} onStatistics={onStatistics} state={state()} personalFeaturesAvailable />);
+    fireEvent.click(screen.getByRole('button', { name: 'Personal statistics' }));
+    expect(onStatistics).toHaveBeenCalledTimes(1); expect(props.onActivity).not.toHaveBeenCalled(); expect(mock.send).not.toHaveBeenCalled();
   });
   it('does not start manual recording before permission and clears its watcher after revocation', () => {
     const watch = vi.fn(() => 7), clear = vi.fn(); Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { watchPosition: watch, clearWatch: clear } });

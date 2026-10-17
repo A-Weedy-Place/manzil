@@ -6,7 +6,7 @@ Recommended `npm.cmd run dev:firebase` seeds local Auth/Firestore accounts with 
 
 ## Local test sign-in
 
-Open localhost, select a test account to fill its credentials, then select Sign in.
+Open localhost, expand **Choose a development account**, select a test account to fill its credentials, then select Sign in. The picker is collapsed to keep the entry screen focused on ordinary guest/sign-in use. The header avatar opens User profile; English/Urdu is a dropdown. See [account/profile guide](ACCOUNT_AND_PROFILE.md) for the illustrated entry, registration consent choice and grouped settings.
 
 | Role | Email | Dummy password |
 | --- | --- | --- |

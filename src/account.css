@@ -1,0 +1,84 @@
+/* Entry uses a static, code-native map illustration; it never starts map/GPS services. */
+.account-modal .modal-card { padding: 30px; }
+.account-layout { min-width: 0; }
+.account-form-column { min-width: 0; }
+.account-form-inner { width: 100%; max-width: 352px; margin: auto; }
+.account-brand { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-bottom: 28px; }
+.account-brand .account-logo { width: 84px; height: 84px; margin: 0; border: 1px solid var(--border); box-shadow: 0 4px 14px #1734560d; }
+.account-brand .account-brand-name { display: block; font: 700 37px/1.15 Georgia, 'Times New Roman', serif; letter-spacing: -.9px; margin: 0; color: var(--green); }
+.account-modal .account-screen-title { margin: 0 0 20px; text-align: center; font-size: 22px; }
+.account-modal .guest-entry-action { min-height: 54px; margin: 0; font-size: 16px; font-weight: 650; gap: 13px; border-radius: 13px; }
+.account-divider { display: flex; align-items: center; gap: 15px; color: var(--muted); margin: 22px 0; font-size: 12px; }
+.account-divider::before,.account-divider::after { content: ''; height: 1px; flex: 1; background: var(--border); }
+.account-modal .account-fields { margin: 0; gap: 17px; }
+.account-modal .field-label { font-size: 13px; gap: 8px; }
+.account-modal input { min-height: 50px; font-size: 16px; border-radius: 11px; }
+.account-modal .account-submit { min-height: 50px; margin-top: 3px; font-size: 14px; border-radius: 11px; background: var(--paper); }
+.account-links { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 12px; }
+.account-links .text-button { min-height: 44px; font-size: 13px; }
+.account-success,.account-unavailable { font-size: 13px; line-height: 1.6; margin: 16px 0 0; color: var(--green); }
+.account-unavailable { color: var(--muted); }
+.account-development { border-top: 1px solid var(--border); margin-top: 16px; }
+.account-development > summary { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 46px; font-size: 12px; color: var(--muted); cursor: pointer; list-style: none; }
+.account-development > summary::-webkit-details-marker { display: none; }
+.account-development[open] > summary > svg { transform: rotate(180deg); }
+.account-development .dev-accounts { margin: 0 0 8px; }
+.account-development .dev-account { min-height: 80px; }
+.account-modal .modal-close { z-index: 2; min-width: 44px; height: 44px; inset-inline-end: 10px; top: 10px; }
+.account-entry { padding: 30px; background: radial-gradient(ellipse at 5% 0%,var(--green-soft),transparent 65%),var(--surface); }
+.account-entry .modal-card { width: min(1120px,100%); border-radius: 28px; padding: 0; overflow: hidden; box-shadow: 0 18px 75px #17345620; }
+.account-entry .account-layout { display: grid; grid-template-columns: minmax(320px,.9fr) minmax(0,1.1fr); min-height: 680px; }
+.account-entry .account-form-column { display: flex; align-items: center; padding: 48px 44px 38px; }
+.account-map-preview { position: relative; overflow: hidden; min-height: 100%; background: #f4f4e7; isolation: isolate; }
+.account-map-art { position: absolute; width: 100%; height: 100%; object-fit: cover; inset: 0; }
+.account-preview-city { position: absolute; top: 34px; inset-inline-start: 28px; display: flex; align-items: center; gap: 9px; min-height: 46px; padding: 10px 17px; border-radius: 30px; background: #fffffff2; color: #234d40; font-size: 14px; font-weight: 600; box-shadow: 0 3px 14px #274b3021; }
+.account-preview-legend { position: absolute; bottom: 27px; inset-inline: 23px; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 13px 22px; padding: 16px 18px; border-radius: 16px; border: 1px solid #ffffffc2; background: #fffffff0; color: #2c4351; box-shadow: 0 4px 20px #17345614; }
+.account-preview-legend > span { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 550; }
+.account-preview-legend i { display: block; width: 23px; height: 5px; border-radius: 3px; }
+.preview-route-key { background: #2164e8; }
+.preview-closed-key { background: #ff2147; }
+.account-spinner { animation: account-spin 1s linear infinite; }
+@keyframes account-spin { to { transform: rotate(360deg); } }
+@media (max-width: 900px) {
+  .account-entry { padding: 20px; }
+  .account-entry .account-layout { grid-template-columns: minmax(300px,1fr) minmax(0,.9fr); min-height: 640px; }
+  .account-entry .account-form-column { padding: 44px 30px 32px; }
+}
+/* Keep the initial form and map legend together on ordinary laptop screens.
+   Expanded development accounts and feedback can still grow/scroll naturally. */
+@media (min-width: 681px) and (max-height: 800px) {
+  .account-entry { padding: 20px; }
+  .account-entry .account-layout { min-height: min(640px,calc(100dvh - 40px)); }
+  .account-entry .account-form-column { padding-block: 24px; }
+  .account-entry .account-brand { gap: 8px; margin-bottom: 18px; }
+  .account-entry .account-brand .account-logo { width: 64px; height: 64px; }
+  .account-entry .account-brand .account-brand-name { font-size: 32px; }
+  .account-entry .guest-entry-action { min-height: 50px; }
+  .account-entry .account-divider { margin-block: 14px; }
+  .account-entry .account-fields { gap: 12px; }
+  .account-entry .field-label { gap: 6px; }
+  .account-entry input,.account-entry .account-submit { min-height: 46px; }
+  .account-entry .account-links { margin-top: 6px; }
+  .account-entry .account-development { margin-top: 10px; }
+  .account-entry .account-development > summary { min-height: 44px; }
+  .account-entry .account-preview-city { top: 24px; }
+  .account-entry .account-preview-legend { bottom: 23px; }
+}
+@media (max-width: 680px) {
+  .account-entry { padding: 16px; align-items: start; }
+  .account-entry .modal-card { width: min(100%,460px); margin: auto; border-radius: 22px; }
+  .account-entry .account-layout { display: block; min-height: 0; }
+  .account-entry .account-form-column { padding: 36px 26px 26px; }
+  .account-entry .account-brand { margin-bottom: 25px; }
+  .account-map-preview { display: none; }
+  .account-modal:not(.account-entry) .modal-card { padding: 30px 24px 24px; }
+  .account-brand .account-logo { width: 72px; height: 72px; }
+  .account-brand .account-brand-name { font-size: 32px; }
+}
+@media (max-width: 360px) {
+  .account-entry { padding: 10px; }
+  .account-entry .account-form-column { padding-inline: 20px; }
+  .account-links { gap: 10px; }
+  .account-links .text-button { font-size: 12px; }
+}
+@media (prefers-reduced-motion: reduce) { .account-spinner { animation: none; } }

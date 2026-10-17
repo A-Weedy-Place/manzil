@@ -4,16 +4,30 @@ This feature is developed on `codex/feature-development`. Publishing the branch 
 
 ## What a person sees
 
-- Profile has a name, email, optional photo, city and optional neighbourhood. City/area are manually entered text; saving them does not request GPS.
+- **User profile** summarizes name, email, optional photo, city and neighbourhood. **Edit** opens the fields; Save persists the draft together and Cancel discards it. Photo selection alone does not persist an image. City/area are manually entered text; saving them does not request GPS.
 - Photos are selected locally, checked as JPEG/PNG/WebP, resized to at most 512 pixels and re-encoded as JPEG before sending. Canvas re-encoding removes embedded metadata. The encoded result is limited to 150,000 characters; profile photos remain private account records.
 - **Personal trip data** is visibly **Off** until the person explicitly allows it. Missing fields on an older profile also mean Off.
 - **Allow personal trip data & usual-route alerts** enables trip history and repeated-journey alerts together. Usual-route learning has a separate switch, available only while trip permission is on.
 - **Stop collecting trip data** turns off both collection and learning. Existing records remain available in Activity for export or deletion.
 - Browser notifications require a separate explicit action and browser permission. In-app alerts remain available independently.
 
+## Optional choice after registration
+
+Successful account creation marks only that new UID as pending in memory/session storage. Once the matching private profile is loaded, the UI asks **Allow personal trip data / Not now** before its first-use tour. Existing sign-ins do not receive a forced prompt just because an older profile lacks acknowledgement. Guests never receive this personal-data prompt.
+
+Either confirmed choice stores `travelDataChoiceMade:true` in the private profile. Allow also sets `collectTravelData:true` and `inferFrequentRoutes:true`; Not now sets both false. Escape/backdrop dismissal follows Not now. Acknowledgement is a strict optional boolean, separate from consent: setting it alone never enables collection or inference. The pending session marker is removed only after the API confirms the matching account's choice. A failed request keeps retry controls visible rather than claiming the preference changed; a lost response can follow a committed write, so retrying either explicit choice is safe. Account changes cannot apply another UID's response.
+
+Granting the preference does not request browser location or start GPS. The person still starts navigation or manual recording explicitly. Profile keeps the permission near identity setup, with grouped vehicle, appearance/language and journey-alert settings below it. Consent can be changed later; existing stored trips remain available for export/deletion. [Account/profile guide](ACCOUNT_AND_PROFILE.md).
+
+## Monthly personal statistics
+
+**Personal statistics** opens a separate dialog beside Profile on wide screens and a centered scrollable dialog on smaller screens. Activity also shows the current month's totals. The interface presents monthly distance, time, trip count and estimated fuel spending only; the API retains `{week,month,all}` for compatibility. Months use Asia/Karachi and the trip departure date. Totals include retained summaries beyond the latest-50 history list, with explicit unpriced-trip and partial-history states.
+
+The read-only statistics component requests only aggregate `/trips/statistics` data. Opening it never starts a location watcher, grants data permission or fetches raw trip traces. Loading/failure/retry states remain distinct from an actual zero-trip month. Recording, viewing a trip's path, export and deletion remain separate Activity actions.
+
 ## Foreground collection
 
-Optional vehicle name/type, petrol/diesel and km/litre are private profile preferences. Saving them does not enable GPS. New consented trips can retain an immutable estimated fuel-cost snapshot using that configured vehicle and applicable dated PSO reference prices. Changes to the profile or global prices never rewrite old trip estimates. Unknown vehicle/history or a price day not covered by a successful check stays unpriced. Weekly/monthly summaries expose missing pricing and remain subject to 90-day retention. Deleting a trip also removes its saved cost snapshot. These are estimated consumption costs, not fuel receipts; see [fuel provenance and limits](FUEL_COSTS.md).
+Optional vehicle name/type, petrol/diesel and km/litre are private profile preferences, saved separately from identity edits. Saving them does not enable GPS. New consented trips can retain an immutable estimated fuel-cost snapshot using that configured vehicle and applicable dated PSO reference prices. Changes to the profile or global prices never rewrite old trip estimates. Unknown vehicle/history or a price day not covered by a successful check stays unpriced. Monthly UI summaries expose missing pricing and remain subject to 90-day retention; backend weekly/all-retained aggregates remain supported. Deleting a trip also removes its saved cost snapshot. These are estimated consumption costs, not fuel receipts; see [fuel provenance and limits](FUEL_COSTS.md).
 
 `useTravelCapture` receives accurate samples from the existing Navigation GPS watcher. It never starts a watcher of its own. The person must start GPS guidance; planning a route, previewing directions or opening Profile does not start recording. Navigation without personal trip permission uses location for immediate guidance but does not retain those fixes as trip history.
 

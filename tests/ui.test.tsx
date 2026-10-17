@@ -30,6 +30,7 @@ describe('bilingual first-use and account surfaces', () => {
   });
   it('signs in the selected normal/admin dummy account without persisting a password', async () => {
     const close = vi.fn(); render(<AccountPanel onClose={close} />);
+    fireEvent.click(screen.getByText('Choose a development account'));
     fireEvent.click(screen.getByRole('button', { name: /Normal user/ }));
     fireEvent.submit(screen.getByRole('form', { name: 'Sign in' }));
     expect(getAuthSession().user).toMatchObject({ uid: 'dev-user', role: 'user' });

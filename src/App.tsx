@@ -1,6 +1,6 @@
 import { t } from './lib/language';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Palette } from 'lucide-react';
+import { Languages, Palette } from 'lucide-react';
 import type { LocalProfile, MapStyleId } from '../shared/types';
 import { Activity, ArrowDown, ArrowDownUp, ArrowRight, ArrowUp, ArrowUpRight, Bell, Bookmark, CalendarClock, Check, ChevronRight, Clock3, Download, ExternalLink, Eye, EyeOff, Flag, Inbox, Layers2, LocateFixed, MapPinned, Navigation, Pencil, Plus, RefreshCw, Repeat2, Route, Search, ShieldCheck, SlidersHorizontal, Trash2, TriangleAlert, Upload, UserRound, WifiOff, X } from 'lucide-react';
 import type { Polygon } from 'geojson';
@@ -13,6 +13,9 @@ import SourcePanel from './components/SourcePanel';
 import CommutePanel from './components/CommutePanel';
 import ActivityPanel from './components/ActivityPanel';
 import ProfilePanel from './components/ProfilePanel';
+import MonthlyStatistics from './components/MonthlyStatistics';
+import TravelDataChoice from './components/TravelDataChoice';
+import Modal from './components/Modal';
 import MapStylePicker from './components/MapStylePicker';
 import MapTimeControl from './components/MapTimeControl';
 import PlanAheadTime from './components/PlanAheadTime';
@@ -21,7 +24,7 @@ import NavigationPanel from './components/NavigationPanel';
 import AccountPanel, { PersonalFeatureGate } from './components/AccountPanel';
 import WelcomeTour, { needsTour } from './components/WelcomeTour';
 import { useLanguage } from './lib/useLanguage';
-import { signOut, useAuth } from './lib/auth';
+import { clearTravelDataChoicePrompt, getAuthSession, isCreatingAccount, needsTravelDataChoice, signOut, useAuth } from './lib/auth';
 import { useAlertNotifications } from './lib/notifications';
 import { api, send } from './lib/api';
 import { closureState, dateTime, dayDate, distance, downloadJSON, inputISO, localInput, relative, time } from './lib/format';
@@ -48,6 +51,8 @@ export default function App() {
   const { user, status: authStatus } = useAuth();
   const [entryAccepted, setEntryAccepted] = useState(() => { try { return sessionStorage.getItem('manzil-entry-guest') === 'yes'; } catch { return false; } });
   const [accountOpen, setAccountOpen] = useState(false), [helpOpen, setHelpOpen] = useState(false);
+  const [travelChoiceUid, setTravelChoiceUid] = useState<string | null>(null);
+  const [statisticsOpen, setStatisticsOpen] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
   useEffect(() => {
     if (authStatus === 'loading' || !entryAccepted && !user) return;
@@ -57,6 +62,7 @@ export default function App() {
   const previousAccount = useRef(user?.uid);
   useEffect(() => { document.documentElement.lang = language; document.documentElement.dir = language === 'ur' ? 'rtl' : 'ltr'; }, [language]);
   const [state, setState] = useState<AppState | null>(null);
+  const [stateOwner, setStateOwner] = useState<string | null | undefined>();
   const [view, setView] = useState<View>(window.location.hash === '#alerts' ? 'alerts' : 'journey');
   const [panelExpanded, setPanelExpanded] = useState(false);
   const [mapStylesOpen, setMapStylesOpen] = useState(false);
@@ -108,6 +114,13 @@ export default function App() {
   const membership = state?.membership?.uid === user?.uid ? state?.membership : null;
   const role = membership?.role ?? (user?.role === 'admin' ? 'admin' : user ? 'user' : 'guest');
   const isAdmin = role === 'admin', isReviewer = isAdmin || role === 'verified';
+  const travelChoiceOpen = !!user && !!state && stateOwner === user.uid && travelChoiceUid === user.uid && state.profile.travelDataChoiceMade !== true;
+  useEffect(() => {
+    if (!user) { setTravelChoiceUid(null); return; }
+    if (!state || stateOwner !== user.uid) return;
+    if (state?.profile.travelDataChoiceMade) { clearTravelDataChoicePrompt(user.uid); setTravelChoiceUid(null); }
+    else if (needsTravelDataChoice(user.uid)) setTravelChoiceUid(user.uid);
+  }, [user?.uid, stateOwner, state?.profile.travelDataChoiceMade]);
   useEffect(() => { const media = window.matchMedia('(prefers-color-scheme: dark)'); const changed = () => setSystemDark(media.matches); media.addEventListener('change', changed); return () => media.removeEventListener('change', changed); }, []);
   useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
   useEffect(() => { const tick = () => setClock(new Date().toISOString()); const timer = setInterval(tick, 60000); window.addEventListener('focus', tick); return () => { clearInterval(timer); window.removeEventListener('focus', tick); }; }, []);
@@ -123,7 +136,8 @@ export default function App() {
   const notify = useCallback((message: string) => setToast(message), []);
   const reload = useCallback(async () => {
     const sequence = ++reloadSequence.current;
-    try { const next = await api<AppState>('/state'); if (sequence !== reloadSequence.current) return; lastLoadedState.current = next; setState(current => current && current.closures.length === next.closures.length && current.closures.every((item, index) => item.id === next.closures[index].id && item.revision === next.closures[index].revision) ? JSON.stringify(current) === JSON.stringify(next) ? current : { ...next, closures: current.closures } : next); setOnline(true); setStartupError(''); }
+    const ownerUid = getAuthSession().user?.uid ?? null;
+    try { const next = await api<AppState>('/state'); if (sequence !== reloadSequence.current || ownerUid !== (getAuthSession().user?.uid ?? null)) return; lastLoadedState.current = next; setStateOwner(ownerUid); setState(current => current && current.closures.length === next.closures.length && current.closures.every((item, index) => item.id === next.closures[index].id && item.revision === next.closures[index].revision) ? JSON.stringify(current) === JSON.stringify(next) ? current : { ...next, closures: current.closures } : next); setOnline(true); setStartupError(''); }
     catch (e) { if (sequence !== reloadSequence.current) return; setOnline(false); setStartupError(e instanceof Error ? e.message : 'The local API is unavailable. Start the server and retry.'); throw e; }
   }, []);
   const travel = useTravelCapture({ userId: user?.uid, profile: state?.profile, onSaved: reload, onError: notify });
@@ -134,7 +148,8 @@ export default function App() {
     }
     previousAccount.current = user?.uid;
     if (user) { setEntryAccepted(true); setView(user.role === 'admin' ? 'admin' : 'journey'); }
-    setState(null); lastLoadedState.current = null; setRecordedPoints([]); setHistoryTrace([]);
+    setState(null); setStateOwner(undefined); lastLoadedState.current = null; setRecordedPoints([]); setHistoryTrace([]);
+    setStatisticsOpen(false);
     setEditorOpen(false); setEditing(null); setEditorSeed(undefined); setDrawing(null); setSelectedRoadName(''); setSelectedClosure(null); setBaselineSelected(false);
     setDeparture(localInput()); setClock(new Date().toISOString());
     reload().catch(() => {});
@@ -180,6 +195,7 @@ export default function App() {
   }, [requestKey, planWanted, view]);
   function navigate(next: View) {
     if ((next === 'admin' || next === 'sources') && !isAdmin) return;
+    if (next !== 'profile') setStatisticsOpen(false);
     // Previewing a future route never starts GPS guidance against that snapshot.
     if (next === 'navigation' && view === 'planning') next = 'journey';
     if ((view === 'planning') !== (next === 'planning')) {
@@ -359,10 +375,11 @@ export default function App() {
   }
   const mapInstructions = mode === 'road' ? 'Select the start and end of the closed road section' : mode === 'origin' ? 'Choose start' : mode === 'destination' ? 'Choose destination' : mode === 'waypoint' ? `Choose stop ${pickingWaypoint + 1}` : ['point', 'line', 'polygon'].includes(mode) ? `Draw ${mode === 'point' ? 'a restriction' : mode === 'line' ? 'the closed road' : 'the closed area'} · Esc to pause` : '';
   if (authStatus === 'loading') return <div className="entry-loading" role="status">{t('Opening your account…')}</div>;
-  if (!entryAccepted && !user) return <AccountPanel entry onClose={continueAsGuest} onAuthenticated={() => setEntryAccepted(true)} />;
+  const accountCreated = (uid: string) => { setTravelChoiceUid(uid); setAccountOpen(false); setEntryAccepted(true); };
+  if (!entryAccepted && !user) return <AccountPanel entry onClose={continueAsGuest} onAuthenticated={() => setEntryAccepted(true)} onAccountCreated={accountCreated} />;
   return <div className="app-shell">
     <a className="skip-link" href="#workspace-panel">{t("Skip to controls")}</a>
-    <header className="app-header"><button className="brand" onClick={() => navigate('journey')} aria-label={t("Manzil journey planner")}><img src="/manzil-logo.png" width="42" height="42" alt={t("Manzil Urdu calligraphy")} /><span className="brand-name">{t("manzil")}<span className="brand-dot">{t(".")}</span></span></button><MapTimeControl at={mapDepartureAt} live={departureMode === 'now'} /><div className="header-actions"><button className="language-switch" data-tour="language" lang={language === 'en' ? 'ur' : 'en'} onClick={() => setLanguage(language === 'en' ? 'ur' : 'en')} aria-label={language === 'en' ? 'اردو میں دیکھیں' : 'View in English'}>{language === 'en' ? 'اردو' : 'English'}</button><button className="text-button account-trigger" type="button" title={user ? t("Open profile") : undefined} onClick={() => user ? navigate('profile') : setAccountOpen(true)}>{user && <UserRound size={17} aria-hidden="true" />}<span>{user ? t(profileName) : t("Sign in")}</span>{user && <ChevronRight size={15} aria-hidden="true" />}</button><button className={`icon-button notification-button ${view === 'alerts' ? 'selected' : ''}`} aria-label={`Alerts${unread ? `, ${unread} unread` : ''}`} onClick={() => navigate('alerts')}><Bell size={22} />{unread > 0 && <span className="notification-count">{unread}</span>}</button><button className="workspace-avatar" aria-label={t("Open profile and settings")} onClick={() => navigate('profile')}>{user && state?.profile.photoDataUrl ? <img src={state.profile.photoDataUrl} alt={t('Your profile photo')} /> : (user ? profileName : 'M').slice(0, 1).toUpperCase()}</button></div></header>
+    <header className="app-header"><button className="brand" onClick={() => navigate('journey')} aria-label={t("Manzil journey planner")}><img src="/manzil-logo.png" width="42" height="42" alt={t("Manzil Urdu calligraphy")} /><span className="brand-name">{t("manzil")}<span className="brand-dot">{t(".")}</span></span></button><MapTimeControl at={mapDepartureAt} live={departureMode === 'now'} /><div className="header-actions"><label className="header-language" data-tour="language"><Languages size={16} aria-hidden="true" /><select aria-label={t('Language')} value={language} onChange={event => setLanguage(event.target.value === 'ur' ? 'ur' : 'en')}><option value="en">English</option><option value="ur">اردو</option></select></label><button className={`icon-button notification-button ${view === 'alerts' ? 'selected' : ''}`} aria-label={`Alerts${unread ? `, ${unread} unread` : ''}`} onClick={() => navigate('alerts')}><Bell size={22} />{unread > 0 && <span className="notification-count">{unread}</span>}</button><button className="workspace-avatar" aria-label={t("Open profile")} onClick={() => navigate('profile')}>{user && state?.profile.photoDataUrl ? <img src={state.profile.photoDataUrl} alt={t('Your profile photo')} /> : (user ? profileName : 'M').slice(0, 1).toUpperCase()}</button></div></header>
     {mapStylesOpen && state && <MapStylePicker value={mapStyle} disabled={mapStyleBusy} onChange={changeMapStyle} onClose={() => setMapStylesOpen(false)} />}
     <div className="workspace">
       <nav className="nav-rail" aria-label={t("Main navigation")}>{NAV.filter(item => item.id === 'admin' ? isAdmin : item.id === 'activity' ? !!user && !isAdmin : item.id === 'commutes' ? !isAdmin : true).map(({ id, icon: Icon, label }) => <button className={`nav-item ${view === id || id === 'journey' && view === 'navigation' || id === 'profile' && view === 'sources' ? 'active' : ''}`} key={id} data-tour={id === 'planning' ? 'plan-ahead' : undefined} aria-current={view === id ? 'page' : undefined} onClick={() => navigate(id)}><Icon size={23} strokeWidth={1.9} aria-hidden="true" /><span>{t(label)}</span></button>)}</nav>
@@ -401,7 +418,7 @@ export default function App() {
           <div className="panel-content" hidden={view !== 'commutes'}>{!user ? <PersonalFeatureGate onSignIn={() => setAccountOpen(true)} /> : <CommutePanel key={`commutes-${commuteOpen}`} state={state} origin={origin} destination={destination} waypoints={waypoints} initialOpen={commuteOpen > 0} reload={reload} notify={notify} onPlan={selectCommute} onSelectEndpoints={() => navigate('journey')} />}</div>
           <div className="panel-content" hidden={view !== 'activity'}>{!user ? <PersonalFeatureGate onSignIn={() => setAccountOpen(true)} /> : <ActivityPanel key={user.uid} active={view === 'activity'} state={state} points={recordedPoints} setPoints={points => { setRecordedPoints(points); if (points.length) setHistoryTrace([]); }} reload={reload} notify={notify} onView={trip => { setHistoryTrace(trip.points); setHistoryName(trip.name); focusPoints(trip.points.map(p => p.coordinate)); }} />}</div>
           <div className="panel-content" hidden={view !== 'sources'}>{isAdmin && <SourcePanel state={state} reload={reload} notify={notify} onManualClosure={notice => beginClosure({ title: 'Review · imported notice', description: notice.text, sourceUrl: notice.url || undefined })} />}</div>
-          <div className="panel-content" hidden={view !== 'profile'}>{state.profile && <ProfilePanel account={user} onSignOut={leaveAccount} personalFeaturesAvailable={!!user} onSignIn={() => setAccountOpen(true)} onTour={() => { navigate('journey'); setTourOpen(true); }} state={state} reload={reload} notify={notify} onSources={() => navigate('sources')} onActivity={() => navigate('activity')} onSaveProposal={saveProposal} />}</div>
+          <div className="panel-content" hidden={view !== 'profile'}>{state.profile && <ProfilePanel account={user} onSignOut={leaveAccount} personalFeaturesAvailable={!!user} onSignIn={() => setAccountOpen(true)} onTour={() => { navigate('journey'); setTourOpen(true); }} state={state} reload={reload} notify={notify} onSources={() => navigate('sources')} onActivity={() => navigate('activity')} onStatistics={() => setStatisticsOpen(true)} onSaveProposal={saveProposal} />}</div>
           {view === 'navigation' && <div className="panel-content">{routeForGuidance && destination ? <NavigationPanel key={user?.uid ?? 'guest'} onSample={travel.capture} savesTravelData={!!user && state.profile.collectTravelData === true} onVisitedStops={count => { visitedStops.current = count; }} stops={waypoints.filter((place): place is Place => !!place).map(place => place.coordinate)} route={routeForGuidance} destination={destination.name} stale={stale} onBack={() => navigate('journey')} onPosition={setNavigationPosition} onReplan={replanFromGPS} onFocus={focusPoints} /> : <><h1>{t("Choose a route first")}</h1><button className="primary-button" onClick={() => navigate('journey')}>{t("Open the planner")}</button></>}</div>}
           <div className="panel-content" hidden={view !== 'alerts'}>{!user ? <PersonalFeatureGate onSignIn={() => setAccountOpen(true)} /> : <>
             <div className="section-heading"><h1>{t("Journey alerts")}</h1><Bell size={24} /></div>
@@ -420,8 +437,10 @@ export default function App() {
         <div className="map-bottom-info"><div className="map-legend"><span><i className="legend-line" />{t("Route")}</span><span><i className="legend-block" />{t("Closed")}</span><span><i className="legend-upcoming" />{t("Upcoming")}</span>{!!plan?.conflicts.length && <span><i className="legend-blocked-route" />{t("Blocked route")}</span>}</div>{!!historyTrace.length && !recordedPoints.length && <div className="map-context"><Activity size={14} />{historyName}<button className="icon-button small" aria-label={t("Hide recorded trip")} onClick={() => setHistoryTrace([])}><X size={13} /></button></div>}</div>
       </Suspense></main>
     </div>
-    {accountOpen && <AccountPanel onClose={() => setAccountOpen(false)} />}
-    {tourOpen && state && !accountOpen && <WelcomeTour onClose={() => setTourOpen(false)} />}
+    {accountOpen && <AccountPanel onClose={() => setAccountOpen(false)} onAccountCreated={accountCreated} />}
+    {travelChoiceOpen && user && <TravelDataChoice key={user.uid} uid={user.uid} onComplete={profile => { if (profile) setState(current => current ? { ...current, profile } : current); setTravelChoiceUid(null); }} />}
+    {statisticsOpen && view === 'profile' && user && state && stateOwner === user.uid && <Modal titleId="profile-statistics-title" onClose={() => setStatisticsOpen(false)} className="profile-statistics-dialog"><div className="statistics-dialog-heading"><h1 id="profile-statistics-title">{t('Personal statistics')}</h1><button className="icon-button" aria-label={t('Close statistics')} onClick={() => setStatisticsOpen(false)}><X size={20} /></button></div><MonthlyStatistics key={user.uid} state={state} /></Modal>}
+    {tourOpen && state && stateOwner === (user?.uid ?? null) && !accountOpen && !travelChoiceOpen && !statisticsOpen && !isCreatingAccount() && !(user && state.profile.travelDataChoiceMade !== true && needsTravelDataChoice(user.uid)) && <WelcomeTour onClose={() => setTourOpen(false)} />}
     {toast && <div className="toast" role="status"><Check size={17} /><span>{t(toast)}</span><button className="icon-button small" aria-label={t("Dismiss message")} onClick={() => setToast('')}><X size={15} /></button></div>}
   </div>;
 }

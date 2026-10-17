@@ -34,10 +34,10 @@ export class FirestoreStore implements Repository {
       tx.set(ref, pack(day)); return true;
     });
   }
-  async profile() { return this.uid ? { collectTravelData: false, ...await this.meta<LocalProfile>('profile') ?? await this.updateProfile({}) } : defaultProfile(); }
+  async profile() { return this.uid ? { collectTravelData: false, travelDataChoiceMade: false, ...await this.meta<LocalProfile>('profile') ?? await this.updateProfile({}) } : defaultProfile(); }
   async updateProfile(patch: Partial<Omit<LocalProfile, 'id' | 'createdAt' | 'updatedAt'>>) {
     const ref = this.metaRef('profile');
-    return this.db.runTransaction(async tx => { const old = decode<LocalProfile>((await tx.get(ref)).data()) ?? defaultProfile(); const next = { collectTravelData: false, ...old, ...patch, updatedAt: new Date().toISOString() }; if (patch.vehicle && !sameVehicle(old.vehicle, patch.vehicle)) next.vehicleUpdatedAt = next.updatedAt; if (!next.collectTravelData) next.inferFrequentRoutes = false; tx.set(ref, pack(next)); tx.set(this.user(), { active: true }, { merge: true }); return next; });
+    return this.db.runTransaction(async tx => { const old = decode<LocalProfile>((await tx.get(ref)).data()) ?? defaultProfile(); const next = { collectTravelData: false, travelDataChoiceMade: false, ...old, ...patch, updatedAt: new Date().toISOString() }; if (patch.vehicle && !sameVehicle(old.vehicle, patch.vehicle)) next.vehicleUpdatedAt = next.updatedAt; if (!next.collectTravelData) next.inferFrequentRoutes = false; tx.set(ref, pack(next)); tx.set(this.user(), { active: true }, { merge: true }); return next; });
   }
   async list<T>(kind: RecordKind, limit = 500): Promise<T[]> {
     const snapshot = await this.records(kind).orderBy('updatedAt', 'desc').limit(limit).get();

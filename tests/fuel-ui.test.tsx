@@ -5,6 +5,7 @@ import type { AppState, FuelPriceStatus, PlanResponse, RouteOption, Trip, TripSt
 import ProfilePanel from '../src/components/ProfilePanel';
 import RouteResults from '../src/components/RouteResults';
 import ActivityPanel from '../src/components/ActivityPanel';
+import MonthlyStatistics from '../src/components/MonthlyStatistics';
 import FuelPrices from '../src/components/FuelPrices';
 import VehicleSettings from '../src/components/VehicleSettings';
 import AdminPanel from '../src/components/AdminPanel';
@@ -40,6 +41,7 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); setLanguage('en'); });
 
 it('saves motorcycle, fuel type and decimal km/litre without enabling GPS collection or changing the routing profile', async () => {
   render(<ProfilePanel {...profileProps()} state={state()} />);
+  fireEvent.click(screen.getByText('Your vehicle', { selector: 'summary span' }));
   fireEvent.change(screen.getByLabelText('Vehicle type'), { target: { value: 'motorcycle' } });
   fireEvent.change(screen.getByLabelText('Fuel type'), { target: { value: 'diesel' } });
   fireEvent.change(screen.getByLabelText('Vehicle name (optional)'), { target: { value: 'Daily bike' } });
@@ -87,12 +89,12 @@ it('shows daily price provenance with date-only effective dates and labels a fai
   expect(screen.getByText('The latest check is overdue or failed. Estimates use the saved reference price.')).toBeTruthy();
 });
 
-it('loads retained-history totals beyond the recent list and switches week/month/all without reading raw GPS', async () => {
+it('shows monthly retained-history totals beyond the recent list without reading raw GPS', async () => {
   render(<ActivityPanel {...activityProps()} state={state({ trips: [trip, { ...trip, id: 'old', name: 'Old trip', fuelEstimate: undefined }] })} />);
-  await screen.findByText('≈ PKR 18,600'); expect(screen.getByText('61')).toBeTruthy();
+  await screen.findByText('≈ PKR 31,000'); expect(screen.getByText('100')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'This week' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'All retained trips' })).toBeNull();
   expect(calls.api).toHaveBeenCalledWith('/trips/statistics', expect.objectContaining({ signal: expect.any(AbortSignal) }));
-  fireEvent.click(screen.getByRole('button', { name: 'This month' })); expect(screen.getByText('≈ PKR 31,000')).toBeTruthy(); expect(screen.getByText('100')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'All retained trips' })); expect(screen.getByText('≈ PKR 46,500')).toBeTruthy();
   expect(calls.api).toHaveBeenCalledTimes(1);
   expect(screen.getByText('Trips without an estimate are excluded from cost totals. Older trips are not repriced after changing your vehicle.')).toBeTruthy();
   expect(screen.getByText('Fuel estimate unavailable for this trip.')).toBeTruthy();
@@ -104,16 +106,26 @@ it('keeps saved trip costs after the current vehicle changes and reports totals 
   render(<ActivityPanel {...activityProps()} state={state({ profile, trips: [trip] })} />);
   await screen.findByRole('alert'); expect(screen.getByText('≈ PKR 310')).toBeTruthy();
   expect(screen.queryByText('≈ PKR 62')).toBeNull(); expect(screen.queryByText('≈ PKR 18,600')).toBeNull();
-  expect(screen.getByText('Could not load trip totals. Your recent trips are still available below.')).toBeTruthy();
+  expect(screen.getByText('Could not load monthly statistics.')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Retry' })); await waitFor(() => expect(calls.api).toHaveBeenCalledTimes(2));
 });
 
 it('avoids loading statistics while Activity is hidden and labels partial totals honestly', async () => {
-  calls.api.mockResolvedValue({ ...statistics, week: { ...statistics.week, complete: false } });
+  calls.api.mockResolvedValue({ ...statistics, month: { ...statistics.month, complete: false } });
   const props = activityProps(); const ui = render(<ActivityPanel {...props} active={false} state={state()} />);
   expect(calls.api).not.toHaveBeenCalled();
   ui.rerender(<ActivityPanel {...props} active state={state()} />);
   expect(await screen.findByText('Partial totals: the retained-history limit was reached.')).toBeTruthy();
+});
+
+it('opens monthly statistics without requesting GPS, enabling collection or reading raw traces', async () => {
+  const watchPosition = vi.fn();
+  Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { watchPosition, clearWatch: vi.fn() } });
+  render(<MonthlyStatistics state={state()} />);
+  expect(await screen.findByText('≈ PKR 31,000')).toBeTruthy();
+  expect(calls.api).toHaveBeenCalledTimes(1); expect(calls.api.mock.calls[0][0]).toBe('/trips/statistics');
+  expect(watchPosition).not.toHaveBeenCalled(); expect(calls.send).not.toHaveBeenCalled();
+  expect(screen.queryByRole('button', { name: 'Start recording' })).toBeNull();
 });
 
 it('provides Urdu labels for the new vehicle and price controls', () => {

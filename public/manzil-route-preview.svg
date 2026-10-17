@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 800" fill="none">
+  <!-- Decorative route illustration, not live map data. -->
+  <defs>
+    <pattern id="neighbourhood" width="148" height="128" patternUnits="userSpaceOnUse" patternTransform="rotate(-39 350 400)">
+      <path d="M0 30H148M0 96H148M35 0V128M110 0V128" stroke="#e4e6dc" stroke-width="8"/>
+      <path d="M0 30H148M0 96H148M35 0V128M110 0V128" stroke="#fffefa" stroke-width="5"/>
+    </pattern>
+    <filter id="marker-shadow" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#173456" flood-opacity=".2"/></filter>
+  </defs>
+  <path fill="#f4f4e7" d="M0 0H700V800H0z"/>
+  <path fill="url(#neighbourhood)" d="M0 0H700V800H0z"/>
+  <path d="M-30 65 80-30H430L350 112 228 165 140 132 48 198-30 165Z" fill="#c8ddaa"/>
+  <path d="m520 555 180-88v333H574l-82-119Z" fill="#d2e3b4"/>
+  <path d="m55 458 74-95 87 71-80 113Z" fill="#d1e3b5"/>
+  <path d="m418 253 65-77 94 66-56 82Z" fill="#c5dda8"/>
+  <path d="M700 52c-72 7-83 40-73 79s-40 57-35 98 66 31 84 77l24 5Z" fill="#a6d8ea"/>
+  <path d="M683 330c-41 70-31 97-58 138s-49 34-58 74" stroke="#a6d8ea" stroke-width="4" stroke-linecap="round"/>
+  <g stroke-linecap="round" stroke-linejoin="round">
+    <path d="M-55 758 746-55M-60 352 427 823M170-60 756 504M-55 550 558-60M325 850 761 412" stroke="#d9ab62" stroke-width="19"/>
+    <path d="M-55 758 746-55M-60 352 427 823M170-60 756 504M-55 550 558-60M325 850 761 412" stroke="#f4cf87" stroke-width="14"/>
+    <path d="M-45 752 754-53M-52 351 430 816M177-58 759 501M-46 550 563-57M330 849 765 414" stroke="#fff4d8" stroke-width="2"/>
+    <path d="m72 667 176-181 98-99 98-100 154-156" stroke="#fff" stroke-width="17"/>
+    <path d="m72 667 176-181 98-99 98-100 154-156" stroke="#f1bac1" stroke-width="10"/>
+    <!-- Bright closure ends before the open junctions. -->
+    <path d="m328 405 56-57" stroke="#fff" stroke-width="19"/>
+    <path d="m328 405 56-57" stroke="#ff2147" stroke-width="12"/>
+    <!-- Open blue detour leaves the blocked corridor and rejoins above it. -->
+    <path d="m72 667 176-181-100-100 155-159 141 60 154-156" stroke="#fff" stroke-width="19"/>
+    <path d="m72 667 176-181-100-100 155-159 141 60 154-156" stroke="#2164e8" stroke-width="11"/>
+  </g>
+  <g fill="#6b7b6b" font-family="Arial,sans-serif" font-size="15" font-weight="600" opacity=".85">
+    <text x="103" y="294" transform="rotate(-39 103 294)">F-8</text>
+    <text x="389" y="516" transform="rotate(-39 389 516)">G-8</text>
+    <text x="479" y="376" transform="rotate(-39 479 376)">G-7</text>
+    <text x="325" y="122" transform="rotate(-39 325 122)">F-7</text>
+    <text x="191" y="618" transform="rotate(-39 191 618)">G-9</text>
+  </g>
+  <g filter="url(#marker-shadow)">
+    <circle cx="72" cy="667" r="23" fill="#fff"/>
+    <circle cx="72" cy="667" r="17" fill="#fff" stroke="#2164e8" stroke-width="5"/>
+    <circle cx="598" cy="131" r="25" fill="#fff"/>
+    <circle cx="598" cy="131" r="20" fill="#08775e"/>
+    <path d="M591 141v-20h8c7 0 9 9 2 10 8 1 6 10-2 10Zm5-12h3c3 0 3-4 0-4h-3Zm0 8h3c4 0 4-4 0-4h-3Z" fill="#fff"/>
+    <circle cx="356" cy="376" r="22" fill="#fff"/>
+    <circle cx="356" cy="376" r="17" fill="#ff2147"/>
+    <path d="M348 376h16" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
+  </g>
+</svg>

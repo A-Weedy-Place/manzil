@@ -94,6 +94,6 @@ export const profilePatchSchema = z.object({
   mapDetail: z.enum(['clean', 'standard']), mapStyle: z.enum(['streets', 'outdoors', 'contrast', 'minimal', 'night']), browserNotifications: z.boolean(),
   inferFrequentRoutes: z.boolean(), transport: z.literal('car'),
   city: z.string().trim().max(80), location: z.string().trim().max(120),
-  photoDataUrl: photoSchema.or(z.literal('')), collectTravelData: z.boolean(),
+  photoDataUrl: photoSchema.or(z.literal('')), collectTravelData: z.boolean(), travelDataChoiceMade: z.boolean(),
   vehicle: vehicleSchema,
 }).partial().strict().refine(value => Object.keys(value).length > 0, 'Provide at least one profile preference.');

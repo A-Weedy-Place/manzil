@@ -103,6 +103,8 @@ export type MapStyleId = 'streets' | 'outdoors' | 'contrast' | 'minimal' | 'nigh
 export interface LocalProfile {
   id: 'local'; displayName: string; theme: 'light' | 'dark' | 'system';
   city?: string; location?: string; photoDataUrl?: string; collectTravelData?: boolean;
+  /** Records an explicit Allow/Not now choice; it never grants collection by itself. */
+  travelDataChoiceMade?: boolean;
   vehicle?: VehicleProfile; vehicleUpdatedAt?: string;
   mapDetail: 'clean' | 'standard'; mapStyle: MapStyleId; browserNotifications: boolean;
   inferFrequentRoutes: boolean; transport: 'car'; createdAt: string; updatedAt: string;

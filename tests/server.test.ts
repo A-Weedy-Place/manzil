@@ -72,8 +72,8 @@ describe('local API', () => {
   it('keeps one local profile, validates partial preferences, and exposes consent-gated proposals', async () => {
     const { request } = await setup();
     const initial = await (await request('/profile')).json();
-    expect(initial).toMatchObject({ id: 'local', displayName: 'Traveller', theme: 'system', mapDetail: 'clean', mapStyle: 'streets',
-      browserNotifications: false, inferFrequentRoutes: false, transport: 'car' });
+    expect(initial).toMatchObject({ id: 'local', displayName: 'Traveller', theme: 'system', mapDetail: 'clean', mapStyle: 'outdoors',
+      browserNotifications: false, collectTravelData: false, travelDataChoiceMade: false, inferFrequentRoutes: false, transport: 'car' });
     const changed = await request('/profile', 'PATCH', { displayName: 'Ali', theme: 'dark', browserNotifications: true });
     expect(changed.status).toBe(200); expect(await changed.json()).toMatchObject({ displayName: 'Ali', theme: 'dark', browserNotifications: true, inferFrequentRoutes: false });
     expect((await (await request('/state')).json()).profile.displayName).toBe('Ali');
@@ -83,6 +83,17 @@ describe('local API', () => {
     expect((await request('/profile', 'PATCH', { transport: 'bus' })).status).toBe(400);
     expect((await request('/profile', 'PATCH', { inferFrequentRoutes: 'yes' })).status).toBe(400);
     expect((await request('/profile', 'PATCH', {})).status).toBe(400);
+  });
+  it('remembers a declined data choice without granting collection or accepting non-boolean acknowledgements', async () => {
+    const { request } = await setup();
+    for (const invalid of ['true', 1, null, [], {}]) {
+      expect((await request('/profile', 'PATCH', { travelDataChoiceMade: invalid })).status).toBe(400);
+    }
+    expect((await request('/profile', 'PATCH', { travelDataChoiceMade: true })).status).toBe(200);
+    expect(await (await request('/profile')).json()).toMatchObject({ travelDataChoiceMade: true, collectTravelData: false, inferFrequentRoutes: false });
+    expect((await request('/profile', 'PATCH', { inferFrequentRoutes: true })).status).toBe(400);
+    await request('/profile', 'PATCH', { displayName: 'New name' });
+    expect((await (await request('/state')).json()).profile).toMatchObject({ travelDataChoiceMade: true, collectTravelData: false });
   });
   it('saves independent map styles and rejects unsupported styles without changing preferences', async () => {
     const { request } = await setup();
@@ -186,7 +197,7 @@ describe('durability, commute time, and privacy retention', () => {
       mapDetail: 'standard' as const, browserNotifications: true, inferFrequentRoutes: true,
       createdAt: '2026-10-01T12:00:00.000Z', updatedAt: '2026-10-02T12:00:00.000Z' };
     store.setMeta('profile', legacy); store.close(); store = new Store(path);
-    expect(store.profile()).toEqual({ ...legacy, mapStyle: 'streets' });
+    expect(store.profile()).toEqual({ ...legacy, mapStyle: 'outdoors' });
     const chosen = store.updateProfile({ mapStyle: 'night' }); store.close(); store = new Store(path);
     cleanup.push(() => store.close());
     expect(store.profile()).toEqual(chosen); expect(store.profile().createdAt).toBe(legacy.createdAt);

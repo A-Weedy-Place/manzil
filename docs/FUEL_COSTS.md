@@ -24,6 +24,8 @@ Vehicle changes set a server-managed `vehicleUpdatedAt` only when actual normali
 
 `GET /api/trips/statistics` reads private summary records without raw GPS and returns `{week, month, all}`. Weeks start Monday and months start on the first, both in PKT; each trip belongs to the period containing its **departure**. `all` means retained history, subject to the existing 90-day trip retention, not lifetime usage. Future-dated or unfinished future trips are excluded. Each period includes priced/unpriced trip counts and unpriced distance alongside estimated PKR/litres. The endpoint examines at most 5,000 summaries; `complete:false` explicitly marks a larger history's partial totals. `/state` still sends the latest 50 trips for ordinary display, rather than reading thousands on every poll.
 
+The latest profile/Activity interface presents **monthly statistics only**, reusing a read-only aggregate component. The separate Personal statistics dialog opens beside Profile on wide screens. The API retains all three periods for compatibility. Profile shows the dated fuel-price card expanded; **Checked daily** describes collector frequency, not a promise of daily price revisions. See [account/profile guide](ACCOUNT_AND_PROFILE.md).
+
 ## API and storage contract
 
 - `LocalProfile.vehicle?: {kind:'car'|'motorcycle', label?:string, fuelType:'petrol'|'diesel', kmPerLitre:number|null}`; optional `vehicleUpdatedAt` is server managed. `transport:'car'` remains the road-engine profile.

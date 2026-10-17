@@ -27,7 +27,7 @@ it('opens sign-in first and only enters guest planning after an explicit skip', 
   sessionStorage.removeItem('manzil-entry-guest');
   vi.stubGlobal('fetch', vi.fn(async (url: string) => responseFor(url)));
   render(<App />);
-  expect(await screen.findByRole('dialog', { name: 'Your journeys, together.' })).toBeTruthy();
+  expect(await screen.findByRole('dialog', { name: 'Manzil' })).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Find routes' })).toBeNull();
   fireEvent.click(screen.getAllByRole('button', { name: 'Continue as guest' }).at(-1)!);
   expect(await screen.findByRole('button', { name: 'Skip tour' })).toBeTruthy();
@@ -38,6 +38,7 @@ it('takes an administrator from sign-in to the control centre', async () => {
   sessionStorage.removeItem('manzil-entry-guest');
   vi.stubGlobal('fetch', vi.fn(async (url: string) => responseFor(url)));
   render(<App />); await screen.findByRole('form', { name: 'Sign in' });
+  fireEvent.click(screen.getByText('Choose a development account'));
   fireEvent.click(screen.getByRole('button', { name: /Admin user/ }));
   fireEvent.submit(screen.getByRole('form', { name: 'Sign in' }));
   expect(await screen.findByRole('heading', { name: 'Control centre' })).toBeTruthy();
@@ -67,23 +68,25 @@ it('unlocks existing personal screens with a dummy account and returns to guest 
   render(<App />); await screen.findByRole('button', { name: 'Find routes' });
   fireEvent.click(screen.getByRole('button', { name: 'Skip tour' }));
   expect(screen.queryByRole('button', { name: 'Activity' })).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Open profile' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Sign in for personal features' }));
+  fireEvent.click(screen.getByText('Choose a development account'));
   fireEvent.click(screen.getByRole('button', { name: /Normal user/ }));
   fireEvent.submit(screen.getByRole('form', { name: 'Sign in' }));
-  fireEvent.click(await screen.findByRole('button', { name: 'Demo traveller' }));
-  expect(screen.getByText('DEV · Normal user')).toBeTruthy();
-  expect(screen.getByRole('heading', { name: 'Profile & settings' })).toBeTruthy();
+  fireEvent.click(await screen.findByRole('button', { name: 'Open profile' }));
+  expect(screen.getByText('Normal user')).toBeTruthy();
+  expect(screen.getByRole('heading', { name: 'User profile' })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Map' }));
-  expect(screen.queryByRole('heading', { name: 'Profile & settings' })).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Demo traveller' }));
-  expect(screen.getByRole('heading', { name: 'Profile & settings' })).toBeTruthy();
+  expect(screen.queryByRole('heading', { name: 'User profile' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Open profile' }));
+  expect(screen.getByRole('heading', { name: 'User profile' })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Activity' }));
   expect(screen.getByRole('heading', { name: 'Your activity' })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Saved' }));
   expect(screen.queryByRole('heading', { name: 'Sign in for personal features' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Profile' }));
   fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
-  expect(screen.getByRole('dialog', { name: 'Your journeys, together.' })).toBeTruthy();
+  expect(screen.getByRole('dialog', { name: 'Manzil' })).toBeTruthy();
   fireEvent.click(screen.getAllByRole('button', { name: 'Continue as guest' }).at(-1)!);
   expect(await screen.findByRole('button', { name: 'Find routes' })).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Activity' })).toBeNull();
@@ -113,9 +116,9 @@ it('clears a private report editor, its evidence and map selection when signing 
   expect(await screen.findByRole('heading', { name: 'Edit restriction' })).toBeTruthy();
   expect(screen.getByRole('textbox', { name: 'Road / place' }).getAttribute('value')).toBe(privateReport.title);
   expect(capture.props?.drawing).toEqual(privateReport.drawing); expect(capture.props?.selectedClosureId).toBe(privateReport.id);
-  fireEvent.click(screen.getByRole('button', { name: 'Demo traveller' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Open profile' }));
   fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
-  await screen.findByRole('dialog', { name: 'Your journeys, together.' });
+  await screen.findByRole('dialog', { name: 'Manzil' });
   fireEvent.click(screen.getAllByRole('button', { name: 'Continue as guest' }).at(-1)!);
   await screen.findByRole('button', { name: 'Skip tour' }); fireEvent.click(screen.getByRole('button', { name: 'Skip tour' }));
   fireEvent.click(screen.getByRole('button', { name: 'Closures' }));
@@ -222,11 +225,64 @@ it('preserves map identity and handlers across polling, switches the complete sh
   const move = capture.props!.onWaypointMove, camera = capture.props!.focus;
   await act(async () => { intervals.get(20000)!(); });
   expect(capture.mounts).toBe(1); expect(capture.props!.onWaypointMove).toBe(move); expect(capture.props!.focus).toBe(camera);
-  fireEvent.click(screen.getByRole('button', { name: 'اردو میں دیکھیں' }));
+  fireEvent.change(screen.getByRole('combobox', { name: 'Language' }), { target: { value: 'ur' } });
   expect(document.documentElement.dir).toBe('rtl'); expect(document.documentElement.lang).toBe('ur');
   expect(screen.getByRole('button', { name: 'راستے تلاش کریں' })).toBeTruthy(); expect(capture.mounts).toBe(1);
   fireEvent.click(screen.getByRole('button', { name: 'محفوظ' }));
   expect(screen.getByRole('heading', { name: 'ذاتی سہولتوں کے لیے سائن ان کریں' })).toBeTruthy();
+});
+it('has one header profile control and opens read-only monthly statistics beside the profile', async () => {
+  signInDevelopment('user@manzil.test', 'ManzilUser123!');
+  const watch = vi.fn(); Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { watchPosition: watch, clearWatch: vi.fn() } });
+  const summary = { period: 'month', tripCount: 0, distanceMeters: 0, durationSeconds: 0, costPkr: 0, litres: 0, pricedTripCount: 0, unpricedTripCount: 0, complete: true };
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => url === '/api/trips/statistics' ? new Response(JSON.stringify({ month: summary })) : responseFor(url)));
+  render(<App />); await screen.findByRole('button', { name: 'Find routes' });
+  expect(document.querySelector('.account-trigger')).toBeNull();
+  expect(screen.getAllByRole('button', { name: 'Open profile' })).toHaveLength(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Open profile' }));
+  fireEvent.click(screen.getByRole('button', { name: /Personal statistics/ }));
+  expect(await screen.findByRole('dialog', { name: 'Personal statistics' })).toBeTruthy();
+  expect(await screen.findByText('No recorded trips this month.')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'This week' })).toBeNull();
+  expect(watch).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Close statistics' }));
+  expect(screen.queryByRole('dialog', { name: 'Personal statistics' })).toBeNull();
+  expect(screen.getByRole('heading', { name: 'User profile' })).toBeTruthy();
+});
+it('asks only a newly registered account for optional trip data before its tour and remembers Not now', async () => {
+  sessionStorage.setItem('manzil-travel-data-choice-v1:dev-user', 'pending');
+  signInDevelopment('user@manzil.test', 'ManzilUser123!');
+  localStorage.removeItem('manzil-tour-v1');
+  const fetcher = vi.fn(async (url: string, init?: RequestInit) => url === '/api/profile' && init?.method === 'PATCH' ? new Response(JSON.stringify({ ...state.profile, ...JSON.parse(String(init.body)) })) : responseFor(url));
+  vi.stubGlobal('fetch', fetcher);
+  render(<App />);
+  expect(await screen.findByRole('dialog', { name: 'Personal trip data' })).toBeTruthy();
+  expect(screen.queryByRole('dialog', { name: 'Welcome to Manzil' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+  expect(await screen.findByRole('dialog', { name: 'Welcome to Manzil' })).toBeTruthy();
+  expect(sessionStorage.getItem('manzil-travel-data-choice-v1:dev-user')).toBeNull();
+  const request = fetcher.mock.calls.find(([url]) => url === '/api/profile');
+  expect(JSON.parse(String(request?.[1]?.body))).toEqual({ travelDataChoiceMade: true, collectTravelData: false, inferFrequentRoutes: false });
+});
+it('never uses a previous account’s acknowledged profile to dismiss a new account’s data choice', async () => {
+  signInDevelopment('admin@manzil.test', 'ManzilAdmin123!');
+  let resolveNewState!: (value: Response) => void;
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    if (url === '/api/state') {
+      if (getAuthSession().user?.uid === 'dev-user') return new Promise<Response>(resolve => { resolveNewState = resolve; });
+      return new Response(JSON.stringify({ ...state, profile: { ...state.profile, travelDataChoiceMade: true } }));
+    }
+    return responseFor(url);
+  }));
+  render(<App />); await screen.findByRole('heading', { name: 'Control centre' });
+  sessionStorage.setItem('manzil-travel-data-choice-v1:dev-user', 'pending');
+  act(() => signInDevelopment('user@manzil.test', 'ManzilUser123!'));
+  await waitFor(() => expect(resolveNewState).toBeTypeOf('function'));
+  expect(sessionStorage.getItem('manzil-travel-data-choice-v1:dev-user')).toBe('pending');
+  expect(screen.queryByRole('dialog', { name: 'Welcome to Manzil' })).toBeNull();
+  await act(async () => resolveNewState(new Response(JSON.stringify(state))));
+  expect(await screen.findByRole('dialog', { name: 'Personal trip data' })).toBeTruthy();
+  expect(sessionStorage.getItem('manzil-travel-data-choice-v1:dev-user')).toBe('pending');
 });
 it('keeps pending route geometry labelled unavailable instead of blanking the map on a clock update', async () => {
   const intervals = new Map<number, () => void>(); let resolvePlan!: (value: Response) => void; let requests = 0;

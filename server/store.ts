@@ -52,11 +52,11 @@ export class Store {
       const profile = this.meta<LocalProfile>('profile');
       if (!profile) {
         const now = new Date().toISOString();
-        this.setMeta('profile', { id: 'local', displayName: 'Traveller', theme: 'system', mapDetail: 'clean', mapStyle: 'streets',
-          browserNotifications: false, collectTravelData: false, inferFrequentRoutes: false, transport: 'car', createdAt: now, updatedAt: now } satisfies LocalProfile);
+        this.setMeta('profile', { id: 'local', displayName: 'Traveller', theme: 'system', mapDetail: 'clean', mapStyle: 'outdoors',
+          browserNotifications: false, collectTravelData: false, travelDataChoiceMade: false, inferFrequentRoutes: false, transport: 'car', createdAt: now, updatedAt: now } satisfies LocalProfile);
       } else if (profile.mapStyle === undefined) {
         // Add the independent basemap preference without resetting older preferences or timestamps.
-        this.setMeta('profile', { ...profile, mapStyle: 'streets' });
+        this.setMeta('profile', { ...profile, mapStyle: 'outdoors' });
       }
     });
     if (!this.meta<SourceStatus>('sourceStatus')) this.setMeta('sourceStatus', {
@@ -88,7 +88,7 @@ export class Store {
     });
   }
   get eventRevision() { return this.meta<number>('eventRevision') ?? 0; }
-  profile(): LocalProfile { return { collectTravelData: false, ...this.meta<LocalProfile>('profile')! }; }
+  profile(): LocalProfile { return { collectTravelData: false, travelDataChoiceMade: false, ...this.meta<LocalProfile>('profile')! }; }
   updateProfile(patch: Partial<Omit<LocalProfile, 'id' | 'createdAt' | 'updatedAt'>>): LocalProfile {
     return this.transaction(() => {
       const profile: LocalProfile = { ...this.profile(), ...patch, updatedAt: new Date().toISOString() };

@@ -146,6 +146,16 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
     await expect(personal.addAlertOnce('optout-alert-fixture', { title: 'Must not be written', message: 'Synthetic fixture', createdAt: trip.createdAt, read: false, frequentRouteId: 'usual-fixture' })).rejects.toMatchObject({ status: 409 });
     expect(await personal.get('alert', 'optout-alert-fixture')).toBeUndefined();
   });
+  it('persists a skipped data choice per UID without opting in, with Classic as the new-profile default', async () => {
+    expect(await (await request('/profile')).json()).toMatchObject({ mapStyle: 'outdoors', collectTravelData: false, travelDataChoiceMade: false });
+    expect(await store.forUser('bob').profile()).toMatchObject({ mapStyle: 'outdoors', collectTravelData: false, travelDataChoiceMade: false });
+    expect((await request('/profile', undefined, { travelDataChoiceMade: true }, 'PATCH')).status).toBe(401);
+    for (const invalid of ['true', 1, null]) expect((await request('/profile', alice, { travelDataChoiceMade: invalid }, 'PATCH')).status).toBe(400);
+    expect((await request('/profile', alice, { travelDataChoiceMade: true, collectTravelData: false }, 'PATCH')).status).toBe(200);
+    expect(await new FirestoreStore(services.db).forUser('alice').profile()).toMatchObject({ travelDataChoiceMade: true, collectTravelData: false, inferFrequentRoutes: false });
+    expect(await store.forUser('bob').profile()).toMatchObject({ travelDataChoiceMade: false, collectTravelData: false });
+    expect((await request('/profile', alice, { inferFrequentRoutes: true }, 'PATCH')).status).toBe(400);
+  });
   it('isolates simultaneous users, profiles and saved records and persists across repository instances', async () => {
     await Promise.all([request('/profile', alice, { displayName: 'Alice' }, 'PATCH'), request('/profile', bob, { displayName: 'Bob' }, 'PATCH')]);
     const [a, b] = await Promise.all([request('/state', alice).then(r => r.json()), request('/state', bob).then(r => r.json())]);
