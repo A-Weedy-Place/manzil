@@ -5,6 +5,8 @@ import { randomUUID } from 'node:crypto';
 import type { Alert, Closure, ClosureInput, LocalProfile, SourceNotice, SourceStatus, Trip } from '../shared/types.js';
 import { HttpError } from './errors.js';
 import { closureSummary } from './community.js';
+import { sameVehicle } from '../shared/fuel.js';
+import { tripWithCurrentVehicle } from './fuel.js';
 
 type Kind = 'closure' | 'commute' | 'alert' | 'trip';
 const PROFILE_URL = 'https://x.com/shaheryarhassan';
@@ -79,11 +81,18 @@ export class Store {
     this.db.prepare('INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value')
       .run(key, JSON.stringify(value));
   }
+  claimFuelCheck(day: string): boolean {
+    return this.transaction(() => {
+      if (this.meta<string>('fuel:checkedDay') === day) return false;
+      this.setMeta('fuel:checkedDay', day); return true;
+    });
+  }
   get eventRevision() { return this.meta<number>('eventRevision') ?? 0; }
   profile(): LocalProfile { return { collectTravelData: false, ...this.meta<LocalProfile>('profile')! }; }
   updateProfile(patch: Partial<Omit<LocalProfile, 'id' | 'createdAt' | 'updatedAt'>>): LocalProfile {
     return this.transaction(() => {
       const profile: LocalProfile = { ...this.profile(), ...patch, updatedAt: new Date().toISOString() };
+      if (patch.vehicle && !sameVehicle(this.profile().vehicle, patch.vehicle)) profile.vehicleUpdatedAt = profile.updatedAt;
       if (!profile.collectTravelData) profile.inferFrequentRoutes = false;
       this.setMeta('profile', profile); return profile;
     });
@@ -110,7 +119,7 @@ export class Store {
   saveTripIfConsented(trip: Trip) {
     this.transaction(() => {
       if (!this.profile().collectTravelData) throw new HttpError(403, 'Allow travel data collection in Profile before saving a trip.');
-      this.put('trip', trip);
+      this.put('trip', tripWithCurrentVehicle(trip, this.profile()));
     });
   }
   routingClosures(): Closure[] {

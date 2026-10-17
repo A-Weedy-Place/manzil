@@ -8,8 +8,9 @@ import type { SourceService } from './source.js';
 import { firebaseServices } from './firebase.js';
 import { checkEnabledCommutes } from './commutes.js';
 import { HttpError } from './errors.js';
+import type { FuelService } from './fuel.js';
 
-export function mountWorker(app: Express, config: RuntimeConfig, store: Repository, source: SourceService) {
+export function mountWorker(app: Express, config: RuntimeConfig, store: Repository, source: SourceService, fuel: FuelService) {
   app.get('/healthz', (_request, response) => response.json({ ok: true }));
   app.post('/internal/tick', async (request, response) => {
     if (config.mode === 'local' || config.role !== 'worker') throw new HttpError(404, 'Worker is unavailable on this service.');
@@ -26,8 +27,12 @@ export function mountWorker(app: Express, config: RuntimeConfig, store: Reposito
       const payload = await firebaseServices(config.projectId).auth.verifyIdToken(token);
       if (payload.admin !== true) throw new HttpError(403, 'Emulator admin identity is required.');
     }
-    const { job } = z.object({ job: z.enum(['source', 'commutes']) }).strict().parse(request.body);
+    const { job } = z.object({ job: z.enum(['source', 'commutes', 'fuel']) }).strict().parse(request.body);
     if (job === 'source') { response.json({ status: await source.due() ? await source.check() : await store.sourceStatus() }); return; }
+    if (job === 'fuel') { response.json({ status: await fuel.check() }); return; }
+    // Existing local launchers already send this job; the persisted day claim
+    // coalesces it with the dedicated daily fuel job. Tests never auto-fetch externals.
+    if (process.env.NODE_ENV !== 'test') await fuel.check();
     const db = firebaseServices(config.projectId).db;
     const cursor = await store.meta<string>('sourceUserCheckCursor');
     let query = db.collection('users').orderBy(FieldPath.documentId()).limit(20);

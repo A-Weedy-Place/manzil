@@ -10,7 +10,7 @@ import { readConfig } from '../server/config';
 import { SpeechService } from '../server/speech';
 import { createJourneyPlanner } from '../server/routing';
 import type { Planner } from '../server/commutes';
-import type { Alert, Closure, ClosureDraft, Commute, PlanRequest, PlanResponse, Trip } from '../shared/types';
+import type { Alert, Closure, ClosureDraft, Commute, FuelPriceStatus, PlanRequest, PlanResponse, Trip } from '../shared/types';
 
 const enabled = !!process.env.FIRESTORE_EMULATOR_HOST && !!process.env.FIREBASE_AUTH_EMULATOR_HOST;
 describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
@@ -155,6 +155,44 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
     expect((await request(`/commutes/${commute.id}`, bob, undefined, 'DELETE')).status).toBe(404);
     expect(await (await request('/commutes', bob)).json()).toEqual([]);
     expect((await new FirestoreStore(services.db).forUser('alice').list<Commute>('commute')).some(item => item.id === commute.id)).toBe(true);
+  });
+  it('keeps dated fuel estimates private and immutable across vehicle edits in real Firestore', async () => {
+    const now = Date.now(), checked = new Date(now).toISOString(), personal = store.forUser('alice');
+    const fuel: FuelPriceStatus = { state: 'fresh', lastCheckedAt: checked, lastSuccessAt: checked,
+      nextCheckAt: new Date(now + 86400_000).toISOString(), message: 'Synthetic offline integration fixture',
+      records: [{ effectiveFrom: new Date(now - 2 * 86400_000).toISOString(), petrolPerLitre: 300, dieselPerLitre: 350,
+        sourceName: 'Synthetic price fixture', sourceUrl: 'https://example.test/fuel', retrievedAt: checked }] };
+    await store.setMeta('fuel:status', fuel);
+    await store.setMeta('fuel:checkedDay', new Date(now + 5 * 3600_000).toISOString().slice(0, 10));
+    expect((await request('/fuel/check', undefined, {})).status).toBe(401);
+    expect((await request('/FuEl/CHECK/', bob, {})).status).toBe(403);
+    expect((await request('/trips/statistics')).status).toBe(401);
+    expect(await (await request('/fuel/prices')).json()).toMatchObject({ records: fuel.records });
+    const vehicle = { kind: 'car', fuelType: 'petrol', kmPerLitre: 10, label: 'Offline test car' };
+    expect((await request('/profile', alice, { vehicle, collectTravelData: true }, 'PATCH')).status).toBe(200);
+    expect((await request('/profile', alice, { vehicleUpdatedAt: '2000-01-01T00:00:00Z' }, 'PATCH')).status).toBe(400);
+    expect((await request('/profile', alice, { vehicle: { ...vehicle, kmPerLitre: 0 } }, 'PATCH')).status).toBe(400);
+    // Fixture represents a vehicle configured before this recorded journey; the API cannot backdate it.
+    await personal.setMeta('profile', { ...await personal.profile(), vehicleUpdatedAt: new Date(now - 600_000).toISOString() });
+    const draft = { name: 'Synthetic priced journey', startedAt: new Date(now - 120_000).toISOString(), endedAt: new Date(now - 60_000).toISOString(),
+      points: [{ coordinate: [73,33.7], timestamp: new Date(now - 120_000).toISOString(), accuracy: 8 },
+        { coordinate: [73.002,33.7], timestamp: new Date(now - 60_000).toISOString(), accuracy: 8 }], contributeToRoadDiscovery: false };
+    const response = await request('/trips', alice, draft); expect(response.status).toBe(201);
+    const trip = await response.json() as Trip;
+    expect(trip.fuelEstimate).toMatchObject({ vehicle, distanceMeters: trip.distanceMeters });
+    expect(trip.fuelEstimate!.costPkr).toBeCloseTo(trip.distanceMeters / 1000 / 10 * 300, 6);
+    expect((await request(`/trips/${trip.id}`, bob)).status).toBe(404);
+    expect((await (await request('/profile', bob)).json()).vehicle).toBeUndefined();
+    expect((await request('/profile', alice, { vehicle: { ...vehicle, kind: 'motorcycle', kmPerLitre: 40 } }, 'PATCH')).status).toBe(200);
+    const retained = await (await request(`/trips/${trip.id}`, alice)).json() as Trip;
+    expect(retained.fuelEstimate).toEqual(trip.fuelEstimate);
+    expect((await (await request('/trips/statistics', alice)).json()).month).toMatchObject({ pricedTripCount: 1, costPkr: trip.fuelEstimate!.costPkr });
+    const tooOld = await (await request('/trips', alice, { ...draft, name: 'Before current vehicle was configured' })).json() as Trip;
+    expect(tooOld.fuelEstimate).toBeUndefined();
+    expect((await request('/profile', alice, { collectTravelData: false }, 'PATCH')).status).toBe(200);
+    expect((await request('/trips', alice, draft)).status).toBe(403);
+    expect((await request(`/trips/${trip.id}`, alice, undefined, 'DELETE')).status).toBe(200);
+    expect((await request(`/trips/${tooOld.id}`, alice, undefined, 'DELETE')).status).toBe(200);
   });
   it('awaits national place and route providers for guests, preserves stops, and rejects foreign pins before provider access', async () => {
     const online = vi.fn<Planner>().mockImplementation(async (_input, _closures, revision) => onlineResult(revision));

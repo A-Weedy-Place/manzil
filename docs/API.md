@@ -17,6 +17,22 @@ In Firebase modes send `Authorization: Bearer FIREBASE_ID_TOKEN` for personal en
 
 Admin authority comes only from the verified Firebase custom claim. Contributor verification is separate server-owned metadata (`community:member:<uid>`) read for each request; it is not a browser setting or an admin claim. The admin verification API never grants/revokes administrator access. `AppState.membership` supplies the current UID/role/verified flag; the UI only trusts it when its UID matches the current account. Standalone mode deliberately uses one trusted `local-admin` API identity and shared SQLite data; its dummy normal/admin UI accounts cannot test production authorization. Use emulators for permission/isolation checks.
 
+## Vehicle, fuel prices and spending estimates
+
+`PATCH /api/profile` also accepts `vehicle: {kind:'car'|'motorcycle', label?:string, fuelType:'petrol'|'diesel', kmPerLitre:number|null}`. Economy is finite, 1–200 km/litre, or null to disable estimates. The server manages `vehicleUpdatedAt`; clients cannot backdate it. Optional fields preserve existing profiles. `transport:'car'` continues to describe road routing; vehicle kind changes fuel estimates without enabling motorcycle-specific access/ETAs.
+
+| Method and path | Access | Response |
+| --- | --- | --- |
+| `GET /api/fuel/prices` | Public | Cached `FuelPriceStatus`: state, last check/success/next daily date, message and dated PSO petrol/diesel records. No external request is triggered. `/state` includes the same object as `fuel`. |
+| `POST /api/fuel/check` with `{}` | Admin | Daily bounded source check or the existing result if already attempted on this PKT date. No arbitrary source URL or client-supplied prices are accepted. |
+| `GET /api/trips/statistics` | Signed-in personal | `{week,month,all}` aggregates over up to 5,000 private retained summaries, independent of the latest-50 display list. Includes distance/time, estimated PKR/litres, priced/unpriced counts, unpriced distance and `complete`. |
+
+Periods use Monday-start weeks and calendar months in Asia/Karachi, grouped by trip departure. `all` means retained history (up to 90 days); `complete:false` identifies the bounded partial result. No raw points are read or returned for these aggregates. Future-dated unfinished travel is excluded.
+
+New trip records may include server-calculated `fuelEstimate`: estimated PKR, litres, measured accepted distance, the configured vehicle/economy snapshot and dated rate/source/retrieval provenance. Accepted GPS segments crossing an effective date are split by elapsed time. A trip predating the configured vehicle, spanning a vehicle change, outside known price coverage or ending on a day not yet covered by a successful price check remains unpriced. Old estimates are immutable across vehicle/price updates. Consent and current vehicle are rechecked atomically by both adapters. Client-supplied estimates/configuration timestamps cannot manufacture historical spending.
+
+These are **reference estimates, not receipts**. PSO prices exclude outlet freight; future route costs use the latest known applicable quote. Fetch failures/stale cache remain visible. A local running scheduler checks once per PKT date; production needs the separately released worker/Scheduler. See [source parsing, coverage and exact contracts](FUEL_COSTS.md).
+
 `GET /api/runtime` returns public mode/project/auth/storage/scheduling identifiers; the frontend checks these before using the backend. The ordinary API health endpoint is `GET /api/health`. `GET /healthz` belongs to the separately configured worker, which also accepts authenticated `POST /internal/tick`; no worker is deployed in the initial release. The ordinary API returns 404 for worker operations. Worker mode returns 404 for personal API routes. Cloud writes/checks complete before HTTP success; no API timers or untracked post-response work are relied on.
 
 Responses are the domain objects in [`shared/types.ts`](../shared/types.ts), without an envelope. All coordinates are `[longitude, latitude]`. Send `Content-Type: application/json` for every POST, PUT, or PATCH, including an empty `{}` for check operations. API times are ISO 8601 instants with an offset; responses normalize supplied instants to UTC. Commute wall-clock times and weekdays use Pakistan Standard Time, UTC+05:00.

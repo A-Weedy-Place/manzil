@@ -13,6 +13,8 @@ This feature is developed on `codex/feature-development`. Publishing the branch 
 
 ## Foreground collection
 
+Optional vehicle name/type, petrol/diesel and km/litre are private profile preferences. Saving them does not enable GPS. New consented trips can retain an immutable estimated fuel-cost snapshot using that configured vehicle and applicable dated PSO reference prices. Changes to the profile or global prices never rewrite old trip estimates. Unknown vehicle/history or a price day not covered by a successful check stays unpriced. Weekly/monthly summaries expose missing pricing and remain subject to 90-day retention. Deleting a trip also removes its saved cost snapshot. These are estimated consumption costs, not fuel receipts; see [fuel provenance and limits](FUEL_COSTS.md).
+
 `useTravelCapture` receives accurate samples from the existing Navigation GPS watcher. It never starts a watcher of its own. The person must start GPS guidance; planning a route, previewing directions or opening Profile does not start recording. Navigation without personal trip permission uses location for immediate guidance but does not retain those fixes as trip history.
 
 With permission, accurate navigation samples are held in memory. Stopping/leaving guidance saves a session only if it has at least two accepted samples, lasts at least 60 seconds and covers at least 100 metres. Samples require reported accuracy of 60 metres or better, a recent timestamp, valid GeoJSON coordinates and at least four seconds between samples. Gaps longer than two minutes start a new fragment. A session is bounded to 20,000 samples. Navigation trips never opt into future road-discovery contributions automatically.

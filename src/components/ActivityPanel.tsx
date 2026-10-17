@@ -1,10 +1,13 @@
 import { t } from '../lib/language';
 import { useEffect, useRef, useState } from 'react';
 import { Activity, ArrowUpRight, CircleStop, Download, LocateFixed, Map, Play, ShieldCheck, Trash2, X } from 'lucide-react';
-import type { AppState, RecordedPoint, Trip, TripDraft } from '../../shared/types';
+import type { AppState, RecordedPoint, Trip, TripDraft, TripStatistics } from '../../shared/types';
 import { api, send } from '../lib/api';
 import { dateTime, distance, downloadJSON, duration } from '../lib/format';
 import { getAuthSession } from '../lib/auth';
+import { fuelDate, rupees } from '../lib/fuel';
+
+type StatisticsResponse = Record<'week' | 'month' | 'all', TripStatistics>;
 
 interface Props { active?: boolean; state: AppState; points: RecordedPoint[]; setPoints: (points: RecordedPoint[]) => void; reload: () => Promise<void>; notify: (message: string) => void; onView: (trip: Trip) => void }
 export default function ActivityPanel({ active: visible = true, state, points, setPoints, reload, notify, onView }: Props) {
@@ -12,6 +15,21 @@ export default function ActivityPanel({ active: visible = true, state, points, s
   const [recording, setRecording] = useState(false); const [started, setStarted] = useState<string | null>(null);
   const [tripName, setTripName] = useState('My recorded trip'); const [error, setError] = useState('');
   const [gpsMessage, setGpsMessage] = useState(''); const [saving, setSaving] = useState(false); const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [period, setPeriod] = useState<'week' | 'month' | 'all'>('week');
+  const [statistics, setStatistics] = useState<StatisticsResponse | null>(null), [statisticsError, setStatisticsError] = useState(''), [statisticsLoading, setStatisticsLoading] = useState(false), [statisticsAttempt, setStatisticsAttempt] = useState(0);
+  const tripRevision = state.trips.map(trip => `${trip.id}:${trip.createdAt}:${trip.distanceMeters}:${trip.fuelEstimate?.costPkr ?? ''}`).join('|');
+  const calendarDate = new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  useEffect(() => {
+    if (!visible) return;
+    let current = true;
+    const controller = new AbortController(), timeout = window.setTimeout(() => controller.abort(), 30000);
+    setStatisticsLoading(true); setStatisticsError(''); setStatistics(null);
+    api<StatisticsResponse>('/trips/statistics', { signal: controller.signal }).then(result => {
+      if (!result?.week || !result.month || !result.all) throw new Error('Trip statistics are unavailable.');
+      if (current) setStatistics(result);
+    }).catch(() => { if (current) setStatisticsError('Could not load trip totals. Your recent trips are still available below.'); }).finally(() => { window.clearTimeout(timeout); if (current) setStatisticsLoading(false); });
+    return () => { current = false; window.clearTimeout(timeout); controller.abort(); };
+  }, [visible, tripRevision, statisticsAttempt, calendarDate]);
   const watch = useRef<number | null>(null); const latest = useRef(points); latest.current = points;
   const active = useRef(false);
   const epoch = useRef(0);
@@ -60,7 +78,6 @@ export default function ActivityPanel({ active: visible = true, state, points, s
     try { await api(`/trips/${id}`, { method: 'DELETE' }); setDeleteId(null); await reload(); notify('Trip deleted from the local app.'); }
     catch (e) { setError(e instanceof Error ? e.message : 'Could not delete this trip.'); }
   }
-  const totalMeters = state.trips.reduce((sum, t) => sum + t.distanceMeters, 0);
   async function fullTrip(trip: Trip, action: 'view' | 'export') {
     try {
       const full = await api<Trip>(`/trips/${trip.id}`);
@@ -68,10 +85,13 @@ export default function ActivityPanel({ active: visible = true, state, points, s
       else downloadJSON(`manzil-trip-${full.id}.geojson`, { type: 'Feature', properties: { name: full.name, startedAt: full.startedAt, endedAt: full.endedAt }, geometry: { type: 'LineString', coordinates: full.points.map(p => p.coordinate) } });
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not load this trip.'); }
   }
-  const totalSeconds = state.trips.reduce((sum, t) => sum + t.durationSeconds, 0);
+  const summary = statistics?.[period];
   return <>
     <div className="section-heading"><div><span className="eyebrow">{t("THE JOURNEYS YOU MAKE")}</span><h1>{t("Your activity")}</h1></div><Activity size={23} /></div><p className="muted">{t("Your trip history and personal statistics.")}</p>
-    <div className="activity-stats"><div><strong>{state.trips.length}</strong><span>{t("saved trips")}</span></div><div><strong>{distance(totalMeters)}</strong><span>{t("recorded distance")}</span></div><div><strong>{totalSeconds ? duration(totalSeconds) : t("0 min")}</strong><span>{t("travel time")}</span></div></div>
+    <div className="segmented-control activity-period" role="group" aria-label={t('Statistics period')}>{([['week', 'This week'], ['month', 'This month'], ['all', 'All retained trips']] as const).map(([key, label]) => <button key={key} aria-pressed={period === key} className={period === key ? 'selected' : ''} onClick={() => setPeriod(key)}>{t(label)}</button>)}</div>
+    {statisticsLoading && <p className="small muted" role="status">{t('Loading trip totals…')}</p>}
+    {statisticsError && <div className="error-box" role="alert">{t(statisticsError)}<button className="text-button" onClick={() => setStatisticsAttempt(value => value + 1)}>{t('Retry')}</button></div>}
+    {summary && <><div className="activity-stats"><div><strong>{summary.tripCount}</strong><span>{t('saved trips')}</span></div><div><strong>{distance(summary.distanceMeters)}</strong><span>{t('recorded distance')}</span></div><div><strong>{summary.durationSeconds ? duration(summary.durationSeconds) : t('0 min')}</strong><span>{t('travel time')}</span></div></div><div className="fuel-spending-summary"><div><span>{t('Estimated fuel cost')}</span><strong>{summary.pricedTripCount ? `≈ ${rupees(summary.costPkr)}` : '—'}</strong></div><p className="small muted">{summary.pricedTripCount} {t('priced trips')} · {summary.litres.toFixed(2)} {t('litres')}{summary.unpricedTripCount > 0 && <> · {summary.unpricedTripCount} {t('trips without a fuel estimate')}</>}</p>{summary.unpricedTripCount > 0 && <p className="small muted">{t('Trips without an estimate are excluded from cost totals. Older trips are not repriced after changing your vehicle.')}</p>}<p className="small muted">{t('Based on recorded distance, saved mileage and prices at the time. Estimates, not fuel receipts.')}</p>{!summary.complete && <p className="small muted" role="status">{t('Partial totals: the retained-history limit was reached.')}</p>}<p className="small muted">{t('Periods use PKT and the trip departure date. History is retained for up to 90 days.')}</p></div></>}
     <section className={`record-card ${recording ? 'is-recording' : ''}`}><div className="row between"><h2><LocateFixed size={18} />{t("Record a trip")}</h2>{recording && <span className="tag red"><span className="record-dot" />{t("Recording")}</span>}</div>
       <label className="field-label">{t("Trip name")}<input value={tripName} maxLength={120} onChange={e => setTripName(e.target.value)} /></label>
       {!consent && <div className="notice-box soft travel-consent-card"><ShieldCheck size={20} /><div><strong>{t('Personal trip data is off')}</strong><p>{t('Allow GPS history for personal statistics and automatic usual-route closure alerts. Only while Manzil is visible; no background tracking.')}</p><button className="primary-button full" disabled={saving} onClick={async () => { setSaving(true); setError(''); try { await send('/profile', { collectTravelData: true, inferFrequentRoutes: true }, 'PATCH'); await reload(); notify('Personal trip data enabled. Start recording or use GPS navigation.'); } catch (error) { setError(error instanceof Error ? error.message : 'Could not save trip permission.'); } finally { setSaving(false); } }}>{t('Allow personal trip data & usual-route alerts')}</button></div></div>}
@@ -81,8 +101,19 @@ export default function ActivityPanel({ active: visible = true, state, points, s
     </section>
     {error && <div className="error-box" role="alert">{t(error)}</div>}
     <div className="section-heading compact"><h2>{t("Trip history")}</h2><span className="small muted">{t("Private")}</span></div>
+    {state.trips.length >= 50 && <p className="small muted">{t('Showing the 50 most recent trips. Totals include retained history beyond this list.')}</p>}
     {!state.trips.length && <div className="empty-state compact-empty"><Map size={29} /><h3>{t("Every journey has a story")}</h3><p>{t("Your recorded routes, distance and time will appear here. GPS samples require a real device location.")}</p></div>}
-    {state.trips.map(trip => <article className="trip-card" key={trip.id}><div className="row between"><h3>{trip.name}</h3><button className="icon-button small" aria-label={`Delete ${trip.name}`} onClick={() => setDeleteId(deleteId === trip.id ? null : trip.id)}><Trash2 size={15} /></button></div><span className="small muted">{dateTime(trip.startedAt)}</span><div className="trip-metrics"><strong>{distance(trip.distanceMeters)}</strong><span>{duration(trip.durationSeconds)}</span><span>{(trip.pointCount ?? trip.points.length) ? `${(trip.pointCount ?? trip.points.length)} points` : t("Summary only")}</span></div>{trip.gaps > 0 && <p className="small muted">{trip.gaps} {t("recording gap")}{trip.gaps > 1 ? t("s") : t("")}{t("; distance may be incomplete.")}</p>}{trip.contributeToRoadDiscovery && <span className="tag neutral">{t("Road review consent")}</span>}<div className="row"><button className="text-button" disabled={!(trip.pointCount ?? trip.points.length)} onClick={() => fullTrip(trip, 'view')}>{t("View on map")}<ArrowUpRight size={14} /></button><button className="text-button" disabled={!(trip.pointCount ?? trip.points.length)} onClick={() => fullTrip(trip, 'export')}><Download size={14} />{t("Export")}</button></div>{deleteId === trip.id && <div className="delete-confirm"><p>{t("Delete this trip and its saved trace?")}</p><button className="danger-button" onClick={() => remove(trip.id)}>{t("Delete trip")}</button><button className="text-button" onClick={() => setDeleteId(null)}>{t("Keep it")}</button></div>}</article>)}
+    {state.trips.map(trip => <article className="trip-card" key={trip.id}><div className="row between"><h3>{trip.name}</h3><button className="icon-button small" aria-label={`Delete ${trip.name}`} onClick={() => setDeleteId(deleteId === trip.id ? null : trip.id)}><Trash2 size={15} /></button></div><span className="small muted">{dateTime(trip.startedAt)}</span><div className="trip-metrics"><strong>{distance(trip.distanceMeters)}</strong><span>{duration(trip.durationSeconds)}</span><span>{(trip.pointCount ?? trip.points.length) ? `${(trip.pointCount ?? trip.points.length)} points` : t("Summary only")}</span></div><TripFuel trip={trip} />{trip.gaps > 0 && <p className="small muted">{trip.gaps} {t("recording gap")}{trip.gaps > 1 ? t("s") : t("")}{t("; distance may be incomplete.")}</p>}{trip.contributeToRoadDiscovery && <span className="tag neutral">{t("Road review consent")}</span>}<div className="row"><button className="text-button" disabled={!(trip.pointCount ?? trip.points.length)} onClick={() => fullTrip(trip, 'view')}>{t("View on map")}<ArrowUpRight size={14} /></button><button className="text-button" disabled={!(trip.pointCount ?? trip.points.length)} onClick={() => fullTrip(trip, 'export')}><Download size={14} />{t("Export")}</button></div>{deleteId === trip.id && <div className="delete-confirm"><p>{t("Delete this trip and its saved trace?")}</p><button className="danger-button" onClick={() => remove(trip.id)}>{t("Delete trip")}</button><button className="text-button" onClick={() => setDeleteId(null)}>{t("Keep it")}</button></div>}</article>)}
     <div className="notice-box soft"><ShieldCheck size={18} /><p>{t("Foreground recording only. Raw points are kept for 30 days; summaries for 90 days. You can export or delete a trip. Local database files are excluded from Git.")}</p></div>
   </>;
+}
+function TripFuel({ trip }: { trip: Trip }) {
+  const estimate = trip.fuelEstimate;
+  if (!estimate) return <p className="small muted trip-fuel-unavailable">{t('Fuel estimate unavailable for this trip.')}</p>;
+  return <details className="trip-fuel-details">
+    <summary><strong>≈ {rupees(estimate.costPkr)}</strong><span>{t('Estimated fuel cost')}</span></summary>
+    <p className="small muted">{estimate.vehicle.label || t(estimate.vehicle.kind === 'motorcycle' ? 'Motorcycle' : 'Car')} · {t(estimate.vehicle.fuelType === 'diesel' ? 'Diesel' : 'Petrol')} · {estimate.vehicle.kmPerLitre} {t('km/litre')} · {estimate.litres.toFixed(2)} {t('litres')}</p>
+    {estimate.rates.map(rate => <div key={`${rate.effectiveFrom}:${rate.sourceUrl}`}><p className="small muted"><a href={rate.sourceUrl} target="_blank" rel="noreferrer">{rupees(rate.pricePerLitre, 2)} {t('/ litre')}</a> · {t('Effective from')} {fuelDate(rate.effectiveFrom)}</p>{rate.retrievedAt && <p className="small muted">{t('Reference checked')} {dateTime(rate.retrievedAt)}</p>}</div>)}
+    <p className="small muted">{t('Saved estimate. Changes to your vehicle or fuel prices do not change this trip.')}</p>
+  </details>;
 }

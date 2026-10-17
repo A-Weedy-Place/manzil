@@ -21,12 +21,15 @@ import { frequentRouteProposals } from './frequent-routes.js';
 import { SpeechService, speechSchema } from './speech.js';
 import { actorFor, assertEditClosure, canReadClosure, closureSummary, directoryEntry, isReviewer, membershipFor, setVerification, type TokenUser, type UserDirectory } from './community.js';
 import { RoadSelectionError, selectRoadSection } from './routing/road-selection.js';
+import { FuelService, travelStatistics, pktDay } from './fuel.js';
+import { estimateTraceFuel } from '../shared/fuel.js';
 
 interface AppOptions {
   config?: RuntimeConfig;
   verifyToken?: (token: string) => Promise<TokenUser>;
   userDirectory?: UserDirectory;
   speech?: SpeechService;
+  fuel?: FuelService;
   source?: SourceService; planner?: Planner;
   graph?: () => GraphStatus; places?: (query: string) => Place[] | Promise<Place[]>;
   roadGraph?: () => RoutingGraph | null;
@@ -69,6 +72,7 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
   const app = express();
   const source = options.source ?? new SourceService(rootStore);
   const speech = options.speech ?? new SpeechService(rootStore);
+  const fuel = options.fuel ?? new FuelService(rootStore);
   const verifyToken = options.verifyToken ?? (async token => { const decoded = await firebaseServices(config.projectId).auth.verifyIdToken(token, true); return { uid: decoded.uid, admin: decoded.admin === true, name: typeof decoded.name === 'string' ? decoded.name : undefined }; });
   const directory = () => options.userDirectory ?? firebaseServices(config.projectId).auth;
   const planner = options.planner ?? planJourney;
@@ -99,7 +103,7 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
     next();
   });
   app.use(express.json({ limit: '4mb', strict: true }));
-  mountWorker(app, config, rootStore, source);
+  mountWorker(app, config, rootStore, source, fuel);
   // Finish writes/checks before responding in cloud mode; no untracked work after HTTP success.
   // Capture the actual scope, not the proxy's process-wide object identity.
   const recheck = () => checkEnabledCommutes(context.getStore() ?? rootStore, planner, Date.now(), true);
@@ -116,7 +120,7 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
       // Express defaults to case-insensitive paths and optional trailing slashes.
       // Apply the same normalization before classifying authorization needs.
       const path = request.path.toLowerCase().replace(/\/+$/, '') || '/', write = !['GET', 'HEAD', 'OPTIONS'].includes(request.method);
-      const admin = path.startsWith('/admin') || path.startsWith('/notices') || path.startsWith('/agent/') || path.startsWith('/source/') && path !== '/source/status' || write && path.startsWith('/demos');
+      const admin = path.startsWith('/admin') || path.startsWith('/notices') || path.startsWith('/agent/') || path.startsWith('/source/') && path !== '/source/status' || write && (path.startsWith('/demos') || path.startsWith('/fuel'));
       const personal = /^\/(commutes|trips|alerts|frequent-routes)(\/|$)/.test(path) || path === '/profile' && write;
       if ((admin || personal || write && path.startsWith('/closures') || path === '/speech' && !config.speechPublic) && !user) throw new HttpError(401, 'Sign in to use this feature.');
       if (admin && !user?.admin) throw new HttpError(403, 'Administrator access is required for shared closure/source changes.');
@@ -141,10 +145,14 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
     const snapshot = await store.routingSnapshot(!!member);
     const state: AppState = { closures: snapshot.closures.filter(closure => canReadClosure(closure, member)).map(closureSummary), commutes: personal ? await store.list('commute', 100) : [],
       alerts: personal ? await store.list('alert', 200) : [], trips: personal ? await store.listTripSummaries() : [], notices: admin ? await store.listNotices() : [],
-      graph: currentGraph(), eventRevision: snapshot.revision, sourceStatus: await store.sourceStatus(), profile: await store.profile(), membership: member };
+      graph: currentGraph(), eventRevision: snapshot.revision, sourceStatus: await store.sourceStatus(), profile: await store.profile(), membership: member, fuel: await fuel.status() };
     response.json(state);
   });
   routes.get('/profile', async (_request, response) => response.json(await store.profile()));
+  routes.get('/fuel/prices', async (_request, response) => response.json(await fuel.status()));
+  routes.post('/fuel/check', async (request, response) => {
+    z.object({}).strict().parse(request.body); response.json(await fuel.check());
+  });
   routes.get('/admin/users', async (request, response) => {
     if (config.mode === 'local' && !options.userDirectory) {
       response.json({ users: [{ uid: 'local-admin', displayName: 'Local developer', disabled: false, role: 'admin', verified: true }] }); return;
@@ -290,12 +298,23 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
     await store.put('alert', alert); response.json(alert);
   });
   routes.get('/trips', async (_request, response) => { await applyRetention(store); response.json(await store.listTripSummaries()); });
+  routes.get('/trips/statistics', async (_request, response) => { await applyRetention(store); response.json(await travelStatistics(store)); });
   routes.get('/trips/:id', async (request, response) => { await applyRetention(store); response.json(await getRecord<Trip>(store, 'trip', id(request))); });
   routes.post('/trips', async (request, response) => {
-    if (!(await store.profile()).collectTravelData) throw new HttpError(403, 'Allow travel data collection in Profile before saving a trip.');
+    const profile = await store.profile();
+    if (!profile.collectTravelData) throw new HttpError(403, 'Allow travel data collection in Profile before saving a trip.');
     const draft = tripSchema.parse(request.body);
     const trip: Trip = { ...draft, id: randomUUID(), createdAt: new Date().toISOString(), ...summarizeTrace(draft.points),
       durationSeconds: Math.round((Date.parse(draft.endedAt) - Date.parse(draft.startedAt)) / 1000) };
+    if (profile.vehicleUpdatedAt && Date.parse(draft.startedAt) >= Date.parse(profile.vehicleUpdatedAt)) {
+      const prices = await fuel.status();
+      // A cached quote is useful for route planning, but it cannot establish a
+      // new day's actual historical reference after that day's check failed.
+      if (prices.lastSuccessAt && pktDay(Date.parse(draft.endedAt)) <= pktDay(Date.parse(prices.lastSuccessAt)) && Date.parse(draft.endedAt) <= Date.parse(trip.createdAt)) {
+        const estimate = estimateTraceFuel(draft.points, profile.vehicle, prices.records, trip.createdAt);
+        if (estimate) trip.fuelEstimate = estimate;
+      }
+    }
     await store.saveTripIfConsented(trip); await applyRetention(store); await recheck(); response.status(201).json(await store.get('trip', trip.id) ?? trip);
   });
   routes.patch('/trips/:id', async (request, response) => {
@@ -336,5 +355,5 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
     response.status(500).json({ error: 'The local operation failed. Existing saved data is retained.' });
   };
   app.use(errors);
-  return { app, source };
+  return { app, source, fuel };
 }

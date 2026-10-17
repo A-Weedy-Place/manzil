@@ -76,7 +76,7 @@ export const tripSchema = z.object({
   name: z.string().trim().min(1).max(120), startedAt: instantSchema, endedAt: instantSchema,
   points: z.array(z.object({ coordinate: coordinateSchema, timestamp: instantSchema, accuracy: z.number().finite().min(0).max(100_000) })).min(2).max(20_000),
   contributeToRoadDiscovery: z.boolean(),
-}).superRefine((value, ctx) => {
+}).strict().superRefine((value, ctx) => {
   const start = Date.parse(value.startedAt), end = Date.parse(value.endedAt);
   if (end <= start || end - start > 24 * 3600_000) ctx.addIssue({ code: 'custom', message: 'Trip must last between zero and 24 hours.' });
   let last = start;
@@ -87,10 +87,13 @@ export const tripSchema = z.object({
   }
 });
 export const noticeSchema = z.object({ text: z.string().trim().min(1).max(20_000), url: webUrl.optional(), publishedAt: instantSchema.nullable().optional() });
+export const vehicleSchema = z.object({ kind: z.enum(['car', 'motorcycle']), label: z.string().trim().max(80).optional(),
+  fuelType: z.enum(['petrol', 'diesel']), kmPerLitre: z.number().finite().min(1).max(200).nullable() }).strict();
 export const profilePatchSchema = z.object({
   displayName: z.string().trim().min(1).max(60), theme: z.enum(['light', 'dark', 'system']),
   mapDetail: z.enum(['clean', 'standard']), mapStyle: z.enum(['streets', 'outdoors', 'contrast', 'minimal', 'night']), browserNotifications: z.boolean(),
   inferFrequentRoutes: z.boolean(), transport: z.literal('car'),
   city: z.string().trim().max(80), location: z.string().trim().max(120),
   photoDataUrl: photoSchema.or(z.literal('')), collectTravelData: z.boolean(),
+  vehicle: vehicleSchema,
 }).partial().strict().refine(value => Object.keys(value).length > 0, 'Provide at least one profile preference.');

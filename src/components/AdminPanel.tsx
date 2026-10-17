@@ -6,6 +6,7 @@ import { closureState, relative } from '../lib/format';
 import { t } from '../lib/language';
 import ClosureList from './ClosureList';
 import SourcePanel from './SourcePanel';
+import FuelPrices from './FuelPrices';
 
 interface Member { uid: string; email?: string; displayName?: string; disabled: boolean; role: 'user' | 'verified' | 'admin'; verified: boolean; createdAt?: string; lastSignInAt?: string }
 interface Directory { users: Member[]; nextPageToken?: string }
@@ -24,8 +25,18 @@ export default function AdminPanel(props: Props) {
     <div className="admin-tabs" role="tablist" aria-label={t('Admin sections')}>{([['reports', Flag, 'Blockades'], ['users', Users, 'People'], ['pipeline', Workflow, 'Pipeline']] as const).map(([key, Icon, label]) => <button role="tab" aria-selected={tab === key} key={key} onClick={() => setTab(key)}><Icon size={16} aria-hidden="true" />{t(label)}</button>)}</div>
     {tab === 'reports' && <section role="tabpanel" aria-label={t('Blockades')}><div className="filter-row"><select aria-label={t('Report filter')} value={filter} onChange={event => setFilter(event.target.value as typeof filter)}><option value="pending">{t('Awaiting review')}</option><option value="all">{t('All blockades')}</option></select><button className="icon-button" aria-label={t('Refresh reports')} onClick={() => props.reload().catch(reason => props.notify(String(reason)))}><RefreshCw size={17} /></button></div><ClosureList closures={filter === 'pending' ? pending : props.state.closures} at={props.at} selectedId={props.selectedId} reviewer canEdit={() => true} onSelect={props.onSelect} onEdit={props.onEdit} onCancel={props.onCancel} onReview={props.onReview} /></section>}
     {tab === 'users' && <section role="tabpanel" aria-label={t('People')}><UserDirectory /></section>}
-    {tab === 'pipeline' && <section role="tabpanel" aria-label={t('Pipeline')}><SourcePanel state={props.state} reload={props.reload} notify={props.notify} onManualClosure={props.onManualClosure} /></section>}
+    {tab === 'pipeline' && <section role="tabpanel" aria-label={t('Pipeline')}><FuelPipeline state={props.state} reload={props.reload} /><SourcePanel state={props.state} reload={props.reload} notify={props.notify} onManualClosure={props.onManualClosure} /></section>}
   </>;
+}
+function FuelPipeline({ state, reload }: Pick<Props, 'state' | 'reload'>) {
+  const [busy, setBusy] = useState(false), [error, setError] = useState('');
+  async function check() {
+    setBusy(true); setError('');
+    try { await send('/fuel/check', {}); await reload(); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not check fuel prices.'); }
+    finally { setBusy(false); }
+  }
+  return <section className="fuel-pipeline"><div className="section-heading compact"><h2>{t('Daily fuel prices')}</h2><button className="secondary-button" disabled={busy} onClick={() => void check()}><RefreshCw size={16} />{t(busy ? 'Checking…' : 'Check fuel prices')}</button></div><FuelPrices status={state.fuel} />{error && <p className="error-box" role="alert">{t(error)}</p>}</section>;
 }
 function UserDirectory() {
   const [directory, setDirectory] = useState<Directory>({ users: [] }), [busy, setBusy] = useState(false), [error, setError] = useState('');

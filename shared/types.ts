@@ -72,15 +72,38 @@ export interface SourceStatus {
   message: string; noticesCollected: number; coverage: 'partial';
 }
 export interface RecordedPoint { coordinate: Coordinate; timestamp: string; accuracy: number }
+export interface VehicleProfile {
+  kind: 'car' | 'motorcycle'; label?: string; fuelType: 'petrol' | 'diesel'; kmPerLitre: number | null;
+}
+export interface FuelPriceRecord {
+  effectiveFrom: string; petrolPerLitre: number; dieselPerLitre: number;
+  sourceUrl: string; sourceName: string; retrievedAt: string;
+}
+export interface FuelPriceStatus {
+  state: 'unavailable' | 'fresh' | 'stale' | 'error'; lastCheckedAt: string | null;
+  lastSuccessAt: string | null; nextCheckAt: string | null; message: string; records: FuelPriceRecord[];
+}
+export interface FuelEstimate {
+  costPkr: number; litres: number; distanceMeters: number; vehicle: VehicleProfile; calculatedAt: string;
+  rates: { pricePerLitre: number; effectiveFrom: string; sourceUrl: string; retrievedAt?: string; distanceMeters: number; litres: number; costPkr: number }[];
+}
+export interface TripStatistics {
+  period: 'week' | 'month' | 'all'; from: string | null; until: string;
+  tripCount: number; distanceMeters: number; durationSeconds: number;
+  pricedTripCount: number; unpricedTripCount: number; unpricedDistanceMeters: number;
+  costPkr: number; litres: number; complete: boolean;
+}
+export interface TravelStatistics { week: TripStatistics; month: TripStatistics; all: TripStatistics }
 export interface TripDraft {
   name: string; startedAt: string; endedAt: string; points: RecordedPoint[];
   contributeToRoadDiscovery: boolean;
 }
-export interface Trip extends TripDraft { id: string; distanceMeters: number; durationSeconds: number; createdAt: string; gaps: number; pointCount?: number }
+export interface Trip extends TripDraft { id: string; distanceMeters: number; durationSeconds: number; createdAt: string; gaps: number; pointCount?: number; fuelEstimate?: FuelEstimate }
 export type MapStyleId = 'streets' | 'outdoors' | 'contrast' | 'minimal' | 'night';
 export interface LocalProfile {
   id: 'local'; displayName: string; theme: 'light' | 'dark' | 'system';
   city?: string; location?: string; photoDataUrl?: string; collectTravelData?: boolean;
+  vehicle?: VehicleProfile; vehicleUpdatedAt?: string;
   mapDetail: 'clean' | 'standard'; mapStyle: MapStyleId; browserNotifications: boolean;
   inferFrequentRoutes: boolean; transport: 'car'; createdAt: string; updatedAt: string;
 }
@@ -94,6 +117,7 @@ export interface AppState {
   sourceStatus: SourceStatus; graph: GraphStatus;
   eventRevision: number; profile: LocalProfile;
   membership?: Membership | null;
+  fuel?: FuelPriceStatus;
 }
 export type ApiError = { error: string; details?: string };
 export type MapMode = 'browse' | 'origin' | 'destination' | 'waypoint' | 'point' | 'line' | 'polygon' | 'road';

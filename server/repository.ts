@@ -13,6 +13,8 @@ export interface Repository {
   close(): void;
   meta<T>(key: string): Awaitable<T | undefined>;
   setMeta(key: string, value: unknown): Awaitable<void>;
+  /** Durable global once-per-PKT-day claim, including failed attempts. */
+  claimFuelCheck(day: string): Awaitable<boolean>;
   profile(): Awaitable<LocalProfile>;
   updateProfile(patch: Partial<Omit<LocalProfile, 'id' | 'createdAt' | 'updatedAt'>>): Awaitable<LocalProfile>;
   recentInferenceTrips(now: number): Awaitable<Iterable<Trip>>;

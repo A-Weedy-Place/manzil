@@ -3,12 +3,14 @@ import type { Firestore, DocumentReference, CollectionReference } from 'firebase
 import type { Alert, Closure, ClosureInput, LocalProfile, SourceNotice, SourceStatus, Trip } from '../shared/types.js';
 import { HttpError } from './errors.js';
 import { closureSummary } from './community.js';
+import { sameVehicle } from '../shared/fuel.js';
+import { tripWithCurrentVehicle } from './fuel.js';
 import { defaultProfile, defaultSourceStatus, type RecordKind, type PersonalRecordKind, type Repository, type RoutingSnapshot } from './repository.js';
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const decode = <T>(data: FirebaseFirestore.DocumentData | undefined): T | undefined => data?.json ? JSON.parse(data.json) as T : undefined;
 const pack = (value: unknown) => ({ json: JSON.stringify(value) });
-const sharedMeta = (key: string) => /^(source|demoScenario:|streetRouteDemo:|speech:|community:member:|eventRevision$)/.test(key);
+const sharedMeta = (key: string) => /^(source|fuel:|demoScenario:|streetRouteDemo:|speech:|community:member:|eventRevision$)/.test(key);
 interface SharedCache { snapshot?: RoutingSnapshot }
 
 /** Durable repository used unchanged by emulators and Cloud Run. No local-file fallback. */
@@ -25,10 +27,17 @@ export class FirestoreStore implements Repository {
   private metaRef(key: string) { return (sharedMeta(key) ? this.root : this.user()).collection('meta').doc(hash(key)); }
   async meta<T>(key: string): Promise<T | undefined> { return decode<T>((await this.metaRef(key).get()).data()); }
   async setMeta(key: string, value: unknown) { await this.metaRef(key).set(pack(value)); }
+  async claimFuelCheck(day: string) {
+    const ref = this.metaRef('fuel:checkedDay');
+    return this.db.runTransaction(async tx => {
+      if (decode<string>((await tx.get(ref)).data()) === day) return false;
+      tx.set(ref, pack(day)); return true;
+    });
+  }
   async profile() { return this.uid ? { collectTravelData: false, ...await this.meta<LocalProfile>('profile') ?? await this.updateProfile({}) } : defaultProfile(); }
   async updateProfile(patch: Partial<Omit<LocalProfile, 'id' | 'createdAt' | 'updatedAt'>>) {
     const ref = this.metaRef('profile');
-    return this.db.runTransaction(async tx => { const old = decode<LocalProfile>((await tx.get(ref)).data()) ?? defaultProfile(); const next = { collectTravelData: false, ...old, ...patch, updatedAt: new Date().toISOString() }; if (!next.collectTravelData) next.inferFrequentRoutes = false; tx.set(ref, pack(next)); tx.set(this.user(), { active: true }, { merge: true }); return next; });
+    return this.db.runTransaction(async tx => { const old = decode<LocalProfile>((await tx.get(ref)).data()) ?? defaultProfile(); const next = { collectTravelData: false, ...old, ...patch, updatedAt: new Date().toISOString() }; if (patch.vehicle && !sameVehicle(old.vehicle, patch.vehicle)) next.vehicleUpdatedAt = next.updatedAt; if (!next.collectTravelData) next.inferFrequentRoutes = false; tx.set(ref, pack(next)); tx.set(this.user(), { active: true }, { merge: true }); return next; });
   }
   async list<T>(kind: RecordKind, limit = 500): Promise<T[]> {
     const snapshot = await this.records(kind).orderBy('updatedAt', 'desc').limit(limit).get();
@@ -38,8 +47,10 @@ export class FirestoreStore implements Repository {
   async saveTripIfConsented(input: Trip) {
     const ref = this.record('trip', input.id), profileRef = this.metaRef('profile');
     await this.db.runTransaction(async tx => {
-      if (!decode<LocalProfile>((await tx.get(profileRef)).data())?.collectTravelData) throw new HttpError(403, 'Allow travel data collection in Profile before saving a trip.');
-      const trip = Date.parse(input.endedAt) < Date.now() - 30 * 86400_000 ? { ...input, points: [] } : input;
+      const profile = decode<LocalProfile>((await tx.get(profileRef)).data());
+      if (!profile?.collectTravelData) throw new HttpError(403, 'Allow travel data collection in Profile before saving a trip.');
+      const priced = tripWithCurrentVehicle(input, profile);
+      const trip = Date.parse(input.endedAt) < Date.now() - 30 * 86400_000 ? { ...priced, points: [] } : priced;
       tx.set(this.user(), { active: true }, { merge: true });
       for (let offset = 0; offset < trip.points.length; offset += 200) tx.set(ref.collection('points').doc(String(offset / 200)), { ...pack(trip.points.slice(offset, offset + 200)), index: offset / 200 });
       tx.set(ref, { ...pack({ ...trip, pointCount: trip.points.length, points: [] }), updatedAt: trip.createdAt, endedAt: trip.endedAt, hasPoints: !!trip.points.length });

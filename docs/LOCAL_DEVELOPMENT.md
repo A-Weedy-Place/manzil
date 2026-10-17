@@ -8,6 +8,8 @@ English/Urdu controls, guest account screens, onboarding and automatic GPS recov
 
 ## Start
 
+Vehicle/fuel features use no new credentials or packages. In Profile, save a car/motorcycle, petrol/diesel and km/litre; each valid route can then show a small fuel estimate. The running standalone/emulator worker checks the public PSO archive once per Pakistan date. Admin **Pipeline → Check fuel prices** exposes that same daily result without starting Champ collection. The price check is separate from the disabled X collector. Source failures retain visible cached/unavailable states. Activity has week/month/all-retained estimated spending; trips without a known vehicle or dated rate stay unpriced. No real GPS is required to inspect the controls, and enabling vehicle estimates does not grant trip collection permission. [Fuel guide](FUEL_COSTS.md).
+
 The optional **`npm.cmd run dev:local`** helper supports machines with ignored portable Node 24 or installed Android Studio Java 21. It changes only its child-process environment. With compatible Node/Java already on PATH, use `npm.cmd run dev:firebase` directly. See [runtime details](ENVIRONMENTS.md#environment-requirements).
 
 Use **Node 24.12+** and Java **21+** for the recommended emulator workflow. See [Windows Node instructions](ENVIRONMENTS.md#upgrading-node-on-windows). Standalone SQLite mode needs no Docker, Java, paid routing account or Google credential.
