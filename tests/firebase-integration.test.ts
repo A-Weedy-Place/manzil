@@ -3,6 +3,8 @@ import type { Server } from 'node:http';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
 import { deleteApp } from 'firebase-admin/app';
+import { deleteApp as deleteClientApp, initializeApp as initializeClientApp } from 'firebase/app';
+import { confirmPasswordReset, connectAuthEmulator, createUserWithEmailAndPassword, getAuth, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, verifyPasswordResetCode } from 'firebase/auth';
 import { firebaseServices } from '../server/firebase';
 import { FirestoreStore } from '../server/firestore-store';
 import { createApp } from '../server/app';
@@ -68,6 +70,53 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
     base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
   }, 30000);
   afterAll(async () => { for (const child of children) child.kill('SIGTERM'); if (server) await new Promise<void>(resolve => { server.closeAllConnections(); server.close(() => resolve()); }); if (services) { await services.db.terminate(); await deleteApp(services.app); } });
+  it('creates a disposable ordinary account and completes its password reset with the real client SDK', async () => {
+    // This suite uses its isolated demo project, never the running development accounts or production email.
+    const emulatorHost = process.env.FIREBASE_AUTH_EMULATOR_HOST;
+    expect(emulatorHost).toMatch(/^127\.0\.0\.1:\d+$/);
+    const client = initializeClientApp({ projectId, apiKey: 'demo', appId: 'isolated-auth-lifecycle-fixture' }, 'isolated-auth-lifecycle-fixture');
+    const clientAuth = getAuth(client);
+    connectAuthEmulator(clientAuth, `http://${emulatorHost}`, { disableWarnings: true });
+    const email = `auth-lifecycle-${crypto.randomUUID()}@manzil.test`;
+    const originalPassword = 'DisposableOriginal123!', changedPassword = 'DisposableChanged123!';
+    let uid: string | undefined;
+    try {
+      const created = await createUserWithEmailAndPassword(clientAuth, email, originalPassword);
+      uid = created.user.uid;
+      expect(created.user.email).toBe(email);
+      expect((await created.user.getIdTokenResult()).claims.admin).not.toBe(true);
+      const token = await created.user.getIdToken();
+      const state = await (await request('/state', token)).json();
+      expect(state.membership.role).toBe('user');
+      expect(state.profile).toMatchObject({ theme: 'dark', mapStyle: 'night', collectTravelData: false,
+        inferFrequentRoutes: false, travelDataChoiceMade: false });
+      expect(state.trips).toEqual([]); expect(state.commutes).toEqual([]);
+      expect((await request('/admin/users', token)).status).toBe(403);
+      expect((await request('/profile', token, { displayName: 'Disposable auth test', city: 'Islamabad' }, 'PATCH')).status).toBe(200);
+      await signOut(clientAuth);
+      await expect(createUserWithEmailAndPassword(clientAuth, email, originalPassword)).rejects.toMatchObject({ code: 'auth/email-already-in-use' });
+      await sendPasswordResetEmail(clientAuth, email);
+      // The emulator deliberately does not send mail: inspect its local OOB store without printing links/codes.
+      const codesResponse = await fetch(`http://${emulatorHost}/emulator/v1/projects/${projectId}/oobCodes`);
+      expect(codesResponse.status).toBe(200);
+      const { oobCodes } = await codesResponse.json() as { oobCodes: { email: string; requestType: string; oobCode: string }[] };
+      const reset = oobCodes.find(value => value.email === email && value.requestType === 'PASSWORD_RESET');
+      if (!reset) throw new Error('The isolated emulator did not create the expected password-reset action.');
+      expect(await verifyPasswordResetCode(clientAuth, reset.oobCode)).toBe(email);
+      await confirmPasswordReset(clientAuth, reset.oobCode, changedPassword);
+      await expect(verifyPasswordResetCode(clientAuth, reset.oobCode)).rejects.toMatchObject({ code: 'auth/invalid-action-code' });
+      await expect(signInWithEmailAndPassword(clientAuth, email, originalPassword)).rejects.toBeTruthy();
+      const signedIn = await signInWithEmailAndPassword(clientAuth, email, changedPassword);
+      expect(signedIn.user.uid).toBe(uid);
+      expect(await (await request('/profile', await signedIn.user.getIdToken())).json()).toMatchObject({
+        displayName: 'Disposable auth test', city: 'Islamabad', collectTravelData: false, inferFrequentRoutes: false,
+      });
+    } finally {
+      await signOut(clientAuth);
+      if (uid) await services.auth.deleteUser(uid);
+      await deleteClientApp(client);
+    }
+  }, 30000);
   it('allows guest planning state but requires verified identities/admin claims for protected actions', async () => {
     const state = await (await request('/state')).json();
     expect(state.commutes).toEqual([]); expect(state.trips).toEqual([]); expect(state.notices).toEqual([]);

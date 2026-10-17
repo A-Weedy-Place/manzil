@@ -9,6 +9,7 @@ import './community.css';
 import './fuel.css';
 import './map-time.css';
 import './account.css';
+import './entry-doodles.css';
 import './profile.css';
 import './account-settings.css';
 import './journey-controls.css';

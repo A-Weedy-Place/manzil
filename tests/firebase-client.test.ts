@@ -2,13 +2,14 @@
 import { afterEach, expect, it, vi } from 'vitest';
 const fixture = vi.hoisted(() => {
   const auth = { currentUser: null as null | { uid: string; email: string; displayName: string; getIdToken: () => Promise<string>; getIdTokenResult: () => Promise<{ claims: { admin: boolean } }> } };
-  return { auth, tokenChanged: null as null | ((user: typeof auth.currentUser) => Promise<void>), emulator: vi.fn(), signIn: vi.fn(), signOut: vi.fn(), createAccount: vi.fn() };
+  return { auth, tokenChanged: null as null | ((user: typeof auth.currentUser) => Promise<void>), emulator: vi.fn(), signIn: vi.fn(), signOut: vi.fn(), createAccount: vi.fn(), resetPassword: vi.fn() };
 });
 vi.mock('firebase/app', () => ({ getApps: () => [], initializeApp: () => ({ name: 'test-app' }) }));
 vi.mock('firebase/auth', () => ({
   getAuth: () => fixture.auth, browserSessionPersistence: {}, setPersistence: async () => {}, connectAuthEmulator: fixture.emulator,
   onIdTokenChanged: (_auth: unknown, callback: typeof fixture.tokenChanged) => { fixture.tokenChanged = callback; },
   signInWithEmailAndPassword: fixture.signIn, signOut: fixture.signOut, createUserWithEmailAndPassword: fixture.createAccount,
+  sendPasswordResetEmail: fixture.resetPassword,
 }));
 async function client(mode: 'firebase' | 'emulator') {
   vi.stubEnv('VITE_AUTH_MODE', mode); vi.stubEnv('VITE_FIREBASE_PROJECT_ID', mode === 'emulator' ? 'demo-manzil' : 'manzil-example');
@@ -95,6 +96,17 @@ it('does not restart a registration tour after sign-out and ordinary sign-in', a
   auth.signOut(); await auth.signInAccount('new@example.test', 'password');
   expect(auth.needsRegistrationTour('new-user')).toBe(false);
   expect(sessionStorage.getItem('manzil-registration-tour-v1:new-user')).toBeNull();
+});
+it('uses the Firebase reset action with a trimmed email and propagates failure without creating consent or tour markers', async () => {
+  const auth = await client('firebase');
+  fixture.resetPassword.mockResolvedValueOnce(undefined);
+  await auth.resetPassword(' person@example.test ');
+  expect(fixture.resetPassword).toHaveBeenCalledWith(fixture.auth, 'person@example.test');
+  expect(auth.needsTravelDataChoice('person')).toBe(false);
+  expect(auth.needsRegistrationTour('person')).toBe(false);
+  fixture.resetPassword.mockRejectedValueOnce(new Error('Synthetic offline reset failure'));
+  await expect(auth.resetPassword('person@example.test')).rejects.toThrow('Synthetic offline reset failure');
+  expect(sessionStorage.length).toBe(0);
 });
 it('refuses to send requests to a mismatched standalone backend instead of falling back to shared local records', async () => {
   await client('firebase');

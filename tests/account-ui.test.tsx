@@ -53,6 +53,11 @@ describe('simplified account entry', () => {
     expect(screen.queryByText(/Firebase|emulators|Your journeys, together/)).toBeNull();
     expect(screen.queryByText('MANZIL · منزل')).toBeNull();
     expect(screen.getByLabelText('Password').getAttribute('autocomplete')).toBe('current-password');
+    expect(screen.getAllByRole('button', { name: 'Continue as guest' })).toHaveLength(1);
+    const signIn = screen.getByRole('button', { name: 'Sign in' });
+    expect(signIn.querySelector('.lucide-log-in')).toBeTruthy();
+    expect(signIn.querySelector('.lucide-mail')).toBeNull();
+    expect(document.querySelector('.account-modal .modal-close')).toBeNull();
     fireEvent.click(screen.getByText('Continue as guest', { selector: 'button' }));
     expect(close).toHaveBeenCalledOnce(); expect(auth.signIn).not.toHaveBeenCalled();
   });
@@ -106,5 +111,21 @@ describe('simplified account entry', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
     expect(created).not.toHaveBeenCalled(); expect(close).not.toHaveBeenCalled();
     expect(screen.getByLabelText('Email').matches(':disabled')).toBe(false);
+  });
+
+  it('retains the reset form for retry after a failed request and clears the error on success', async () => {
+    auth.reset.mockRejectedValueOnce(new Error('Network unavailable')).mockResolvedValueOnce(undefined);
+    const close = vi.fn(); render(<AccountPanel onClose={close} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Forgot password?' }));
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'person@manzil.test' } });
+    fireEvent.submit(screen.getByRole('form', { name: 'Reset password' }));
+    await screen.findByRole('alert');
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.getByLabelText('Email')).toHaveProperty('value', 'person@manzil.test');
+    expect(screen.getByRole('button', { name: 'Reset password' }).matches(':disabled')).toBe(false);
+    fireEvent.submit(screen.getByRole('form', { name: 'Reset password' }));
+    await screen.findByRole('status');
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(auth.reset).toHaveBeenCalledTimes(2); expect(close).not.toHaveBeenCalled();
   });
 });

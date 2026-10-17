@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowRight, ChevronDown, LoaderCircle, Mail, MapPin, Pause, Play, ShieldCheck, X } from 'lucide-react';
+import { ArrowRight, ChevronDown, KeyRound, LoaderCircle, LogIn, MapPin, Pause, Play, ShieldCheck, UserPlus } from 'lucide-react';
 import { t } from '../lib/language';
 import Modal from './Modal';
 import EntryDoodles from './EntryDoodles';
@@ -18,6 +18,7 @@ export default function AccountPanel({ onClose, entry = false, onAuthenticated, 
   const [busy, setBusy] = useState(false), [message, setMessage] = useState('');
   const [backgroundPaused, setBackgroundPaused] = useState(false);
   const action = screen === 'signup' ? 'Create account' : screen === 'reset' ? 'Reset password' : 'Sign in';
+  const ActionIcon = screen === 'signup' ? UserPlus : screen === 'reset' ? KeyRound : LogIn;
   const unavailable = !(DEV_AUTH_ENABLED || FIREBASE_AUTH_ENABLED) || DEV_AUTH_ENABLED && screen !== 'login';
 
   function changeScreen(next: AccountScreen) {
@@ -45,7 +46,6 @@ export default function AccountPanel({ onClose, entry = false, onAuthenticated, 
   }
 
   return <Modal titleId="account-title" onClose={onClose} className={`account-modal${entry ? ' account-entry' : ''}`} overlay={entry ? <EntryDoodles paused={backgroundPaused} /> : undefined}>
-    <button className="icon-button modal-close" onClick={onClose} aria-label={t('Continue as guest')}><X size={20} /></button>
     <div className="account-layout">
       <section className="account-form-column">
         <div className="account-form-inner">
@@ -60,7 +60,7 @@ export default function AccountPanel({ onClose, entry = false, onAuthenticated, 
             <fieldset disabled={busy || unavailable} className="account-fields">
               <label className="field-label">{t('Email')}<input type="email" value={email} onChange={event => setEmail(event.target.value)} required autoComplete="email" placeholder="name@example.com" dir="ltr" /></label>
               {screen !== 'reset' && <label className="field-label">{t('Password')}<input type="password" value={password} onChange={event => setPassword(event.target.value)} required minLength={screen === 'signup' ? 6 : undefined} autoComplete={screen === 'signup' ? 'new-password' : 'current-password'} placeholder="••••••••" dir="ltr" /></label>}
-              <button className="secondary-button full account-submit" type="submit">{busy ? <LoaderCircle size={18} className="account-spinner" aria-hidden="true" /> : <Mail size={18} aria-hidden="true" />}{t(action)}</button>
+              <button className="secondary-button full account-submit" type="submit">{busy ? <LoaderCircle size={18} className="account-spinner" aria-hidden="true" /> : <ActionIcon size={18} aria-hidden="true" />}{t(action)}</button>
             </fieldset>
           </form>
           {error && <p className="error-box" role="alert">{t(error)}</p>}

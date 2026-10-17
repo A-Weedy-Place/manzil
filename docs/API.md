@@ -8,6 +8,8 @@ The shared Express API supports three explicit modes. Standalone `local` binds t
 
 In Firebase modes send `Authorization: Bearer FIREBASE_ID_TOKEN` for personal endpoints (commutes/trips/alerts/inference and profile changes) and closure writes. An ordinary signed-in user may submit a report; publication and review follow the role rules below. Admin directory access, demo mutations, notice/outbox access and source changes require a verified token with the custom claim `admin: true`. Invalid tokens return 401; insufficient roles return 403. Supplied owner IDs/roles are never authority. Public state contains approved published closures and empty personal lists for guests; private data is scoped to the verified UID. Raw notices are admin-only. Guest appearance is stored in the browser. Speech synthesis requires identity unless explicitly enabled for guests; enabled speech still observes the global application character budget. Direct browser Firestore access is denied by rules.
 
+Registration and Forgot password use the Firebase client Authentication SDK, not new Express endpoints. The isolated emulator suite verifies registration, ordinary-role/private-profile defaults, reset-code acceptance/single use and sign-in after a password change. It sends no real email; production mailbox delivery is a separate deployment check. See [entry/auth verification](ENTRY_SCREEN.md).
+
 ## Community permissions
 
 | Actor | Closure access | Reporting/review | Other access |
