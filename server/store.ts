@@ -52,11 +52,11 @@ export class Store {
       const profile = this.meta<LocalProfile>('profile');
       if (!profile) {
         const now = new Date().toISOString();
-        this.setMeta('profile', { id: 'local', displayName: 'Traveller', theme: 'dark', mapDetail: 'clean', mapStyle: 'night',
+        this.setMeta('profile', { id: 'local', displayName: 'Traveller', theme: 'dark', mapDetail: 'clean', mapStyle: 'outdoors',
           browserNotifications: false, collectTravelData: false, travelDataChoiceMade: false, inferFrequentRoutes: false, transport: 'car', createdAt: now, updatedAt: now } satisfies LocalProfile);
       } else if (profile.theme === undefined || profile.mapStyle === undefined) {
         // Fill missing appearance preferences without resetting saved choices or timestamps.
-        this.setMeta('profile', { ...profile, theme: profile.theme ?? 'dark', mapStyle: profile.mapStyle ?? 'night' });
+        this.setMeta('profile', { ...profile, theme: profile.theme ?? 'dark', mapStyle: profile.mapStyle ?? 'outdoors' });
       }
     });
     if (!this.meta<SourceStatus>('sourceStatus')) this.setMeta('sourceStatus', {
@@ -90,7 +90,7 @@ export class Store {
   get eventRevision() { return this.meta<number>('eventRevision') ?? 0; }
   profile(): LocalProfile {
     const profile = this.meta<LocalProfile>('profile')!;
-    return { collectTravelData: false, travelDataChoiceMade: false, ...profile, theme: profile.theme ?? 'dark', mapStyle: profile.mapStyle ?? 'night' };
+    return { collectTravelData: false, travelDataChoiceMade: false, ...profile, theme: profile.theme ?? 'dark', mapStyle: profile.mapStyle ?? 'outdoors' };
   }
   updateProfile(patch: Partial<Omit<LocalProfile, 'id' | 'createdAt' | 'updatedAt'>>): LocalProfile {
     return this.transaction(() => {

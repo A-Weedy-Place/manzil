@@ -17,12 +17,31 @@ const state: AppState = { closures: [], commutes: [], alerts: [], notices: [], t
 const option: RouteOption = { id: 'direct', kind: 'direct', label: 'Recommended', validation: 'clear', warnings: [], geometry: { type: 'LineString', coordinates: [[73, 33.7], [73, 33.71]] }, distanceMeters: 1112, durationSeconds: 120,
   departureAt: date, arrivalAt: '2026-10-15T10:02:00Z', steps: [], snappedOrigin: [73, 33.7], snappedDestination: [73, 33.71] };
 const responseFor = (url: string) => new Response(JSON.stringify(url.startsWith('/api/demos?') ? { at: date, scenarios: [] } : state));
+async function chooseEndpoints() {
+  await screen.findByTestId('map');
+  act(() => {
+    capture.props!.onEndpointMove('A', [73, 33.7]);
+    capture.props!.onEndpointMove('B', [73, 33.71]);
+  });
+}
 beforeEach(() => {
   localStorage.clear(); sessionStorage.clear(); signOut(); sessionStorage.setItem('manzil-entry-guest', 'yes'); localStorage.setItem('manzil-tour-v1', 'seen'); setLanguage('en'); capture.props = null; capture.mounts = 0;
   vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
   Element.prototype.scrollTo = vi.fn();
 });
-afterEach(() => { cleanup(); signOut(); vi.restoreAllMocks(); vi.unstubAllGlobals(); setLanguage('en'); document.documentElement.dir = 'ltr'; });
+afterEach(() => { cleanup(); signOut(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); setLanguage('en'); document.documentElement.dir = 'ltr'; });
+it('opens an empty planner without sample pins or an automatic route request', async () => {
+  const fetcher = vi.fn(async (url: string) => responseFor(url)); vi.stubGlobal('fetch', fetcher);
+  render(<App />); const find = await screen.findByRole('button', { name: 'Find routes' }); await screen.findByTestId('map');
+  expect(capture.props!.origin).toBeNull(); expect(capture.props!.destination).toBeNull(); expect(capture.props!.waypoints).toEqual([]);
+  expect(screen.getByRole('combobox', { name: /Starting point/ })).toHaveProperty('value', '');
+  expect(screen.getByRole('combobox', { name: /Destination/ })).toHaveProperty('value', '');
+  expect(find.matches(':disabled')).toBe(true); expect(capture.props!.routeOptions).toEqual([]);
+  expect(fetcher.mock.calls.some(([url]) => url === '/api/plan')).toBe(false);
+  act(() => capture.props!.onEndpointMove('A', [73, 33.7])); expect(find.matches(':disabled')).toBe(true);
+  act(() => capture.props!.onEndpointMove('B', [73, 33.71])); expect(find.matches(':disabled')).toBe(false);
+  expect(fetcher.mock.calls.some(([url]) => url === '/api/plan')).toBe(false);
+});
 it('offers departure comparisons only in Plan ahead and never requests them for the live map', async () => {
   const requests: boolean[] = [];
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
@@ -33,6 +52,7 @@ it('offers departure comparisons only in Plan ahead and never requests them for 
     return responseFor(url);
   }));
   render(<App />); await screen.findByRole('button', { name: 'Find routes' });
+  await chooseEndpoints();
   expect(screen.queryByRole('checkbox', { name: 'Also compare leaving earlier or later' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Find routes' })); await waitFor(() => expect(requests).toEqual([false]));
   fireEvent.click(screen.getByRole('button', { name: 'Plan ahead' }));
@@ -51,6 +71,7 @@ it('recentres My location without editing endpoints, stops, route geometry or pl
     return responseFor(url);
   });
   vi.stubGlobal('fetch', fetcher); render(<App />); await screen.findByRole('button', { name: 'Find routes' });
+  await chooseEndpoints();
   fireEvent.click(screen.getByRole('button', { name: 'Plan ahead' }));
   fireEvent.click(screen.getByRole('button', { name: 'Add stop' }));
   act(() => capture.props!.onWaypointMove?.(0, [73.041, 33.72]));
@@ -116,7 +137,7 @@ it.each([undefined, 'light', 'dark', 'system'] as const)('uses Dark while loadin
   await act(async () => finishLoading(new Response(JSON.stringify({ ...state, profile: { ...state.profile, theme: savedTheme, mapStyle: undefined } }))));
   await screen.findByRole('button', { name: 'Find routes' });
   expect(document.documentElement.dataset.theme).toBe(savedTheme === 'light' || savedTheme === 'system' ? 'light' : 'dark');
-  expect(capture.props!.mapStyle).toBe('night');
+  expect(capture.props!.mapStyle).toBe('outdoors');
   act(() => { media.matches = true; changeSystemTheme({ matches: true } as MediaQueryListEvent); });
   expect(document.documentElement.dataset.theme).toBe(savedTheme === 'light' ? 'light' : 'dark');
   expect(fetcher.mock.calls.some(([url]) => url === '/api/profile')).toBe(false);
@@ -165,6 +186,7 @@ it('walks through Closures, Saved and Profile without planning or requesting GPS
   });
   vi.stubGlobal('fetch', fetcher);
   render(<App />); await screen.findByRole('button', { name: 'Find routes' });
+  await chooseEndpoints();
   fireEvent.click(screen.getByRole('button', { name: 'Plan ahead' }));
   fireEvent.click(screen.getByRole('button', { name: 'Find routes' }));
   await waitFor(() => expect(capture.props?.routeOptions).toHaveLength(1));
@@ -197,6 +219,7 @@ it('can request and display online routes when the bundled local graph is unavai
   });
   vi.stubGlobal('fetch', fetcher);
   render(<App />); await screen.findByRole('button', { name: 'Find routes' });
+  await chooseEndpoints();
   const plan = screen.getByRole('button', { name: 'Find routes' });
   expect(plan.matches(':disabled')).toBe(false);
   fireEvent.click(plan);
@@ -377,7 +400,7 @@ it('preserves map identity and handlers across polling, switches the complete sh
 it('has one header profile control and opens read-only monthly statistics beside the profile', async () => {
   signInDevelopment('user@manzil.test', 'ManzilUser123!');
   const watch = vi.fn(); Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { watchPosition: watch, clearWatch: vi.fn() } });
-  const summary = { period: 'month', tripCount: 0, distanceMeters: 0, durationSeconds: 0, costPkr: 0, litres: 0, pricedTripCount: 0, unpricedTripCount: 0, complete: true };
+  const summary = { period: 'month', from: '2026-09-30T19:00:00Z', until: date, tripCount: 0, distanceMeters: 0, durationSeconds: 0, costPkr: 0, litres: 0, pricedTripCount: 0, unpricedTripCount: 0, unpricedDistanceMeters: 0, complete: true };
   vi.stubGlobal('fetch', vi.fn(async (url: string) => url === '/api/trips/statistics' ? new Response(JSON.stringify({ month: summary })) : responseFor(url)));
   render(<App />); await screen.findByRole('button', { name: 'Find routes' });
   expect(document.querySelector('.account-trigger')).toBeNull();
@@ -386,7 +409,7 @@ it('has one header profile control and opens read-only monthly statistics beside
   fireEvent.click(screen.getByRole('button', { name: /Personal statistics/ }));
   expect(await screen.findByRole('dialog', { name: 'Personal statistics' })).toBeTruthy();
   expect(await screen.findByText('No recorded trips this month.')).toBeTruthy();
-  expect(screen.queryByRole('button', { name: 'This week' })).toBeNull();
+  expect(screen.getByRole('tab', { name: 'This week' })).toBeTruthy();
   expect(watch).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Close statistics' }));
   expect(screen.queryByRole('dialog', { name: 'Personal statistics' })).toBeNull();
@@ -421,37 +444,48 @@ it('opens profile details and trip history in the same secondary panel without m
   fireEvent.click(screen.getByRole('button', { name: 'Close trip history' }));
   expect(screen.queryByRole('dialog')).toBeNull();
 });
-it('shows a selected history trace while preserving a paused recording draft for later resumption', async () => {
+it('views and hides a saved trace from read-only Activity and opens its journey editor without collecting GPS', async () => {
   signInDevelopment('user@manzil.test', 'ManzilUser123!');
-  let clock = Date.now(), location!: PositionCallback;
-  vi.spyOn(Date, 'now').mockImplementation(() => clock);
-  const clear = vi.fn(), watch = vi.fn((callback: PositionCallback) => { location = callback; return 44; });
+  const clear = vi.fn(), watch = vi.fn();
   Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { watchPosition: watch, clearWatch: clear } });
-  const saved: Trip = { id: 'saved-trace', name: 'Saved history route', startedAt: date, endedAt: date, createdAt: date, distanceMeters: 500, durationSeconds: 180, points: [{ coordinate: [73.08, 33.72], timestamp: date, accuracy: 10 }, { coordinate: [73.085, 33.72], timestamp: date, accuracy: 10 }], pointCount: 2, gaps: 0, contributeToRoadDiscovery: false };
-  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+  const endedAt = '2026-10-15T10:03:00Z';
+  const saved: Trip = { id: 'saved-trace', name: 'Faisal Mosque → Centaurus', startedAt: date, endedAt, createdAt: endedAt, distanceMeters: 500, durationSeconds: 180, points: [{ coordinate: [73.08, 33.72], timestamp: date, accuracy: 10 }, { coordinate: [73.085, 33.72], timestamp: endedAt, accuracy: 10 }], pointCount: 2, gaps: 0, contributeToRoadDiscovery: false };
+  const totals = { period: 'month', from: null, until: endedAt, complete: true, tripCount: 1, distanceMeters: 500, durationSeconds: 180, pricedTripCount: 0, unpricedTripCount: 1, unpricedDistanceMeters: 500, costPkr: 0, litres: 0 };
+  const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
     if (url === '/api/state') return new Response(JSON.stringify({ ...state, profile: { ...state.profile, collectTravelData: true }, trips: [{ ...saved, points: [] }] }));
     if (url === '/api/trips/saved-trace') return new Response(JSON.stringify(saved));
+    if (url === '/api/trips/statistics') return new Response(JSON.stringify({ month: totals, week: { ...totals, period: 'week' } }));
+    if (url === '/api/plan') { const request = JSON.parse(String(init?.body)); return new Response(JSON.stringify({ options: [{ ...option, departureAt: request.departureAt }], baseline: null, conflicts: [], warnings: [], evaluatedAt: request.departureAt, graphVersion: 'test', eventRevision: 0, source: 'local-osm' })); }
     return responseFor(url);
-  }));
+  }); vi.stubGlobal('fetch', fetcher);
   render(<App />); await screen.findByRole('button', { name: 'Find routes' });
+  await chooseEndpoints(); fireEvent.click(screen.getByRole('button', { name: 'Find routes' }));
+  await waitFor(() => expect(capture.props!.routeOptions).toHaveLength(1));
+  const planned = { origin: capture.props!.origin, destination: capture.props!.destination, route: capture.props!.selectedRoute, options: capture.props!.routeOptions };
   fireEvent.click(screen.getByRole('button', { name: 'Activity' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Start recording' }));
-  await act(async () => location({ timestamp: clock, coords: { longitude: 73, latitude: 33.7, accuracy: 10 } } as GeolocationPosition));
-  clock += 6000;
-  await act(async () => location({ timestamp: clock, coords: { longitude: 73.001, latitude: 33.7, accuracy: 10 } } as GeolocationPosition));
-  await waitFor(() => expect(capture.props?.recordedPoints).toHaveLength(2));
-  const draft = capture.props!.recordedPoints;
-  fireEvent.click(screen.getByRole('button', { name: 'Open profile' }));
-  expect(clear).toHaveBeenCalledWith(44);
-  fireEvent.click(screen.getByRole('button', { name: 'Trip history' }));
-  fireEvent.click(within(screen.getByRole('dialog', { name: 'Trip history' })).getByRole('button', { name: 'View on map' }));
+  expect(screen.queryByRole('button', { name: 'Start recording' })).toBeNull(); expect(screen.queryByText('Record a trip')).toBeNull();
+  expect(capture.props!.recordedPoints).toEqual([]); expect(watch).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'View on map' }));
   await waitFor(() => expect(capture.props?.recordedPoints).toEqual(saved.points));
-  expect(screen.queryByRole('dialog', { name: 'Trip history' })).toBeNull();
+  expect(capture.props!.routeOptions).toEqual([]); expect(capture.props!.selectedRoute).toBeNull(); expect(capture.props!.baseline).toBeNull();
+  expect(capture.props!.origin).toBeNull(); expect(capture.props!.destination).toBeNull(); expect(capture.props!.waypoints).toEqual([]);
+  fireEvent.click(screen.getByRole('button', { name: 'Fit journey on map' }));
+  expect(capture.props!.focus?.coordinates).toEqual(saved.points.map(point => point.coordinate));
   fireEvent.click(screen.getByRole('button', { name: 'Hide recorded trip' }));
-  expect(capture.props?.recordedPoints).toEqual(draft);
-  fireEvent.click(screen.getByRole('button', { name: 'Activity' }));
-  expect(screen.getByRole('button', { name: 'Resume recording' })).toBeTruthy();
-  expect(watch).toHaveBeenCalledTimes(1);
+  expect(capture.props?.recordedPoints).toEqual([]);
+  expect(capture.props!.origin).toEqual(planned.origin); expect(capture.props!.destination).toEqual(planned.destination);
+  expect(capture.props!.selectedRoute).toEqual(planned.route); expect(capture.props!.routeOptions).toEqual(planned.options);
+  fireEvent.click(screen.getByRole('button', { name: 'Save journey' }));
+  expect(await screen.findByRole('heading', { name: 'New commute' })).toBeTruthy();
+  expect(screen.getByLabelText('Commute name')).toHaveProperty('value', saved.name);
+  expect(screen.getByLabelText('Usual departure · Pakistan time')).toHaveProperty('value', '15:00');
+  expect(capture.props!.origin).toEqual({ name: 'Faisal Mosque', coordinate: saved.points[0].coordinate });
+  expect(capture.props!.destination).toEqual({ name: 'Centaurus', coordinate: saved.points.at(-1)!.coordinate });
+  expect(screen.getByRole('button', { name: 'Save commute' }).matches(':disabled')).toBe(false);
+  expect(fetcher.mock.calls.filter(([url]) => url === '/api/trips/saved-trace')).toHaveLength(2);
+  expect(fetcher.mock.calls.some(([url]) => url === '/api/commutes')).toBe(false);
+  expect(fetcher.mock.calls.filter(([url]) => url === '/api/plan')).toHaveLength(1);
+  expect(watch).not.toHaveBeenCalled(); expect(clear).not.toHaveBeenCalled();
 });
 it('asks only a newly registered account for optional trip data before its tour and remembers Not now', async () => {
   sessionStorage.setItem('manzil-travel-data-choice-v1:dev-user', 'pending');
@@ -492,7 +526,8 @@ it('never uses a previous account’s acknowledged profile to dismiss a new acco
   expect(await screen.findByRole('dialog', { name: 'Personal trip data' })).toBeTruthy();
   expect(sessionStorage.getItem('manzil-travel-data-choice-v1:dev-user')).toBe('pending');
 });
-it('keeps pending route geometry labelled unavailable instead of blanking the map on a clock update', async () => {
+it('retains selected blue routes during passive refresh and atomically replaces them only after fresh validation', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime('2026-10-18T08:00:00Z');
   const intervals = new Map<number, () => void>(); let resolvePlan!: (value: Response) => void; let requests = 0;
   vi.spyOn(globalThis, 'setInterval').mockImplementation(((callback: () => void, delay: number) => { intervals.set(delay, callback); return delay; }) as typeof setInterval);
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
@@ -505,15 +540,49 @@ it('keeps pending route geometry labelled unavailable instead of blanking the ma
     return responseFor(url);
   }));
   render(<App />); await screen.findByRole('button', { name: 'Find routes' });
+  await chooseEndpoints();
   fireEvent.click(screen.getByRole('button', { name: 'Find routes' }));
   await waitFor(() => expect(capture.props?.routeOptions).toHaveLength(1));
   expect(screen.queryByRole('button', { name: 'Block a point on this route' })).toBeNull();
-  const geometry = capture.props!.routeOptions![0].geometry;
+  const selected = capture.props!.selectedRoute!, geometry = selected.geometry;
+  vi.setSystemTime('2026-10-18T08:01:00Z');
   await act(async () => { intervals.get(60000)!(); });
   await waitFor(() => expect(requests).toBe(2));
-  expect(capture.props!.updating).toBe(true); expect(capture.props!.selectedRoute).toBeNull();
+  expect(capture.props!.refreshing).toBe(true); expect(capture.props!.updating).toBe(false); expect(capture.props!.selectedRoute).toEqual(selected);
   expect(capture.props!.routeOptions![0].geometry).toEqual(geometry); expect(capture.mounts).toBe(1);
   expect(screen.getByRole('button', { name: 'Navigate' }).matches(':disabled')).toBe(true);
-  expect(screen.getByRole('heading', { name: 'Your routes' })).toBeTruthy();
-  await act(async () => { resolvePlan(new Response(JSON.stringify({ options: [], baseline: null, conflicts: [], warnings: [], evaluatedAt: date, graphVersion: 'test', eventRevision: 0, source: 'local-osm' }))); });
+  expect(screen.getByRole('heading', { name: 'Choose your route' })).toBeTruthy();
+  const routeCard = screen.getByRole('button', { name: /Recommended route/ });
+  expect(routeCard.matches(':disabled')).toBe(false); expect(routeCard.getAttribute('aria-pressed')).toBe('true');
+  expect(document.querySelector('.route-result-controls')?.matches(':disabled')).toBe(false);
+  expect(screen.queryByText('Restrictions changed')).toBeNull(); expect(screen.queryByText('Finding routes…')).toBeNull(); expect(screen.queryByText('Updating…')).toBeNull();
+  const next = { ...option, id: 'fresh-detour', kind: 'detour', durationSeconds: 240, geometry: { type: 'LineString', coordinates: [[73, 33.7], [73.001, 33.705], [73, 33.71]] }, departureAt: '2026-10-18T08:01:00.000Z' };
+  await act(async () => { resolvePlan(new Response(JSON.stringify({ options: [next], baseline: null, conflicts: [], warnings: [], evaluatedAt: '2026-10-18T08:01:00.000Z', graphVersion: 'test', eventRevision: 0, source: 'local-osm' }))); });
+  await waitFor(() => expect(capture.props!.selectedRoute?.id).toBe('fresh-detour'));
+  expect(capture.props!.refreshing).toBe(false); expect(capture.props!.updating).toBe(false);
+  expect(capture.props!.routeOptions).toHaveLength(1); expect(capture.props!.routeOptions![0].geometry).toEqual(next.geometry); expect(capture.mounts).toBe(1);
+  expect(screen.getByRole('button', { name: 'Navigate' }).matches(':disabled')).toBe(false);
+});
+
+it('discards a previous account’s pending route response and clears its chosen endpoints on sign-out', async () => {
+  signInDevelopment('user@manzil.test', 'ManzilUser123!');
+  let finishPlan!: (value: Response) => void;
+  let phase = 'initial'; const planStages: string[] = [];
+  const fetcher = vi.fn(async (url: string) => {
+    if (url !== '/api/plan') return responseFor(url);
+    planStages.push(`${getAuthSession().user?.uid ?? 'guest'}:${phase}`);
+    return new Promise<Response>(resolve => { finishPlan = resolve; });
+  });
+  vi.stubGlobal('fetch', fetcher); render(<App />); await screen.findByRole('button', { name: 'Find routes' }); await chooseEndpoints();
+  fireEvent.click(screen.getByRole('button', { name: 'Find routes' })); await waitFor(() => expect(finishPlan).toBeTypeOf('function'));
+  phase = 'profile'; fireEvent.click(screen.getByRole('button', { name: 'Open profile' })); phase = 'sign-out'; fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+  await screen.findByRole('dialog', { name: 'Manzil' });
+  await act(async () => finishPlan(new Response(JSON.stringify({ options: [option], baseline: null, conflicts: [], warnings: [], evaluatedAt: date, graphVersion: 'test', eventRevision: 0, source: 'local-osm' }))));
+  expect(screen.queryByRole('button', { name: 'Navigate' })).toBeNull();
+  phase = 'guest-entry'; fireEvent.click(screen.getAllByRole('button', { name: 'Continue as guest' }).at(-1)!);
+  await screen.findByRole('button', { name: 'Skip tour' }); fireEvent.click(screen.getByRole('button', { name: 'Skip tour' }));
+  await screen.findByTestId('map');
+  expect(capture.props!.origin).toBeNull(); expect(capture.props!.destination).toBeNull(); expect(capture.props!.selectedRoute).toBeNull(); expect(capture.props!.routeOptions).toEqual([]);
+  expect(screen.queryByRole('button', { name: 'Navigate' })).toBeNull();
+  expect(planStages).toEqual(['dev-user:initial']);
 });

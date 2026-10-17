@@ -104,15 +104,50 @@ it('retains the map, style and overlay sources across route switches, polling an
   expect(map.getSource('manzil-routes')).toBe(source);
 });
 
-it('starts missing preferences with a Night backdrop and avoids equivalent Classic alias reloads', async () => {
+it('starts missing preferences with a Classic backdrop and avoids equivalent Classic alias reloads', async () => {
   const base = props(); const result = render(<MapView {...base} />);
   await act(async () => {});
   const map = maps.instances[0];
-  expect(map.options.style.layers[0].paint).toEqual({ 'background-color': '#17212b' });
+  expect(map.options.style.layers[0].paint).toEqual({ 'background-color': '#eef0ed' });
   result.rerender(<MapView {...base} mapStyle="streets" />); await act(async () => {});
-  expect(map.setStyle).toHaveBeenCalledTimes(2);
+  expect(map.setStyle).toHaveBeenCalledOnce();
   result.rerender(<MapView {...base} mapStyle="contrast" />); await act(async () => {});
   result.rerender(<MapView {...base} mapStyle="outdoors" />); await act(async () => {});
+  expect(map.setStyle).toHaveBeenCalledOnce();
+  result.rerender(<MapView {...base} mapStyle="night" />); await act(async () => {});
   expect(map.setStyle).toHaveBeenCalledTimes(2);
   expect(maps.instances).toHaveLength(1);
+});
+
+it('keeps a clear blue route during passive refresh without pending labels or rebuilding the map', async () => {
+  const selected = route('current', 0), base = { ...props(), routeOptions: [selected], selectedRoute: selected };
+  const result = render(<MapView {...base} />); await act(async () => {});
+  const map = maps.instances[0], source = map.getSource('manzil-routes')!;
+  result.rerender(<MapView {...base} departureAt="2026-10-17T12:01:00Z" refreshing />); await act(async () => {});
+  expect(source.data.features).toHaveLength(1); expect(source.data.features[0].properties).toMatchObject({ selected: true, pending: false });
+  expect(map.setStyle).toHaveBeenCalledOnce(); expect(maps.instances).toHaveLength(1);
+  result.rerender(<MapView {...base} departureAt="2026-10-17T12:01:00Z" updating />); await act(async () => {});
+  expect(source.data.features[0].properties?.pending).toBe(true);
+});
+
+it('draws recorded history green with a white halo and separate start/end markers, fitting all supplied coordinates', async () => {
+  const recordedPoints = [
+    { coordinate: [73.03, 33.64] as Coordinate, timestamp: departureAt, accuracy: 8 },
+    { coordinate: [73.031, 33.641] as Coordinate, timestamp: '2026-10-17T12:00:30Z', accuracy: 8 },
+    { coordinate: [73.032, 33.64] as Coordinate, timestamp: '2026-10-17T12:01:00Z', accuracy: 8 },
+  ];
+  const focus = { token: 1, coordinates: recordedPoints.map(point => point.coordinate) };
+  const result = render(<MapView {...props()} recordedPoints={recordedPoints} focus={focus} />); await act(async () => {});
+  const map = maps.instances[0];
+  expect(map.getSource('manzil-trace')?.data.features[0].geometry).toEqual({ type: 'MultiLineString', coordinates: [recordedPoints.map(point => point.coordinate)] });
+  expect(map.getSource('manzil-trace-end')?.data.features.map(feature => feature.properties?.endpoint)).toEqual(['start', 'end']);
+  expect(map.layers.get('manzil-trace-line')).toMatchObject({ paint: { 'line-color': '#12bd78', 'line-width': 9 } });
+  expect(map.layers.get('manzil-trace-casing')).toMatchObject({ paint: { 'line-color': '#ffffff', 'line-width': 14 } });
+  expect(map.fitBounds).toHaveBeenCalledWith([[73.03, 33.64], [73.032, 33.641]], expect.objectContaining({ duration: 0, padding: { top: 88, bottom: 140, left: 48, right: 104 } }));
+  expect(map.layers.get('manzil-route-line')).toMatchObject({ paint: { 'line-color': '#2563eb' } });
+  Object.defineProperty(map.options.container, 'clientHeight', { configurable: true, value: 300 });
+  result.rerender(<MapView {...props()} recordedPoints={recordedPoints} focus={{ ...focus, token: 2 }} />); await act(async () => {});
+  expect(map.fitBounds).toHaveBeenLastCalledWith([[73.03, 33.64], [73.032, 33.641]], expect.objectContaining({ padding: { top: 60, bottom: 90, left: 48, right: 104 } }));
+  result.rerender(<MapView {...props()} focus={{ ...focus, token: 3 }} />); await act(async () => {});
+  expect(map.fitBounds).toHaveBeenLastCalledWith([[73.03, 33.64], [73.032, 33.641]], expect.objectContaining({ padding: { top: 88, bottom: 80, left: 48, right: 104 } }));
 });

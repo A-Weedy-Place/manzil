@@ -1,24 +1,29 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowUpRight, Download, Map, Trash2 } from 'lucide-react';
+import { ArrowUpRight, BookmarkPlus, Clock3, Map, Route, Share2, Trash2 } from 'lucide-react';
 import type { AppState, Trip } from '../../shared/types';
 import { api } from '../lib/api';
 import { getAuthSession } from '../lib/auth';
-import { dateTime, distance, downloadJSON, duration } from '../lib/format';
+import { dateTime, distance, duration } from '../lib/format';
 import { fuelDate, rupees } from '../lib/fuel';
 import { t } from '../lib/language';
+import { usableTracePoints } from '../lib/tripTrace';
+import TripShareDialog from './TripShareDialog';
+import './trip-history.css';
 
 interface Props {
   state: AppState;
   reload: () => Promise<void>;
   notify: (message: string) => void;
   onView: (trip: Trip) => void;
+  onSaveJourney?: (trip: Trip) => void;
   showHeading?: boolean;
 }
 
-/** Summary browsing never requests GPS or loads a private trace. View/Export load it explicitly. */
-export default function TripHistory({ state, reload, notify, onView, showHeading = true }: Props) {
+/** Browsing is summary-only; View, Share and Save journey explicitly request one private trace. */
+export default function TripHistory({ state, reload, notify, onView, onSaveJourney, showHeading = true }: Props) {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const [share, setShare] = useState<{ owner: string; trip: Trip } | null>(null);
   // Standalone storage membership describes its shared local server, not the UI account.
   const owner = getAuthSession().user?.uid ?? null;
   const currentOwner = useRef(owner); currentOwner.current = owner;
@@ -26,7 +31,7 @@ export default function TripHistory({ state, reload, notify, onView, showHeading
   const timeout = useRef<number | undefined>(undefined);
   useEffect(() => {
     mounted.current = true; epoch.current++; request.current?.abort(); window.clearTimeout(timeout.current);
-    setDeleteId(null); setBusy(false); setError('');
+    setDeleteId(null); setBusy(false); setError(''); setShare(null);
     return () => { mounted.current = false; epoch.current++; request.current?.abort(); window.clearTimeout(timeout.current); };
   }, [owner]);
 
@@ -51,18 +56,20 @@ export default function TripHistory({ state, reload, notify, onView, showHeading
     finally { operation.finish(); if (operation.current()) setBusy(false); }
   }
 
-  async function fullTrip(trip: Trip, action: 'view' | 'export') {
+  async function fullTrip(trip: Trip, action: 'view' | 'share' | 'save') {
     const operation = begin(); if (!operation) return;
     try {
       const full = await api<Trip>(`/trips/${encodeURIComponent(trip.id)}`, { signal: operation.signal });
       if (!operation.current()) return;
-      if (full.id !== trip.id || !full.points?.length) throw new Error('This trip’s saved trace is no longer available.');
+      if (full.id !== trip.id || !full.points || usableTracePoints(full.points).length < 2) throw new Error('This trip’s saved trace is no longer available.');
       if (action === 'view') onView(full);
-      else downloadJSON(`manzil-trip-${full.id}.geojson`, { type: 'Feature', properties: { name: full.name, startedAt: full.startedAt, endedAt: full.endedAt,
-        ...(full.demoData ? { simulated: true, provenance: 'Fictional trip generated from the public OpenStreetMap road graph; no device GPS was captured.' } : {}) }, geometry: { type: 'LineString', coordinates: full.points.map(point => point.coordinate) } });
+      else if (action === 'save') onSaveJourney?.(full);
+      else setShare({ owner: getAuthSession().user!.uid, trip: full });
     } catch (e) { if (operation.current()) setError(e instanceof Error ? e.message : 'Could not load this trip.'); }
     finally { operation.finish(); if (operation.current()) setBusy(false); }
   }
+
+  if (share && share.owner === owner) return <TripShareDialog trip={share.trip} owner={share.owner} mapStyle={state.profile.mapStyle} onClose={() => setShare(null)} />;
 
   return <section className="trip-history" aria-label={t('Trip history')} aria-busy={busy}>
     {showHeading && <div className="section-heading compact"><h2>{t('Trip history')}</h2><span className="small muted">{t('Private')}</span></div>}
@@ -70,13 +77,13 @@ export default function TripHistory({ state, reload, notify, onView, showHeading
     {state.trips.length >= 50 && <p className="small muted">{t('Showing the 50 most recent trips. Totals include retained history beyond this list.')}</p>}
     {!state.trips.length && <div className="empty-state compact-empty"><Map size={29} /><h3>{t('Every journey has a story')}</h3><p>{t('Your recorded routes, distance and time will appear here. GPS samples require a real device location.')}</p></div>}
     {state.trips.map(trip => <article className="trip-card" key={trip.id}>
-      <div className="row between"><h3>{trip.name}</h3><button className="icon-button small" disabled={busy} aria-label={`${t('Delete')} ${trip.name}`} onClick={() => setDeleteId(deleteId === trip.id ? null : trip.id)}><Trash2 size={15} /></button></div>
-      <span className="small muted">{dateTime(trip.startedAt)}</span>
-      <div className="trip-metrics"><strong>{distance(trip.distanceMeters)}</strong><span>{duration(trip.durationSeconds)}</span><span>{(trip.pointCount ?? trip.points.length) ? `${(trip.pointCount ?? trip.points.length)} points` : t('Summary only')}</span></div>
+      <div className="trip-card-heading"><div><h3>{trip.name}</h3><time className="trip-date" dateTime={trip.startedAt}>{dateTime(trip.startedAt)}</time></div><button className="icon-button" disabled={busy} aria-label={`${t('Delete')} ${trip.name}`} onClick={() => setDeleteId(deleteId === trip.id ? null : trip.id)}><Trash2 size={17} /></button></div>
+      <div className="trip-metrics"><div><Route size={16} aria-hidden="true" /><strong>{distance(trip.distanceMeters)}</strong><span>{t('Distance')}</span></div><div><Clock3 size={16} aria-hidden="true" /><strong>{duration(trip.durationSeconds)}</strong><span>{t('Travel time')}</span></div></div>
       <TripFuel trip={trip} />
       {trip.gaps > 0 && <p className="small muted">{trip.gaps} {t('recording gap')}{trip.gaps > 1 ? t('s') : t('')}{t('; distance may be incomplete.')}</p>}
       {trip.contributeToRoadDiscovery && <span className="tag neutral">{t('Road review consent')}</span>}
-      <div className="row"><button className="text-button" disabled={busy || !(trip.pointCount ?? trip.points.length)} onClick={() => fullTrip(trip, 'view')}>{t('View on map')}<ArrowUpRight size={14} /></button><button className="text-button" disabled={busy || !(trip.pointCount ?? trip.points.length)} onClick={() => fullTrip(trip, 'export')}><Download size={14} />{t('Export')}</button></div>
+      {!(trip.pointCount ?? trip.points.length) && <span className="trip-summary-only">{t('Saved trace unavailable')}</span>}
+      <div className="trip-card-actions"><button className="text-button" disabled={busy || !(trip.pointCount ?? trip.points.length)} onClick={() => fullTrip(trip, 'view')}><ArrowUpRight size={16} />{t('View on map')}</button>{onSaveJourney && <button className="text-button" disabled={busy || !(trip.pointCount ?? trip.points.length)} onClick={() => fullTrip(trip, 'save')}><BookmarkPlus size={16} />{t('Save journey')}</button>}<button className="text-button" disabled={busy || !(trip.pointCount ?? trip.points.length)} onClick={() => fullTrip(trip, 'share')}><Share2 size={16} />{t('Share')}</button></div>
       {deleteId === trip.id && <div className="delete-confirm"><p>{t('Delete this trip and its saved trace?')}</p><button className="danger-button" disabled={busy} onClick={() => remove(trip.id)}>{t('Delete trip')}</button><button className="text-button" disabled={busy} onClick={() => setDeleteId(null)}>{t('Keep it')}</button></div>}
     </article>)}
   </section>;

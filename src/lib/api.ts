@@ -18,11 +18,11 @@ function saveGuestPreferences(value: Record<string, unknown>) {
   try { localStorage.setItem(PREFERENCES, JSON.stringify(value)); } catch { /* Session-only preferences when browser storage is unavailable. */ }
 }
 function guestPreferences(): Record<string, unknown> {
-  const saved = readPreferences(PREFERENCES) ?? memoryPreferences;
-  if (saved) return saved;
-  // One-time correction of the old guest defaults; later explicit choices persist.
-  const old = readPreferences('manzil-guest-appearance-v1');
-  const next = { theme: 'dark', mapStyle: 'night', ...(old?.mapDetail === 'detailed' || old?.mapDetail === 'clean' ? { mapDetail: old.mapDetail } : {}) };
+  const saved = readPreferences(PREFERENCES) ?? memoryPreferences ?? readPreferences('manzil-guest-appearance-v1');
+  // New/missing defaults only. Keep deliberate v1/v2 selections, including Night.
+  const next = { theme: saved?.theme === 'light' || saved?.theme === 'system' ? saved.theme : 'dark',
+    mapStyle: ['streets', 'outdoors', 'contrast', 'minimal', 'night'].includes(String(saved?.mapStyle)) ? saved!.mapStyle : 'outdoors',
+    ...(saved?.mapDetail === 'standard' || saved?.mapDetail === 'clean' ? { mapDetail: saved.mapDetail } : saved?.mapDetail === 'detailed' ? { mapDetail: 'standard' } : {}) };
   saveGuestPreferences(next); return next;
 }
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {

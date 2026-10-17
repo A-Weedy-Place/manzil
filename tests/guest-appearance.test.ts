@@ -8,24 +8,33 @@ beforeEach(() => {
     : { profile: { theme: 'light', mapStyle: 'outdoors', mapDetail: 'clean', displayName: 'Traveller' } }))));
 });
 afterEach(() => { vi.resetModules(); vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); localStorage.clear(); });
-it('corrects old guest appearance once, preserving detail and later deliberate choices across reloads', async () => {
-  localStorage.setItem('manzil-guest-appearance-v1', JSON.stringify({ theme: 'light', mapStyle: 'outdoors', mapDetail: 'detailed' }));
+it('preserves old guest appearance rather than forcing a new map style, including later choices across reloads', async () => {
+  localStorage.setItem('manzil-guest-appearance-v1', JSON.stringify({ theme: 'light', mapStyle: 'night', mapDetail: 'detailed' }));
   let client = await import('../src/lib/api');
-  expect((await client.api<{ profile: unknown }>('/state')).profile).toMatchObject({ theme: 'dark', mapStyle: 'night', mapDetail: 'detailed' });
+  expect((await client.api<{ profile: unknown }>('/state')).profile).toMatchObject({ theme: 'light', mapStyle: 'night', mapDetail: 'standard' });
   await client.send('/profile', { theme: 'light', mapStyle: 'minimal' }, 'PATCH');
   vi.resetModules(); client = await import('../src/lib/api');
-  expect((await client.api<{ profile: unknown }>('/state')).profile).toMatchObject({ theme: 'light', mapStyle: 'minimal', mapDetail: 'detailed' });
+  expect((await client.api<{ profile: unknown }>('/state')).profile).toMatchObject({ theme: 'light', mapStyle: 'minimal', mapDetail: 'standard' });
 });
-it('applies an explicit first change after migrating instead of discarding that choice', async () => {
+it('starts a fresh guest Dark/Classic and applies the first explicit appearance change', async () => {
   const { send, api } = await import('../src/lib/api');
+  expect((await api<{ profile: unknown }>('/state')).profile).toMatchObject({ theme: 'dark', mapStyle: 'outdoors' });
   await send('/profile', { theme: 'light' }, 'PATCH');
-  expect((await api<{ profile: unknown }>('/state')).profile).toMatchObject({ theme: 'light', mapStyle: 'night' });
+  expect((await api<{ profile: unknown }>('/state')).profile).toMatchObject({ theme: 'light', mapStyle: 'outdoors' });
 });
 it('supports session-only preferences when browser storage is unavailable', async () => {
   vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('Unavailable'); });
   vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('Unavailable'); });
   const { send, api } = await import('../src/lib/api');
-  expect((await api<{ profile: unknown }>('/state')).profile).toMatchObject({ theme: 'dark', mapStyle: 'night' });
+  expect((await api<{ profile: unknown }>('/state')).profile).toMatchObject({ theme: 'dark', mapStyle: 'outdoors' });
   await send('/profile', { theme: 'light', mapStyle: 'minimal' }, 'PATCH');
   expect((await api<{ profile: unknown }>('/state')).profile).toMatchObject({ theme: 'light', mapStyle: 'minimal' });
+});
+it('retains deliberate v2 Night/System preferences and fills only a missing map field with Classic', async () => {
+  localStorage.setItem('manzil-guest-appearance-v2', JSON.stringify({ theme: 'system', mapStyle: 'night', mapDetail: 'standard' }));
+  let client = await import('../src/lib/api');
+  expect((await client.api<{ profile: unknown }>('/state')).profile).toMatchObject({ theme: 'system', mapStyle: 'night', mapDetail: 'standard' });
+  localStorage.setItem('manzil-guest-appearance-v2', JSON.stringify({ theme: 'light', mapDetail: 'clean' }));
+  vi.resetModules(); client = await import('../src/lib/api');
+  expect((await client.api<{ profile: unknown }>('/state')).profile).toMatchObject({ theme: 'light', mapStyle: 'outdoors', mapDetail: 'clean' });
 });

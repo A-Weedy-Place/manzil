@@ -37,11 +37,11 @@ export class FirestoreStore implements Repository {
   async profile() {
     if (!this.uid) return defaultProfile();
     const profile = await this.meta<LocalProfile>('profile') ?? await this.updateProfile({});
-    return { collectTravelData: false, travelDataChoiceMade: false, ...profile, theme: profile.theme ?? 'dark' as const, mapStyle: profile.mapStyle ?? 'night' as const };
+    return { collectTravelData: false, travelDataChoiceMade: false, ...profile, theme: profile.theme ?? 'dark' as const, mapStyle: profile.mapStyle ?? 'outdoors' as const };
   }
   async updateProfile(patch: Partial<Omit<LocalProfile, 'id' | 'createdAt' | 'updatedAt'>>) {
     const ref = this.metaRef('profile');
-    return this.db.runTransaction(async tx => { const old = decode<LocalProfile>((await tx.get(ref)).data()) ?? defaultProfile(); const next = { collectTravelData: false, travelDataChoiceMade: false, ...old, ...patch, theme: patch.theme ?? old.theme ?? 'dark' as const, mapStyle: patch.mapStyle ?? old.mapStyle ?? 'night' as const, updatedAt: new Date().toISOString() }; if (patch.vehicle && !sameVehicle(old.vehicle, patch.vehicle)) next.vehicleUpdatedAt = next.updatedAt; if (!next.collectTravelData) next.inferFrequentRoutes = false; tx.set(ref, pack(next)); tx.set(this.user(), { active: true }, { merge: true }); return next; });
+    return this.db.runTransaction(async tx => { const old = decode<LocalProfile>((await tx.get(ref)).data()) ?? defaultProfile(); const next = { collectTravelData: false, travelDataChoiceMade: false, ...old, ...patch, theme: patch.theme ?? old.theme ?? 'dark' as const, mapStyle: patch.mapStyle ?? old.mapStyle ?? 'outdoors' as const, updatedAt: new Date().toISOString() }; if (patch.vehicle && !sameVehicle(old.vehicle, patch.vehicle)) next.vehicleUpdatedAt = next.updatedAt; if (!next.collectTravelData) next.inferFrequentRoutes = false; tx.set(ref, pack(next)); tx.set(this.user(), { active: true }, { merge: true }); return next; });
   }
   async list<T>(kind: RecordKind, limit = 500): Promise<T[]> {
     const snapshot = await this.records(kind).orderBy('updatedAt', 'desc').limit(limit).get();

@@ -36,7 +36,7 @@ function summary(period: TripStatistics['period'], tripCount: number, costPkr: n
 }
 const statistics = { week: summary('week', 61, 18_600), month: summary('month', 100, 31_000), all: summary('all', 150, 46_500) };
 const trip: Trip = { id: 'one', name: 'Recorded commute', startedAt: at, endedAt: '2026-10-17T08:10:00Z', points: [], pointCount: 4, contributeToRoadDiscovery: false, distanceMeters: 10_000, durationSeconds: 600, createdAt: at, gaps: 0, fuelEstimate: estimateRouteFuel(10_000, at, vehicle, fuel.records)! };
-const activityProps = () => ({ points: [], setPoints: vi.fn(), reload: vi.fn(async () => {}), notify: vi.fn(), onView: vi.fn() });
+const activityProps = () => ({ reload: vi.fn(async () => {}), notify: vi.fn(), onView: vi.fn() });
 beforeEach(() => { setLanguage('en'); calls.api.mockReset().mockResolvedValue(statistics); calls.send.mockReset().mockResolvedValue({}); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); setLanguage('en'); });
 
@@ -132,6 +132,8 @@ it('shows monthly retained-history totals beyond the recent list without reading
   expect(screen.queryByRole('button', { name: 'All retained trips' })).toBeNull();
   expect(calls.api).toHaveBeenCalledWith('/trips/statistics', expect.objectContaining({ signal: expect.any(AbortSignal) }));
   expect(calls.api).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole('img')).toBeNull(); expect(screen.queryByText('Daily activity')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Start recording' })).toBeNull();
   expect(screen.queryByText(/Based on recorded distance/)).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'About fuel estimates' }));
   expect(screen.getByRole('tooltip').textContent).toContain('changing your vehicle never reprices history');
@@ -172,7 +174,8 @@ it('switches weekly and monthly charts without fetching again, and exposes exact
   await screen.findByText('≈ PKR 31,000');
   expect(screen.getAllByRole('img')).toHaveLength(2);
   expect(screen.getByRole('img', { name: /Distance travelled/ })).toBeTruthy();
-  expect(screen.getByRole('img', { name: /Estimated fuel used/ })).toBeTruthy();
+  expect(screen.getByRole('img', { name: /Fuel price history · Petrol/ })).toBeTruthy();
+  expect(screen.queryByRole('img', { name: /Estimated fuel used/ })).toBeNull();
   expect(screen.queryByText(/Includes sample trips/)).toBeNull();
   expect(screen.getByRole('tab', { name: 'This month' }).getAttribute('aria-selected')).toBe('true');
   fireEvent.click(screen.getByRole('tab', { name: 'This week' }));
@@ -190,8 +193,47 @@ it('never synthesizes graphs from totals when the daily series is unavailable', 
   calls.api.mockResolvedValue({ ...statistics, month: { ...statistics.month, daily: undefined } });
   render(<MonthlyStatistics state={state()} />);
   await screen.findByText('≈ PKR 31,000');
-  expect(screen.getAllByText('Daily chart unavailable.')).toHaveLength(2);
-  expect(screen.queryByRole('img')).toBeNull();
+  expect(screen.getByText('Daily chart unavailable.')).toBeTruthy();
+  expect(screen.getAllByRole('img')).toHaveLength(1); // Independent cached PSO history is still available.
+  expect(screen.queryByRole('img', { name: /Distance travelled/ })).toBeNull();
+});
+
+it('plots only published cached price changes as steps, switches product, and excludes future rates', async () => {
+  const future = { ...fuel.records[1], effectiveFrom: '2026-10-18T19:00:00Z', petrolPerLitre: 900, dieselPerLitre: 950 };
+  const { container } = render(<MonthlyStatistics state={state({ fuel: { ...fuel, records: [...fuel.records, future], state: 'stale' } })} />);
+  await screen.findByText('≈ PKR 31,000');
+  expect(screen.getByText('Cached reference')).toBeTruthy();
+  const graph = screen.getByRole('img', { name: /Fuel price history · Petrol/ });
+  expect(graph.querySelectorAll('circle')).toHaveLength(2);
+  const before = container.querySelector('.statistics-price-line')!.getAttribute('d');
+  expect(before).toMatch(/^M[\d.]+ [\d.]+ H[\d.]+ V[\d.]+ H[\d.]+$/);
+  fireEvent.click(screen.getByRole('button', { name: 'Diesel' }));
+  expect(screen.getByRole('img', { name: /Fuel price history · Diesel/ })).toBeTruthy();
+  fireEvent.click(screen.getByText('View price history'));
+  const table = screen.getByRole('table', { name: 'Fuel price history' });
+  expect(within(table).getByText('320.00')).toBeTruthy(); expect(within(table).getByText('330.00')).toBeTruthy();
+  expect(within(table).queryByText('950.00')).toBeNull(); expect(screen.queryByText('900.00')).toBeNull();
+  expect(calls.api).toHaveBeenCalledTimes(1); expect(calls.send).not.toHaveBeenCalled();
+});
+
+it('keeps missing price history explicit instead of treating personal fuel use as market prices', async () => {
+  render(<MonthlyStatistics state={state({ fuel: { ...fuel, records: [], state: 'unavailable' } })} />);
+  await screen.findByText('≈ PKR 31,000');
+  expect(screen.getByText('Fuel price history unavailable for this period.')).toBeTruthy();
+  expect(screen.getAllByRole('img')).toHaveLength(1);
+  expect(screen.queryByRole('link', { name: 'PSO reference prices' })).toBeNull();
+  expect(screen.queryByText('Estimated fuel used')).toBeNull();
+});
+
+it('carries a known earlier price flat through a week without inventing daily revisions', async () => {
+  render(<MonthlyStatistics state={state()} />); await screen.findByText('≈ PKR 31,000');
+  fireEvent.click(screen.getByRole('tab', { name: 'This week' }));
+  const graph = screen.getByRole('img', { name: /Fuel price history · Petrol/ });
+  expect(graph.querySelectorAll('circle')).toHaveLength(2); // One carried price and one real midweek revision.
+  fireEvent.click(screen.getByText('View price history'));
+  const table = screen.getByRole('table', { name: 'Fuel price history' });
+  expect(within(table).getAllByRole('row')).toHaveLength(3);
+  expect(within(table).getByText('2 Oct')).toBeTruthy(); expect(within(table).getByText('16 Oct')).toBeTruthy();
 });
 
 it('keeps a prior account’s private aggregates hidden while the next account request is pending', async () => {

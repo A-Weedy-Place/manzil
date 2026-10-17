@@ -52,12 +52,12 @@ As admin, use **Demo closures → Try route** on Park Road/F-8, Rohtas Road/G-9,
 
 ## Implemented local features
 
-1. Clean 2D MapLibre/OpenFreeMap vector map with Pakistan place/road search, draggable pins, light/dark/system app themes, three map styles and a map-detail preference. Dark app appearance and Night map are the new/missing defaults; saved choices stay intact. Light uses grey outer panels and pale-blue cards. Classic and Minimal remain available. See [map styles and the black-polygon fix](docs/MAP_STYLES.md).
+1. Clean 2D MapLibre/OpenFreeMap vector map with Pakistan place/road search, draggable pins, light/dark/system app themes, three map styles and a map-detail preference. Dark app appearance and Classic map are the new/missing defaults; saved choices stay intact. Startup has empty A/B fields and no preset route. Light uses grey outer panels and pale-blue cards; Night and Minimal remain available. See [map styles and the black-polygon fix](docs/MAP_STYLES.md).
 2. Point, road-corridor and polygon restrictions; exact geometry preview, coordinate editing, scheduled start/end, drafts, revisions, cancellation and GeoJSON import/export.
 3. Up to three genuinely different driving routes for the same departure over a bundled OSM graph; clear blue route lines/time labels, distance/ETA cards, closure traversal-time checks and separate earlier/later departure comparisons.
 4. Weekly saved commutes, next-occurrence checks and deduplicated in-app impact alerts while the backend runs.
 5. Fifteen-minute public X collection attempt, honest status/freshness, manual notices and a durable pending-agent queue.
-6. Explicit foreground GPS recording, local trip summaries/history/export/deletion and separate future road-discovery contribution consent.
+6. Consent-gated foreground navigation GPS history, weekly/monthly totals, profile distance/fuel-price charts, bright green historical paths and branded PNG sharing/downloads, plus private GeoJSON/deletion and separate future road-discovery contribution consent. Activity has totals/history without a manual recorder.
 7. A persistent local profile, preferences, opt-in browser notifications and separately consented learning/closure alerts for usual recorded journeys.
 8. Route-step preview, foreground GPS guidance, optional voice prompts and recalculation from a fresh position. No background/Google-equivalent navigation claim.
 

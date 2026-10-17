@@ -25,16 +25,16 @@ describe('map styles', () => {
   it('offers the three distinct palettes and renders retired profile ids as Classic', () => {
     expect(MAP_STYLES.map(({ name }) => name)).toEqual(['Classic', 'Minimal', 'Night']);
     expect(MAP_STYLES.map(({ id }) => id)).toEqual(['outdoors', 'minimal', 'night']);
-    expect(normalizeMapStyleId(undefined)).toBe('night');
+    expect(normalizeMapStyleId(undefined)).toBe('outdoors');
     for (const id of ['streets', 'contrast', 'outdoors'] as const) expect(normalizeMapStyleId(id)).toBe('outdoors');
     for (const id of ['minimal', 'night'] as const) expect(normalizeMapStyleId(id)).toBe(id);
     expect(MAP_STYLE_URLS.streets).toBe(MAP_STYLE_URLS.outdoors);
     expect(MAP_STYLE_URLS.contrast).toBe(MAP_STYLE_URLS.outdoors);
   });
 
-  it('starts a missing preference in Night without changing the supplied upstream style', () => {
+  it('starts a missing preference in Classic without changing the supplied upstream style', () => {
     const original: StyleSpecification = { version: 8, sources: {}, layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#fff' } }] };
-    expect(prepareMapStyle(original, 'clean').layers[0]).toMatchObject({ paint: { 'background-color': '#15232c' } });
+    expect(prepareMapStyle(original, 'clean').layers[0]).toMatchObject({ paint: { 'background-color': '#f1f4e7' } });
     expect(original.layers[0]).toMatchObject({ paint: { 'background-color': '#fff' } });
   });
 

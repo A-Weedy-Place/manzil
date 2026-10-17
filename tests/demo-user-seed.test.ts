@@ -62,7 +62,7 @@ describe('explicit localhost sample account', () => {
     expect(fixture.auth.createUser).toHaveBeenCalledWith({ uid: 'dev-user-123', email: 'user123@manzil.test', displayName: 'User 123', password: 'User 123' });
     const profilePath = `users/dev-user-123/meta/${hash('profile')}`;
     expect(JSON.parse((fixture.documents.get(profilePath) as { json: string }).json)).toMatchObject({ demoData: true,
-      collectTravelData: false, inferFrequentRoutes: false, browserNotifications: false, travelDataChoiceMade: true, theme: 'dark', mapStyle: 'night' });
+      collectTravelData: false, inferFrequentRoutes: false, browserNotifications: false, travelDataChoiceMade: true, theme: 'dark', mapStyle: 'outdoors' });
     expect([...fixture.documents.keys()].every(path => path === 'users/dev-user-123' || path.startsWith('users/dev-user-123/'))).toBe(true);
     expect([...fixture.documents.keys()].some(path => /points/.test(path))).toBe(true);
     expect([...fixture.documents.keys()].some(path => /closure|fuel:status/.test(path))).toBe(false);

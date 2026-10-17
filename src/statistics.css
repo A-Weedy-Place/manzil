@@ -27,7 +27,21 @@
 .statistics-gridline { stroke:var(--border); stroke-width:1; stroke-dasharray:3 3; }
 .statistics-axis-label { fill:var(--muted); font-family:inherit; font-size:9px; }
 .statistics-bar { fill:var(--blue); }
-.statistics-chart-fuel .statistics-bar { fill:var(--green); }
+.statistics-price-heading { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:0 0 8px 3px; }
+.statistics-price-heading h3 { margin:0 0 4px; color:var(--ink); font-size:13px; font-weight:600; }
+.statistics-price-heading>div>span { color:var(--muted); font-size:11px; }
+.statistics-fuel-products { display:flex; gap:6px; margin:0 0 9px; }
+.statistics-fuel-products>button { flex:1; min-height:44px; padding:9px 10px; border:1px solid var(--border); border-radius:10px; color:var(--muted); background:transparent; font-size:12px; font-weight:600; }
+.statistics-fuel-products>button[aria-pressed='true'] { background:var(--green-soft); border-color:var(--green); color:var(--green); }
+.statistics-price-line { fill:none; stroke:var(--green); stroke-width:2.5; stroke-linejoin:round; }
+.statistics-price-point { fill:var(--green); stroke:var(--surface); stroke-width:1.5; }
+.statistics-price-status { margin:0 3px 4px; color:var(--muted); font-size:11px; }
+.statistics-price-source { display:inline-flex; align-items:center; min-height:40px; padding:7px 3px; font-size:11px; color:var(--green); }
+.statistics-summary-only .statistics-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.statistics-summary-only .statistics-metrics>div { min-height:103px; padding:15px 13px; justify-content:center; }
+.statistics-summary-only .statistics-summary-cost { position:relative; padding-bottom:41px; }
+.statistics-summary-cost>.statistics-information { position:absolute; inset-inline-end:3px; bottom:0; }
+.statistics-summary-cost .statistics-information-tip { top:calc(100% + 4px); }
 .statistics-chart-values { font-size:12px; color:var(--muted); }
 .statistics-chart-values>summary { min-height:44px; padding:13px 3px; cursor:pointer; }
 .statistics-chart-values>summary:hover { color:var(--green); }

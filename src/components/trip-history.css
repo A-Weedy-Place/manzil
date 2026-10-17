@@ -1,0 +1,43 @@
+.trip-history .trip-card { padding:16px; margin-bottom:14px; border:1px solid var(--border); border-radius:18px; background:var(--surface); }
+.trip-card-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+.trip-card-heading>div { min-width:0; }
+.trip-history .trip-card h3 { margin:2px 0 6px; font-size:15px; line-height:1.45; overflow-wrap:anywhere; }
+.trip-date { display:block; color:var(--muted); font-size:12px; line-height:1.5; }
+.trip-card-heading>.icon-button { flex:0 0 44px; width:44px; height:44px; margin:-5px -5px 0 0; color:var(--muted); }
+.trip-history .trip-metrics { display:grid; grid-template-columns:1fr 1fr; gap:12px; padding:18px 0 15px; }
+.trip-metrics>div { display:grid; grid-template-columns:18px minmax(0,1fr); column-gap:7px; row-gap:3px; align-items:center; }
+.trip-metrics>div>svg { color:var(--green); }
+.trip-history .trip-metrics strong { font-size:20px; line-height:1.25; font-weight:700; color:var(--ink); }
+.trip-metrics>div>span { grid-column:2; font-size:11px; color:var(--muted); }
+.trip-history .trip-fuel-details { margin:0 0 10px; padding:10px 0; border-top:1px solid var(--border); border-bottom:1px solid var(--border); border-radius:0; background:transparent; }
+.trip-history .trip-fuel-details>summary { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:28px; cursor:pointer; list-style:none; }
+.trip-fuel-details>summary::-webkit-details-marker { display:none; }
+.trip-history .trip-fuel-details>summary>strong { color:var(--green); font-size:17px; }
+.trip-history .trip-fuel-details>summary>span { color:var(--muted); font-size:11px; text-align:end; }
+.trip-history .trip-fuel-details p { font-size:12px; line-height:1.6; }
+.trip-history .trip-fuel-unavailable,.trip-summary-only { display:block; margin:0 0 10px; color:var(--muted); font-size:12px; }
+.trip-card-actions { display:flex; gap:7px; flex-wrap:wrap; padding-top:3px; }
+.trip-history .trip-card-actions .text-button { display:flex; align-items:center; justify-content:center; gap:6px; flex:1 1 auto; min-height:44px; padding:8px 6px; border:1px solid var(--border); border-radius:10px; background:var(--paper); color:var(--green); font-size:11px; line-height:1.35; }
+.trip-card-actions .text-button>svg { flex-shrink:0; }
+.trip-history .trip-card-actions .text-button:hover:not(:disabled) { border-color:var(--green); background:var(--green-soft); }
+.trip-history .trip-card-actions .text-button:disabled { opacity:.45; }
+.trip-history .delete-confirm { margin-top:14px; border-color:var(--border); }
+.trip-history .delete-confirm p { font-size:13px; color:var(--ink); }
+.trip-history .delete-confirm button { min-height:44px; font-size:12px; }
+.trip-share-panel { min-width:0; }
+.trip-share-heading { display:flex; align-items:center; gap:10px; margin:0 0 14px; }
+.trip-share-heading h2 { margin:0; font-size:18px; }
+.trip-share-heading .icon-button { width:44px; height:44px; flex-shrink:0; }
+.trip-share-preview { display:block; width:100%; height:auto; aspect-ratio:1080/1360; border:1px solid var(--border); border-radius:15px; background:#102a26; }
+.trip-share-loading { min-height:230px; display:grid; place-content:center; justify-items:center; gap:15px; border:1px solid var(--border); border-radius:15px; background:var(--surface); color:var(--muted); text-align:center; font-size:13px; }
+.trip-share-loading>svg { color:var(--green); }
+.trip-share-privacy { margin:12px 0; color:var(--muted); font-size:12px; line-height:1.5; }
+.trip-share-actions { display:flex; flex-wrap:wrap; gap:9px; }
+.trip-share-actions>button { justify-content:center; flex:1 1 140px; min-height:46px; font-size:13px; }
+.trip-share-data { margin-top:18px; border-top:1px solid var(--border); padding-top:12px; color:var(--muted); font-size:12px; }
+.trip-share-data>summary { min-height:36px; cursor:pointer; }
+.trip-share-data>.text-button { min-height:44px; font-size:12px; }
+.map-trip-endpoint { display:grid; place-items:center; width:32px; height:32px; border:3px solid #07834f; border-radius:50%; background:#fff; color:#07834f; box-shadow:0 1px 7px #102a2666; font:750 13px/1 system-ui,sans-serif; pointer-events:none; }
+.map-trip-endpoint.is-end { color:#fff; background:#07834f; border-color:#fff; }
+[dir='rtl'] .trip-share-heading>.icon-button>svg { transform:rotate(180deg); }
+@media(max-width:370px) { .trip-history .trip-card { padding:13px; } .trip-card-actions { gap:5px; } .trip-history .trip-card-actions .text-button { flex-basis:45%; padding-inline:8px; font-size:12px; } }

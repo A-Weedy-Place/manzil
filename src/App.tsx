@@ -34,6 +34,7 @@ import { normalizeMapStyleId } from './lib/mapStyle';
 import AdminPanel from './components/AdminPanel';
 import ClosureList from './components/ClosureList';
 import { useTravelCapture } from './lib/useTravelCapture';
+import { usableTracePoints } from './lib/tripTrace';
 
 type View = 'journey' | 'planning' | 'closures' | 'commutes' | 'activity' | 'sources' | 'alerts' | 'profile' | 'navigation' | 'admin';
 const NAV = [
@@ -45,8 +46,6 @@ const NAV = [
   { id: 'activity', label: 'Activity', icon: Activity },
   { id: 'profile', label: 'Profile', icon: UserRound },
 ] as const;
-const EXAMPLE_ORIGIN: Place = { id: 'faisal-mosque', name: 'Faisal Mosque · approach road', coordinate: [73.0376503, 33.7314163] };
-const EXAMPLE_DESTINATION: Place = { id: 'centaurus', name: 'Centaurus · Nazimuddin Road', coordinate: [73.0492744, 33.7081776] };
 
 export default function App() {
   const { language, setLanguage } = useLanguage();
@@ -76,8 +75,8 @@ export default function App() {
   const [locating, setLocating] = useState(false);
   const locateSequence = useRef(0);
   const [online, setOnline] = useState(true); const [startupError, setStartupError] = useState('');
-  const [origin, setOrigin] = useState<Place | null>(EXAMPLE_ORIGIN);
-  const [destination, setDestination] = useState<Place | null>(EXAMPLE_DESTINATION);
+  const [origin, setOrigin] = useState<Place | null>(null);
+  const [destination, setDestination] = useState<Place | null>(null);
   const [waypoints, setWaypoints] = useState<(Place | null)[]>([]);
   const [waypointLayout, setWaypointLayout] = useState(0);
   const [pickingWaypoint, setPickingWaypoint] = useState(0);
@@ -87,6 +86,7 @@ export default function App() {
   const [clock, setClock] = useState(() => new Date().toISOString());
   const [planWanted, setPlanWanted] = useState(false);
   const [planSnapshotKey, setPlanSnapshotKey] = useState('');
+  const [planContextKey, setPlanContextKey] = useState('');
   const [planTimeMode, setPlanTimeMode] = useState<'now' | 'scheduled'>('now');
   const [compare, setCompare] = useState(true);
   const compareDepartureTimes = departureMode === 'scheduled' && compare;
@@ -108,8 +108,9 @@ export default function App() {
   const [closureFilter, setClosureFilter] = useState('current');
   const [toast, setToast] = useState(''); const [demoBusy, setDemoBusy] = useState(false);
   const [commuteOpen, setCommuteOpen] = useState(0);
-  const [recordedPoints, setRecordedPoints] = useState<RecordedPoint[]>([]);
+  const [commuteSeed, setCommuteSeed] = useState<{ name: string; departureTime: string } | undefined>();
   const [historyTrace, setHistoryTrace] = useState<RecordedPoint[]>([]);
+  const showingHistory = historyTrace.length > 0;
   const [historyName, setHistoryName] = useState('');
   const fileInput = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLElement>(null);
@@ -150,16 +151,16 @@ export default function App() {
     try { const next = await api<AppState>('/state'); if (sequence !== reloadSequence.current || ownerUid !== (getAuthSession().user?.uid ?? null)) return; lastLoadedState.current = next; setStateOwner(ownerUid); setState(current => current && current.closures.length === next.closures.length && current.closures.every((item, index) => item.id === next.closures[index].id && item.revision === next.closures[index].revision) ? JSON.stringify(current) === JSON.stringify(next) ? current : { ...next, closures: current.closures } : next); setOnline(true); setStartupError(''); }
     catch (e) { if (sequence !== reloadSequence.current) return; setOnline(false); setStartupError(e instanceof Error ? e.message : 'The local API is unavailable. Start the server and retry.'); throw e; }
   }, []);
-  const travel = useTravelCapture({ userId: user?.uid, profile: state?.profile, onSaved: reload, onError: notify });
+  const travel = useTravelCapture({ userId: user?.uid, profile: state?.profile, tripName: origin && destination ? `${origin.name} → ${destination.name}` : undefined, onSaved: reload, onError: notify });
   useEffect(() => {
     if (previousAccount.current && previousAccount.current !== user?.uid) {
       planSequence.current++; setPlan(null); setPlanWanted(false); setSelectedRouteId(null);
-      setOrigin(EXAMPLE_ORIGIN); setDestination(EXAMPLE_DESTINATION); setWaypoints([]); setNavigationPosition(null); setFocus(null); setView('journey');
+      setOrigin(null); setDestination(null); setWaypoints([]); setNavigationPosition(null); setFocus(null); setView('journey'); setCommuteSeed(undefined);
     }
     previousAccount.current = user?.uid;
     locateSequence.current++; setLocating(false); setThemeBusy(false); setMapStyleBusy(false);
     if (user) { setEntryAccepted(true); setView(user.role === 'admin' ? 'admin' : 'journey'); }
-    setState(null); setStateOwner(undefined); lastLoadedState.current = null; setRecordedPoints([]); setHistoryTrace([]);
+    setState(null); setStateOwner(undefined); lastLoadedState.current = null; setHistoryTrace([]);
     setProfileSection(null);
     setEditorOpen(false); setEditing(null); setEditorSeed(undefined); setDrawing(null); setSelectedRoadName(''); setSelectedClosure(null); setBaselineSelected(false);
     setDeparture(localInput()); setClock(new Date().toISOString());
@@ -187,10 +188,14 @@ export default function App() {
   const journeyInputKey = JSON.stringify([timelineKey, origin, waypoints, destination, compareDepartureTimes, mode]);
   const latestJourneyInput = useRef(journeyInputKey); latestJourneyInput.current = journeyInputKey;
   const requestKey = JSON.stringify([timelineKey, origin, waypoints, destination, compareDepartureTimes, state?.eventRevision]);
+  const routeContextKey = JSON.stringify([departureMode, departureMode === 'scheduled' ? departureISO : null, origin, waypoints, destination, compareDepartureTimes]);
   const stale = !!plan && !!state && (plan.eventRevision !== state.eventRevision || view !== 'navigation' && planSnapshotKey !== requestKey);
+  // Same journey/time mode: keep the last verified display until its replacement
+  // arrives. Starting guidance is still gated on the fresh revision below.
+  const passiveRefresh = stale && planContextKey === routeContextKey;
   const sameTimeRoutes = useMemo(() => plan?.options.filter(option => ['direct', 'detour', 'alternative'].includes(option.kind)) ?? [], [plan]);
   const routeForGuidance = sameTimeRoutes.find(option => option.id === selectedRouteId) ?? sameTimeRoutes[0] ?? null;
-  const selectedRoute = !stale ? routeForGuidance : null;
+  const selectedRoute = !stale || passiveRefresh ? routeForGuidance : null;
   const mapRouteOptions = useMemo(() => planTimeMode !== departureMode ? [] : view === 'navigation' ? selectedRoute ? [selectedRoute] : [] : sameTimeRoutes, [view, selectedRoute, stale, sameTimeRoutes, planTimeMode, departureMode]);
   const baselineConflictIds = useMemo(() => plan?.conflicts.map(conflict => conflict.closureId) ?? [], [plan]);
   const mapDepartureAt = departureISO;
@@ -202,8 +207,8 @@ export default function App() {
   const upcomingCount = state?.closures.filter(c => closureState(c, departureISO) === 'scheduled').length ?? 0;
   const unread = state?.alerts.filter(alert => !alert.read).length ?? 0;
   useEffect(() => {
-    if (!tourOpen && (view === 'journey' || view === 'planning') && planWanted && lastPlanKey.current !== requestKey && origin && destination && waypoints.every(Boolean)) void calculate(undefined, true);
-  }, [requestKey, planWanted, view, tourOpen]);
+    if (state && !tourOpen && (view === 'journey' || view === 'planning') && planWanted && lastPlanKey.current !== requestKey && origin && destination && waypoints.every(Boolean)) void calculate(undefined, true);
+  }, [requestKey, planWanted, view, tourOpen, stateOwner]);
   const previewTourView = useCallback((next: TourView) => { setView(next); setMode('browse'); setProfileSection(null); }, []);
   function startTour() {
     tourReturnView.current = view === 'navigation' ? 'journey' : view;
@@ -272,7 +277,7 @@ export default function App() {
       const result = await send<PlanResponse>('/plan', { origin, destination, waypoints, departureAt: requestedDeparture, compareDepartures: compareDepartureTimes });
       if (sequence !== planSequence.current || latestTimelineKey.current !== timelineKey) return;
       const driving = result.options.filter(option => ['direct', 'detour', 'alternative'].includes(option.kind));
-      setPlanTimeMode(departureMode); setPlan(result); setPlanSnapshotKey(requestKey); setSelectedRouteId(previous => preserveView && driving.some(option => option.id === previous) ? previous : driving[0]?.id ?? null);
+      setPlanTimeMode(departureMode); setPlan(result); setPlanSnapshotKey(requestKey); setPlanContextKey(routeContextKey); setSelectedRouteId(previous => preserveView && driving.some(option => option.id === previous) ? previous : driving[0]?.id ?? null);
       if (!preserveView) {
         panelRef.current?.scrollTo({ top: 0 });
         setPanelExpanded(false);
@@ -309,7 +314,7 @@ export default function App() {
     finally { await reload(); }
   }
   function continueAsGuest() { try { sessionStorage.setItem('manzil-entry-guest', 'yes'); } catch { /* This visit can still continue. */ } tourReturnView.current = 'journey'; setTourOpen(true); setEntryAccepted(true); }
-  function leaveAccount() { try { sessionStorage.removeItem('manzil-entry-guest'); } catch { /* Memory-only entry still works. */ } setEntryAccepted(false); setAccountOpen(false); signOut(); setRecordedPoints([]); setHistoryTrace([]); setView('journey'); }
+  function leaveAccount() { try { sessionStorage.removeItem('manzil-entry-guest'); } catch { /* Memory-only entry still works. */ } setEntryAccepted(false); setAccountOpen(false); signOut(); setHistoryTrace([]); setView('journey'); }
   async function cancelClosure(closure: Closure) {
     try { await api(`/closures/${closure.id}`, { method: 'DELETE' }); await reload(); notify('Restriction cancelled. It no longer affects routing.'); }
     catch (e) { notify(e instanceof Error ? e.message : 'Could not cancel the restriction.'); }
@@ -378,6 +383,16 @@ export default function App() {
     await send('/commutes', { name: `Usual journey · ${proposal.departureTime}`, origin: proposal.origin, destination: proposal.destination, departureTime: proposal.departureTime, days: proposal.days, enabled: true });
     await reload(); navigate('commutes'); notify('Usual journey saved. You can check its next departure here.');
   }
+  function saveHistoryJourney(trip: Trip) {
+    const points = usableTracePoints(trip.points);
+    if (!user || points.length < 2) return;
+    const start = points[0].coordinate, end = points.at(-1)!.coordinate;
+    const labels = trip.name.split(' → ');
+    invalidatePlan(); setOrigin({ name: labels[0] || t('Trip starting point'), coordinate: start });
+    setDestination({ name: labels[1] || t('Trip destination'), coordinate: end }); setWaypoints([]);
+    setCommuteSeed({ name: trip.name, departureTime: localInput(new Date(trip.startedAt)).slice(11, 16) });
+    setProfileSection(null); setCommuteOpen(value => value + 1); navigate('commutes');
+  }
   async function changeMapStyle(mapStyle: MapStyleId) {
     if (mapStyleBusy || !state || normalizeMapStyleId(state.profile.mapStyle) === mapStyle) return;
     const owner = getAuthSession().user?.uid;
@@ -416,7 +431,7 @@ export default function App() {
     if (lastLoadedState.current?.eventRevision !== result.eventRevision) throw new Error('Restrictions changed while updating. Trying again shortly.');
     visitedStops.current = completedStops;
     if (sequence !== planSequence.current || latestView.current !== 'navigation') throw new Error('Guidance view changed.');
-    setOrigin(start); setClock(now); setPlanTimeMode('now'); setPlan(result); setPlanWanted(false); const nextKey = JSON.stringify([`now-${now}`, start, waypoints, destination, false, result.eventRevision]); setPlanSnapshotKey(nextKey); lastPlanKey.current = nextKey; setSelectedRouteId(result.options[0].id); setPlanning(false);
+    setOrigin(start); setClock(now); setPlanTimeMode('now'); setPlan(result); setPlanWanted(false); const nextKey = JSON.stringify([`now-${now}`, start, waypoints, destination, false, result.eventRevision]); setPlanSnapshotKey(nextKey); setPlanContextKey(JSON.stringify(['now', null, start, waypoints, destination, false])); lastPlanKey.current = nextKey; setSelectedRouteId(result.options[0].id); setPlanning(false);
     return result.options[0];
   }
   const mapInstructions = mode === 'road' ? 'Select the start and end of the closed road section' : mode === 'origin' ? 'Choose start' : mode === 'destination' ? 'Choose destination' : mode === 'waypoint' ? `Choose stop ${pickingWaypoint + 1}` : ['point', 'line', 'polygon'].includes(mode) ? `Draw ${mode === 'point' ? 'a restriction' : mode === 'line' ? 'the closed road' : 'the closed area'} · Esc to pause` : '';
@@ -452,12 +467,12 @@ export default function App() {
                 <PlaceInput label={t("Destination")} letter="B" value={destination} active={mode === 'destination'} onPick={() => setMode(mode === 'destination' ? 'browse' : 'destination')} onChange={place => { setDestination(place); invalidatePlan(); }} /></div>
               <button className="text-button add-stop" data-tour="stops" type="button" disabled={waypoints.length >= 5} onClick={() => { setWaypoints(current => [...current, null]); invalidatePlan(); }}><Plus size={17} />{t("Add stop")}{waypoints.length > 0 && <span className="small muted">{waypoints.length}{t("/5")}</span>}</button>
               {view === 'planning' && <label className="check-row compare-check"><input type="checkbox" checked={compare} onChange={e => { setCompare(e.target.checked); invalidatePlan(); }} />{t("Also compare leaving earlier or later")}</label>}
-              <button className="primary-button full plan-button" disabled={planning || !origin || !destination || waypoints.some(place => !place)}><Navigation size={18} />{planning ? t("Finding routes…") : t("Find routes")}{!planning && <ArrowRight size={17} />}</button>
+              <button className="primary-button full plan-button" disabled={planning && !passiveRefresh || !origin || !destination || waypoints.some(place => !place)}><Navigation size={18} />{planning && !passiveRefresh ? t("Finding routes…") : t("Find routes")}{(!planning || passiveRefresh) && <ArrowRight size={17} />}</button>
             </form></details>
             {planError && <div className="error-box" role="alert">{t(planError)}</div>}
             {!state.graph.ready && <div className="error-box">{t("Local road data is unavailable. Online routing is available for Pakistan journeys.")}</div>}
-            {stale && <div className="notice-box warning"><RefreshCw size={17} /><div><strong>{t("Restrictions changed")}</strong><p>{t("Replan this journey to use the latest map and schedule.")}</p></div></div>}
-            {plan && <RouteResults vehicle={user ? state.profile.vehicle : undefined} fuel={state.fuel} updating={stale} navigationLabel={view === 'planning' ? 'View live route' : 'Navigate'} plan={plan} selectedId={selectedRouteId} onSelect={selectRoute} onNavigate={() => { setNavigationPosition(null); navigate('navigation'); }} onSaveCommute={() => { setCommuteOpen(n => n + 1); navigate('commutes'); }} onDemo={addDemo} demoBusy={demoBusy} showDemo={isAdmin} baselineSelected={baselineSelected} onBaselineSelect={() => setBaselineSelected(value => !value)} />}
+            {stale && !passiveRefresh && <div className="notice-box warning"><RefreshCw size={17} /><div><strong>{t("Restrictions changed")}</strong><p>{t("Replan this journey to use the latest map and schedule.")}</p></div></div>}
+            {plan && <RouteResults vehicle={user ? state.profile.vehicle : undefined} fuel={state.fuel} navigationDisabled={stale} updating={stale && !passiveRefresh} navigationLabel={view === 'planning' ? 'View live route' : 'Navigate'} plan={plan} selectedId={selectedRouteId} onSelect={selectRoute} onNavigate={() => { setNavigationPosition(null); navigate('navigation'); }} onSaveCommute={() => { setCommuteSeed(undefined); setCommuteOpen(n => n + 1); navigate('commutes'); }} onDemo={addDemo} demoBusy={demoBusy} showDemo={isAdmin} baselineSelected={baselineSelected} onBaselineSelect={() => setBaselineSelected(value => !value)} />}
             {(view === 'journey' || view === 'planning') && isAdmin && <DemoClosures at={departureISO} revision={state.eventRevision} reload={reload} notify={notify} onFocus={focusPoints} onTryJourney={tryDemoJourney} />}
             {(view === 'journey' || view === 'planning') && helpOpen && <div className="help-panel"><button className="text-button" onClick={startTour}>{t('Replay tour')}</button><button className="text-button" onClick={() => navigate('closures')}>{t('Road closures')}</button>{isAdmin && <button className="text-button" onClick={() => navigate('sources')}>{t('Source updates')}</button>}</div>}
           </div>
@@ -470,8 +485,8 @@ export default function App() {
               {view === 'closures' && isAdmin && <DemoClosures at={departureISO} revision={state.eventRevision} reload={reload} notify={notify} onFocus={focusPoints} onTryJourney={tryDemoJourney} />}
             </>}
           </div>
-          <div className="panel-content" hidden={view !== 'commutes'}>{!user ? <PersonalFeatureGate onSignIn={() => setAccountOpen(true)} /> : <CommutePanel key={`commutes-${commuteOpen}`} state={state} origin={origin} destination={destination} waypoints={waypoints} initialOpen={commuteOpen > 0} reload={reload} notify={notify} onPlan={selectCommute} onSelectEndpoints={() => navigate('journey')} />}</div>
-          <div className="panel-content" hidden={view !== 'activity'}>{!user ? <PersonalFeatureGate onSignIn={() => setAccountOpen(true)} /> : <ActivityPanel key={user.uid} active={view === 'activity'} state={state} points={recordedPoints} setPoints={points => { setRecordedPoints(points); if (points.length) setHistoryTrace([]); }} reload={reload} notify={notify} onView={trip => { setHistoryTrace(trip.points); setHistoryName(trip.name); focusPoints(trip.points.map(p => p.coordinate)); }} />}</div>
+          <div className="panel-content" hidden={view !== 'commutes'}>{!user ? <PersonalFeatureGate onSignIn={() => setAccountOpen(true)} /> : <CommutePanel key={`commutes-${commuteOpen}`} state={state} origin={origin} destination={destination} waypoints={waypoints} initialOpen={commuteOpen > 0} initialValues={commuteSeed} reload={reload} notify={notify} onPlan={selectCommute} onSelectEndpoints={() => navigate('journey')} />}</div>
+          <div className="panel-content" hidden={view !== 'activity'}>{!user ? <PersonalFeatureGate onSignIn={() => setAccountOpen(true)} /> : <ActivityPanel key={user.uid} onSaveJourney={saveHistoryJourney} active={view === 'activity'} state={state} reload={reload} notify={notify} onView={trip => { setHistoryTrace(trip.points); setHistoryName(trip.name); focusPoints(usableTracePoints(trip.points).map(p => p.coordinate)); }} />}</div>
           <div className="panel-content" hidden={view !== 'sources'}>{isAdmin && <SourcePanel state={state} reload={reload} notify={notify} onManualClosure={notice => beginClosure({ title: 'Review · imported notice', description: notice.text, sourceUrl: notice.url || undefined })} />}</div>
           <div className="panel-content" hidden={view !== 'profile'}>{state.profile && <ProfilePanel account={user} onSignOut={leaveAccount} personalFeaturesAvailable={!!user} onSignIn={() => setAccountOpen(true)} onTour={startTour} state={state} reload={reload} notify={notify} onSources={() => navigate('sources')} onActivity={() => setProfileSection('history')} onStatistics={() => setProfileSection('statistics')} section={view === 'profile' && stateOwner === (user?.uid ?? null) ? profileSection : null} onSectionChange={setProfileSection} onSaveProposal={saveProposal} />}</div>
           {view === 'navigation' && <div className="panel-content">{routeForGuidance && destination ? <NavigationPanel key={user?.uid ?? 'guest'} onSample={travel.capture} savesTravelData={!!user && state.profile.collectTravelData === true} onVisitedStops={count => { visitedStops.current = count; }} stops={waypoints.filter((place): place is Place => !!place).map(place => place.coordinate)} route={routeForGuidance} destination={destination.name} stale={stale} onBack={() => navigate('journey')} onPosition={setNavigationPosition} onReplan={replanFromGPS} onFocus={focusPoints} /> : <><h1>{t("Choose a route first")}</h1><button className="primary-button" onClick={() => navigate('journey')}>{t("Open the planner")}</button></>}</div>}
@@ -485,17 +500,17 @@ export default function App() {
         </>}
       </aside>
       <main className="map-workspace" aria-label={t("Journey map")}><Suspense fallback={<div className="map-status" role="status">{t("Loading the map…")}</div>}>
-        <MapView updating={stale} theme={theme} mapStyle={mapStyle} mapDetail={state?.profile?.mapDetail ?? 'clean'} navigationPosition={navigationPosition} followPosition={view === 'navigation'} routeOptions={mapRouteOptions} onRouteSelect={id => { if (!stale) setSelectedRouteId(id); }} mode={mode} origin={origin} destination={destination} waypoints={waypoints} onWaypointMove={moveWaypointOnMap} closures={state?.closures ?? []} selectedClosureId={selectedClosure} selectedRoute={selectedRoute} baseline={stale || !plan?.conflicts.length ? null : plan.baseline} baselineSelected={baselineSelected} onBaselineSelect={() => { if (!stale && view !== 'navigation') { setBaselineSelected(true); navigate(view === 'planning' ? 'planning' : 'journey'); } }} baselineConflictIds={baselineConflictIds} drawing={editorOpen && view === 'closures' ? drawing : null} departureAt={mapDepartureAt} focus={focus} showClosures={showClosures} showBaseline={showBaseline} recordedPoints={historyTrace.length ? historyTrace : recordedPoints} onPick={pick} onDraw={setDrawing} onRoadSelection={section => setSelectedRoadName(section.roadNames.join(' · '))} onEndpointMove={changeEndpoint} onClosureSelect={id => { if (editorOpen) { notify('Finish or cancel the current edit before selecting another restriction.'); return; } setSelectedClosure(id); navigate('closures'); }} />
+        <MapView refreshing={passiveRefresh} updating={stale && !passiveRefresh} theme={theme} mapStyle={mapStyle} mapDetail={state?.profile?.mapDetail ?? 'clean'} navigationPosition={navigationPosition} followPosition={view === 'navigation'} routeOptions={showingHistory ? [] : mapRouteOptions} onRouteSelect={id => { if (!stale || passiveRefresh) setSelectedRouteId(id); }} mode={mode} origin={showingHistory ? null : origin} destination={showingHistory ? null : destination} waypoints={showingHistory ? [] : waypoints} onWaypointMove={moveWaypointOnMap} closures={state?.closures ?? []} selectedClosureId={selectedClosure} selectedRoute={showingHistory ? null : selectedRoute} baseline={showingHistory || stale && !passiveRefresh || !plan?.conflicts.length ? null : plan.baseline} baselineSelected={baselineSelected} onBaselineSelect={() => { if (!stale && view !== 'navigation') { setBaselineSelected(true); navigate(view === 'planning' ? 'planning' : 'journey'); } }} baselineConflictIds={baselineConflictIds} drawing={editorOpen && view === 'closures' ? drawing : null} departureAt={mapDepartureAt} focus={focus} showClosures={showClosures} showBaseline={showBaseline} recordedPoints={historyTrace} onPick={pick} onDraw={setDrawing} onRoadSelection={section => setSelectedRoadName(section.roadNames.join(' · '))} onEndpointMove={changeEndpoint} onClosureSelect={id => { if (editorOpen) { notify('Finish or cancel the current edit before selecting another restriction.'); return; } setSelectedClosure(id); navigate('closures'); }} />
         <div className="map-topline"><div className="city-chip"><MapPinned size={17} /><span>{t("Pakistan")}</span></div><div className="map-layer-controls" data-tour="map-controls"><button type="button" className="map-style-trigger" aria-label={t("Choose map style")} aria-expanded={mapStylesOpen} aria-controls="map-style-picker" onClick={() => setMapStylesOpen(!mapStylesOpen)}><Palette size={17} /><span>{t("Style")}</span></button><button aria-label={t("Show restrictions layer")} aria-pressed={showClosures} className={showClosures ? 'active' : ''} onClick={() => setShowClosures(!showClosures)}><Flag size={15} /><span>{t("Closures")}</span>{activeCount > 0 && <b>{activeCount}</b>}</button>{!!plan?.conflicts.length && !stale && <button aria-label={t("Show blocked route layer")} aria-pressed={showBaseline} className={showBaseline ? 'active blocked-toggle' : ''} onClick={() => setShowBaseline(!showBaseline)}>{showBaseline ? <Eye size={15} /> : <EyeOff size={15} />}<span>{t("Blocked route")}</span></button>}</div></div>
         {mapInstructions && <div className="map-instructions" role="status"><span className="status-dot" />{t(mapInstructions)}<button className="icon-button small" aria-label={t("Stop map selection")} onClick={() => setMode('browse')}><X size={16} /></button></div>}
-        <div className="map-actions"><button className="map-action" aria-label={t('My location')} title={t('My location')} disabled={locating} aria-busy={locating} onClick={locate}><LocateFixed size={20} /></button><button className="map-action" aria-label={t("Fit journey on map")} title={t("Fit journey")} onClick={() => { if (selectedRoute) focusPoints(selectedRoute.geometry.coordinates as Coordinate[]); else if (origin && destination) focusPoints([origin.coordinate, destination.coordinate]); else focusPoints([[72.97, 33.60], [73.16, 33.75]]); }}><MapPinned size={20} /></button></div>
+        <div className="map-actions"><button className="map-action" aria-label={t('My location')} title={t('My location')} disabled={locating} aria-busy={locating} onClick={locate}><LocateFixed size={20} /></button><button className="map-action" aria-label={t("Fit journey on map")} title={t("Fit journey")} onClick={() => { if (showingHistory) focusPoints(usableTracePoints(historyTrace).map(point => point.coordinate)); else if (selectedRoute) focusPoints(selectedRoute.geometry.coordinates as Coordinate[]); else if (origin && destination) focusPoints([origin.coordinate, destination.coordinate]); else focusPoints([[72.97, 33.60], [73.16, 33.75]]); }}><MapPinned size={20} /></button></div>
         <div className="map-bottom-info"><div className="map-legend"><span><i className="legend-line" />{t("Route")}</span><span><i className="legend-block" />{t("Closed")}</span><span><i className="legend-upcoming" />{t("Upcoming")}</span>{!!plan?.conflicts.length && <span><i className="legend-blocked-route" />{t("Blocked route")}</span>}</div>{!!historyTrace.length && <div className="map-context"><Activity size={14} />{historyName}<button className="icon-button small" aria-label={t("Hide recorded trip")} onClick={() => setHistoryTrace([])}><X size={13} /></button></div>}</div>
       </Suspense></main>
     </div>
     {accountOpen && <AccountPanel onClose={() => { setAccountOpen(false); if (!user) continueAsGuest(); }} onAuthenticated={() => setAccountOpen(false)} onAccountCreated={accountCreated} />}
     {travelChoiceOpen && user && <TravelDataChoice key={user.uid} uid={user.uid} onComplete={profile => { if (profile) setState(current => current ? { ...current, profile } : current); setTravelChoiceUid(null); }} />}
     {profileSection === 'statistics' && view === 'profile' && user && state && stateOwner === user.uid && <ProfileSettingsDialog section="statistics" closeLabel="Close statistics" onClose={() => setProfileSection(null)}><MonthlyStatistics key={user.uid} state={state} /></ProfileSettingsDialog>}
-    {profileSection === 'history' && view === 'profile' && user && state && stateOwner === user.uid && <ProfileSettingsDialog section="history" closeLabel="Close trip history" onClose={() => setProfileSection(null)}><TripHistory key={user.uid} state={state} showHeading={false} reload={reload} notify={notify} onView={trip => { setProfileSection(null); setHistoryTrace(trip.points); setHistoryName(trip.name); focusPoints(trip.points.map(point => point.coordinate)); }} /></ProfileSettingsDialog>}
+    {profileSection === 'history' && view === 'profile' && user && state && stateOwner === user.uid && <ProfileSettingsDialog section="history" closeLabel="Close trip history" onClose={() => setProfileSection(null)}><TripHistory key={user.uid} onSaveJourney={saveHistoryJourney} state={state} showHeading={false} reload={reload} notify={notify} onView={trip => { setProfileSection(null); setHistoryTrace(trip.points); setHistoryName(trip.name); focusPoints(usableTracePoints(trip.points).map(point => point.coordinate)); }} /></ProfileSettingsDialog>}
     {tourOpen && state && stateOwner === (user?.uid ?? null) && !accountOpen && !travelChoiceOpen && !profileSection && !isCreatingAccount() && !(user && state.profile.travelDataChoiceMade !== true && needsTravelDataChoice(user.uid)) && <WelcomeTour onClose={closeTour} onViewChange={previewTourView} />}
     {toast && <div className="toast" role="status"><Check size={17} /><span>{t(toast)}</span><button className="icon-button small" aria-label={t("Dismiss message")} onClick={() => setToast('')}><X size={15} /></button></div>}
   </div>;

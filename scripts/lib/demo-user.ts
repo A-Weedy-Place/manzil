@@ -79,7 +79,7 @@ export function sampleAccountData(now = Date.now()) {
       dieselPerLitre: 290, retrievedAt: new Date(now).toISOString(), sourceName: 'Simulated historical price — fictional', sourceUrl: rate.sourceUrl };
     return { ...trip, ...track, fuelEstimate: estimateRouteFuel(track.distanceMeters, trip.startedAt, data.profile.vehicle, [reference], new Date(now).toISOString())! };
   });
-  return { ...data, profile: { ...data.profile, theme: 'dark' as const, mapStyle: 'night' as const }, trips };
+  return { ...data, profile: { ...data.profile, theme: 'dark' as const, mapStyle: 'outdoors' as const }, trips };
 }
 
 /** Seed one untouched UID or upgrade exact v1 trip rows once; preserve edits and consent. */

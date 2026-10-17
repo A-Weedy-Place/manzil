@@ -9,12 +9,15 @@ import { api } from '../lib/api';
 import { emptyMapStyle, loadMapStyle, MAP_ATTRIBUTION, normalizeMapStyleId, type MapDetail, type MapTheme } from '../lib/mapStyle';
 import { closureRoadKey, exclusiveBaselineSegments, routeMatchesMapSnapshot, visibleClosureRoads, type ClosureRoads } from '../lib/mapOverlays';
 import { preserveMapOverlays, updateSourceIfChanged } from '../lib/mapSourceUpdates';
+import { tripTraceSections, usableTracePoints } from '../lib/tripTrace';
+import './trip-history.css';
 
 setWorkerUrl(workerUrl);
 setWorkerCount(2);
 
 export interface MapViewProps {
   updating?: boolean;
+  refreshing?: boolean;
   mode: MapMode; origin: Place | null; destination: Place | null;
   waypoints?: (Place | null)[];
   closures: Closure[]; selectedClosureId: string | null;
@@ -62,14 +65,16 @@ function installOverlays(map: LibreMap) {
   addLayer({ id: 'manzil-drawing-fill', type: 'fill', source: sid('drawing'), filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': '#ed353b', 'fill-opacity': .16 } });
   addLayer({ id: 'manzil-drawing-line', type: 'line', source: sid('drawing'), filter: ['!=', ['geometry-type'], 'Point'], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#e32632', 'line-width': 3, 'line-dasharray': [2, 1.5] } });
   addLayer({ id: 'manzil-drawing-point', type: 'circle', source: sid('drawing'), filter: ['==', ['geometry-type'], 'Point'], paint: { 'circle-radius': 5, 'circle-color': '#e32632', 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } });
-  addLayer({ id: 'manzil-trace-line', type: 'line', source: sid('trace'), layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#0e9cae', 'line-width': 5, 'line-opacity': .85 } });
-  addLayer({ id: 'manzil-trace-end-point', type: 'circle', source: sid('trace-end'), paint: { 'circle-radius': 7, 'circle-color': '#0e9cae', 'circle-stroke-color': '#fff', 'circle-stroke-width': 3 } });
+  addLayer({ id: 'manzil-trace-casing', type: 'line', source: sid('trace'), layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': 14, 'line-opacity': .98 } });
+  addLayer({ id: 'manzil-trace-line', type: 'line', source: sid('trace'), layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#12bd78', 'line-width': 9, 'line-opacity': 1 } });
+  addLayer({ id: 'manzil-trace-start-point', type: 'circle', source: sid('trace-end'), filter: ['==', ['get', 'endpoint'], 'start'], paint: { 'circle-radius': 9, 'circle-color': '#ffffff', 'circle-stroke-color': '#07834f', 'circle-stroke-width': 4 } });
+  addLayer({ id: 'manzil-trace-end-point', type: 'circle', source: sid('trace-end'), filter: ['==', ['get', 'endpoint'], 'end'], paint: { 'circle-radius': 9, 'circle-color': '#07834f', 'circle-stroke-color': '#fff', 'circle-stroke-width': 4 } });
 }
 
 function sameDepartureOptions(props: MapViewProps): RouteOption[] {
   const options = props.routeOptions ?? (props.selectedRoute ? [props.selectedRoute] : []);
-  const result = options.filter(option => option.validation === 'clear' && routeMatchesMapSnapshot(option.departureAt, props.departureAt, props.followPosition || props.updating) && !['leave_earlier', 'leave_later'].includes(option.kind));
-  if (props.selectedRoute?.validation === 'clear' && routeMatchesMapSnapshot(props.selectedRoute.departureAt, props.departureAt, props.followPosition || props.updating) && !result.some(option => option.id === props.selectedRoute!.id)) result.push(props.selectedRoute);
+  const result = options.filter(option => option.validation === 'clear' && routeMatchesMapSnapshot(option.departureAt, props.departureAt, props.followPosition || props.updating || props.refreshing) && !['leave_earlier', 'leave_later'].includes(option.kind));
+  if (props.selectedRoute?.validation === 'clear' && routeMatchesMapSnapshot(props.selectedRoute.departureAt, props.departureAt, props.followPosition || props.updating || props.refreshing) && !result.some(option => option.id === props.selectedRoute!.id)) result.push(props.selectedRoute);
   return [...new Map(result.map(option => [option.id, option])).values()];
 }
 
@@ -125,19 +130,7 @@ function segmentTouchesBadge(a: { x: number; y: number }, b: { x: number; y: num
 
 /** Keep recording gaps visible instead of inventing links across them. */
 function traceFeatures(points: RecordedPoint[]): FeatureCollection {
-  const sections: Coordinate[][] = []; let section: Coordinate[] = [];
-  for (let i = 0; i < points.length; i++) {
-    const point = points[i], previous = points[i - 1];
-    let gap = !validCoordinate(point.coordinate) || point.accuracy > 100;
-    if (previous) {
-      const seconds = (Date.parse(point.timestamp) - Date.parse(previous.timestamp)) / 1000;
-      const metres = Math.hypot((point.coordinate[0] - previous.coordinate[0]) * Math.cos(point.coordinate[1] * Math.PI / 180), point.coordinate[1] - previous.coordinate[1]) * Math.PI / 180 * 6371000;
-      gap ||= seconds <= 0 || seconds > 60 || metres / seconds > 65 || previous.accuracy > 100;
-    }
-    if (gap && section.length) { if (section.length > 1) sections.push(section); section = []; }
-    if (validCoordinate(point.coordinate) && point.accuracy <= 100) section.push(point.coordinate);
-  }
-  if (section.length > 1) sections.push(section);
+  const sections = tripTraceSections(points);
   return sections.length ? collection([feature({ type: 'MultiLineString', coordinates: sections })]) : emptyFeatures();
 }
 
@@ -326,7 +319,7 @@ export default function MapView(props: MapViewProps) {
   useEffect(() => {
     const map = mapRef.current; if (!map) return;
     const options = sameDepartureOptions(props);
-    const baseline = !props.followPosition && props.baseline && props.showBaseline && routeMatchesMapSnapshot(props.baseline.departureAt, props.departureAt) ? props.baseline : null;
+    const baseline = !props.followPosition && props.baseline && props.showBaseline && routeMatchesMapSnapshot(props.baseline.departureAt, props.departureAt, props.refreshing) ? props.baseline : null;
     const baselineSections = baseline ? exclusiveBaselineSegments(baseline, options) : [];
     updateSource(map, 'baseline', collection(baselineSections.map(coordinates => feature({ type: 'LineString', coordinates }, { inspected: !!props.baselineSelected }))));
     updateSource(map, 'routes', collection(options.map(option => feature(option.geometry, { routeId: option.id, selected: option.id === props.selectedRoute?.id, pending: !!props.updating }))));
@@ -387,7 +380,7 @@ export default function MapView(props: MapViewProps) {
     };
     placeLabels(); map.on('moveend', placeLabels);
     return () => { map.off('moveend', placeLabels); markers.forEach(marker => marker.remove()); };
-  }, [props.routeOptions, props.selectedRoute, props.baseline, props.baselineSelected, props.baselineConflictIds, props.showBaseline, props.origin, props.destination, props.waypoints, props.departureAt, props.followPosition, props.mode, props.updating, language, styleVersion, retry]);
+  }, [props.routeOptions, props.selectedRoute, props.baseline, props.baselineSelected, props.baselineConflictIds, props.showBaseline, props.origin, props.destination, props.waypoints, props.departureAt, props.followPosition, props.mode, props.updating, props.refreshing, language, styleVersion, retry]);
 
   useEffect(() => {
     const map = mapRef.current; if (!map) return;
@@ -439,8 +432,16 @@ export default function MapView(props: MapViewProps) {
   useEffect(() => {
     const map = mapRef.current; if (!map) return;
     updateSource(map, 'trace', traceFeatures(props.recordedPoints));
-    const last = props.recordedPoints.at(-1);
-    updateSource(map, 'trace-end', last && validCoordinate(last.coordinate) ? collection([feature({ type: 'Point', coordinates: last.coordinate })]) : emptyFeatures());
+    const points = usableTracePoints(props.recordedPoints), first = points[0], last = points.at(-1);
+    const endpoints: Feature[] = [], markers: Marker[] = [];
+    if (first && last) for (const [point, endpoint, letter] of [[first, 'start', 'S'], [last, 'end', 'E']] as const) {
+      endpoints.push(feature({ type: 'Point', coordinates: point.coordinate }, { endpoint }));
+      const element = document.createElement('span'); element.className = `map-trip-endpoint is-${endpoint}`; element.textContent = letter;
+      element.setAttribute('role', 'img'); element.setAttribute('aria-label', t(endpoint === 'start' ? 'Trip start' : 'Trip end'));
+      markers.push(new Marker({ element, anchor: 'center' }).setLngLat(point.coordinate).addTo(map));
+    }
+    updateSource(map, 'trace-end', collection(endpoints));
+    return () => markers.forEach(marker => marker.remove());
   }, [props.recordedPoints, styleVersion, retry]);
 
   useEffect(() => {
@@ -450,7 +451,12 @@ export default function MapView(props: MapViewProps) {
     else {
       const west = Math.min(...coordinates.map(p => p[0])), east = Math.max(...coordinates.map(p => p[0]));
       const south = Math.min(...coordinates.map(p => p[1])), north = Math.max(...coordinates.map(p => p[1]));
-      map.fitBounds([[west, south], [east, north]], { padding: { top: 88, bottom: 80, left: 48, right: 104 }, maxZoom: 16, duration: 0, pitch: 0, bearing: 0 });
+      // The retained-trip caption occupies the lower map. Reserve room for both
+      // its badge and the S/E marker, with proportional padding on short phones.
+      const height = map.getContainer().clientHeight || 600;
+      const padding = props.recordedPoints.length ? { top: Math.min(88, height * .2), bottom: Math.min(140, height * .3), left: 48, right: 104 }
+        : { top: 88, bottom: 80, left: 48, right: 104 };
+      map.fitBounds([[west, south], [east, north]], { padding, maxZoom: 16, duration: 0, pitch: 0, bearing: 0 });
     }
   }, [props.focus?.token, retry]);
 

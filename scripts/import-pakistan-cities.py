@@ -1,4 +1,4 @@
-"""Derive the profile picker from the public GeoNames PK.zip; no network or GPS data.
+"""Derive the curated profile picker from public GeoNames PK.zip; no network or GPS data.
 
 Usage: python scripts/import-pakistan-cities.py .local-tools/pakistan-geonames.zip
 GeoNames data is CC BY 4.0. See docs/PAKISTAN_CITIES.md for attribution and scope.
@@ -13,6 +13,7 @@ import zipfile
 
 archive = pathlib.Path(sys.argv[1])
 output = pathlib.Path(__file__).resolve().parent.parent / 'src' / 'catalogues' / 'pakistan-cities.json'
+selection = json.loads(pathlib.Path(__file__).with_name('pakistan-major-cities.json').read_text(encoding='utf-8'))
 current_codes = {'PPL', 'PPLA', 'PPLA2', 'PPLA3', 'PPLA4', 'PPLA5', 'PPLC', 'PPLG', 'PPLL', 'PPLF'}
 
 
@@ -47,7 +48,16 @@ with zipfile.ZipFile(archive) as source:
         if previous is None or record['population'] > previous['population']:
             cities[key] = record
 
-ordered = sorted(cities.values(), key=lambda city: (-city['population'], city['name'].casefold(), city['region']))
+chosen = []
+for source_name, region, *presentation in selection:
+    record = cities.get((normalized(source_name), region))
+    if record is None:
+        raise ValueError(f'Curated city missing from source: {source_name}, {region}')
+    display_name = presentation[0] if presentation else source_name
+    extra_aliases = presentation[1] if len(presentation) > 1 else ''
+    aliases = ' '.join(filter(None, [record['aliases'], source_name if display_name != source_name else '', extra_aliases]))
+    chosen.append({**record, 'name': display_name, 'aliases': aliases})
+ordered = sorted(chosen, key=lambda city: (normalized(city['name']), city['region']))
 data = [[city['name'], city['region'], *([city['aliases']] if city['aliases'] else [])] for city in ordered]
 output.parent.mkdir(parents=True, exist_ok=True)
 output.write_text(json.dumps(data, ensure_ascii=False, separators=(',', ':')) + '\n', encoding='utf-8')

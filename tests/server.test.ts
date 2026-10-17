@@ -72,7 +72,7 @@ describe('local API', () => {
   it('keeps one local profile, validates partial preferences, and exposes consent-gated proposals', async () => {
     const { request } = await setup();
     const initial = await (await request('/profile')).json();
-    expect(initial).toMatchObject({ id: 'local', displayName: 'Traveller', theme: 'dark', mapDetail: 'clean', mapStyle: 'night',
+    expect(initial).toMatchObject({ id: 'local', displayName: 'Traveller', theme: 'dark', mapDetail: 'clean', mapStyle: 'outdoors',
       browserNotifications: false, collectTravelData: false, travelDataChoiceMade: false, inferFrequentRoutes: false, transport: 'car' });
     const changed = await request('/profile', 'PATCH', { displayName: 'Ali', theme: 'dark', browserNotifications: true });
     expect(changed.status).toBe(200); expect(await changed.json()).toMatchObject({ displayName: 'Ali', theme: 'dark', browserNotifications: true, inferFrequentRoutes: false });
@@ -106,13 +106,13 @@ describe('local API', () => {
     for (const mapStyle of ['satellite', '', null, 1]) expect((await request('/profile', 'PATCH', { mapStyle })).status).toBe(400);
     expect(await (await request('/profile')).json()).toMatchObject({ theme: 'dark', mapStyle: 'streets', displayName: 'Traveller' });
   });
-  it('saves explicit Light, Dark and System independently from the default Night map', async () => {
+  it('saves explicit Light, Dark and System independently from the default Classic map', async () => {
     const { request } = await setup();
     for (const theme of ['light', 'dark', 'system']) {
       const response = await request('/profile', 'PATCH', { theme });
       expect(response.status).toBe(200);
-      expect(await response.json()).toMatchObject({ theme, mapStyle: 'night' });
-      expect((await (await request('/state')).json()).profile).toMatchObject({ theme, mapStyle: 'night' });
+      expect(await response.json()).toMatchObject({ theme, mapStyle: 'outdoors' });
+      expect((await (await request('/state')).json()).profile).toMatchObject({ theme, mapStyle: 'outdoors' });
     }
   });
   it('persists versioned closures, refuses stale edits, and soft-cancels', async () => {
@@ -223,7 +223,7 @@ describe('durability, commute time, and privacy retention', () => {
       mapDetail: 'standard' as const, browserNotifications: true, inferFrequentRoutes: true,
       createdAt: '2026-10-01T12:00:00.000Z', updatedAt: '2026-10-02T12:00:00.000Z' };
     store.setMeta('profile', legacy); store.close(); store = new Store(path);
-    expect(store.profile()).toEqual({ ...legacy, mapStyle: 'night' });
+    expect(store.profile()).toEqual({ ...legacy, mapStyle: 'outdoors' });
     for (const mapStyle of ['outdoors', 'minimal', 'night', 'streets', 'contrast'] as const) {
       const chosen = store.updateProfile({ mapStyle }); store.close(); store = new Store(path);
       expect(store.profile()).toEqual(chosen); expect(store.profile().createdAt).toBe(legacy.createdAt);
@@ -248,7 +248,7 @@ describe('durability, commute time, and privacy retention', () => {
     }
     const { theme: _theme, mapStyle: _style, ...withoutAppearance } = store.profile();
     store.setMeta('profile', withoutAppearance); store.close(); store = new Store(path);
-    expect(store.profile()).toEqual({ ...withoutAppearance, theme: 'dark', mapStyle: 'night' });
+    expect(store.profile()).toEqual({ ...withoutAppearance, theme: 'dark', mapStyle: 'outdoors' });
     cleanup.push(() => store.close());
   });
   it('calculates weekdays and midnight in Islamabad time, not server timezone', async () => {

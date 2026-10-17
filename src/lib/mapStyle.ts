@@ -6,7 +6,7 @@ export type MapDetail = 'clean' | 'standard';
 
 /** Keep existing profile/API ids readable without offering retired palettes. */
 export function normalizeMapStyleId(id: MapStyleId | undefined): MapStyleId {
-  if (id === undefined) return 'night';
+  if (id === undefined) return 'outdoors';
   return id === 'minimal' || id === 'night' ? id : 'outdoors';
 }
 
@@ -54,7 +54,7 @@ function patternFallbackColour(layer: LayerSpecification, mapStyle: MapStyleId):
 }
 
 /** Copy first, so switching detail restores upstream layers and attribution. */
-export function prepareMapStyle(original: StyleSpecification, detail: MapDetail, mapStyle: MapStyleId = 'night'): StyleSpecification {
+export function prepareMapStyle(original: StyleSpecification, detail: MapDetail, mapStyle: MapStyleId = 'outdoors'): StyleSpecification {
   mapStyle = normalizeMapStyleId(mapStyle);
   const style = structuredClone(original);
   delete style.terrain;

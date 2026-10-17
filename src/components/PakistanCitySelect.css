@@ -23,8 +23,4 @@
 .city-select-list button > svg { flex-shrink: 0; color: var(--green); }
 .city-select-message { margin: 0; padding: 14px 10px; color: var(--muted); font-size: 13px; }
 .city-select-count { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); margin: 0; padding: 8px 12px; border-bottom: 1px solid var(--border); }
-.city-select-pages { display: flex; gap: 8px; justify-content: space-between; padding: 6px 8px; border-top: 1px solid var(--border); }
-.city-select-pages > button { display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 44px; padding: 8px 10px; border-radius: 8px; background: transparent; color: var(--green); font-size: 13px; }
-.city-select-pages > button:hover:not(:disabled) { background: var(--green-soft); }
-[dir='rtl'] .city-select-pages > button > svg { transform: rotate(180deg); }
 .city-select-source { display: block; font-size: 12px; text-align: end; color: var(--muted); padding: 6px 12px 9px; }

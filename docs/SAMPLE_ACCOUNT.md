@@ -10,7 +10,7 @@ Use this fictional account to preview populated settings, weekly/monthly statist
 | Firebase UID | `dev-user-123` |
 | City / area | Islamabad / F-8 |
 | Vehicle | Toyota Corolla · Car · Petrol · 14.5 km/L |
-| New-fixture appearance | Dark app · Night map |
+| New-fixture appearance | Dark app · Classic map |
 
 Open [localhost](http://127.0.0.1:5173/), expand **Choose a development account**, select **User 123**, then **Sign in**. The email is the login identifier; the display name alone is not a Firebase email credential. The development picker and fixture credentials are omitted from production bundles.
 
@@ -22,7 +22,9 @@ Open [localhost](http://127.0.0.1:5173/), expand **Choose a development account*
 - **One explicitly labelled demo in-app notification** describing its presentation, without claiming an actual road closure. No shared closure is created.
 - A server-owned `demoData: true` marker on the sample profile and each seeded trip. Repeated **Demo data** banners are absent from the profile, statistics and history UI at the owner's request. Documentation and downloaded GeoJSON retain explicit simulation provenance; the data must never be presented as real-device testing or used as evidence of a real journey.
 
-**View on map** and **Export** now work for these simulated paths through the same authorized detail endpoint used for real trips. Summary responses keep `points: []` and retain `pointCount`; explicit detail requests load the private Firestore point chunks. Exported GeoJSON uses `[longitude, latitude]` and includes `simulated: true` plus a provenance statement that no device GPS was captured. Fictional fuel references have no misleading PSO source link.
+**View on map**, **Save journey** and **Share** work for these simulated paths through the same authorized detail endpoint used for real trips. Cards show date, kilometres, duration and fuel cost, without a raw GPS point count. View fits the full recorded path in bright green with white halo and S/E markers. Save journey opens the normal editor for review rather than silently creating a schedule. Share creates a branded PNG preview with the actual basemap when tiles/WebGL are available; an unavailable basemap is explicitly labelled as a route illustration. Download PNG is primary, with native image sharing where supported and GeoJSON under More options. [Sharing behavior and limits](TRIP_HISTORY_AND_SHARING.md).
+
+Summary responses keep `points: []` and retain `pointCount`; explicit detail requests load the private Firestore point chunks. PNGs identify these samples as simulated, and exported GeoJSON uses `[longitude, latitude]` with `simulated: true` plus a provenance statement that no device GPS was captured. Fictional fuel references have no misleading PSO source link.
 
 Trip collection, usual-journey learning and browser notifications remain **off**. The profile records the skipped optional data choice; this acknowledgement does not grant consent or request location access. The simulation's `accuracy` values and timestamps are generated, not sensor measurements. Photos are not seeded; the avatar uses initials. The account has its own UID-scoped Firestore records and no admin claim or contributor verification. Generated trips are excluded from usual-route inference even if the owner later allows learning, and the API rejects contributing them to road discovery. Their illustrative history can still populate private statistics.
 
@@ -53,7 +55,7 @@ Dates are generated in **Asia/Karachi** within the current month and before the 
 
 The privileged seed script writes summaries and simulated point chunks directly into this one guarded emulator UID. Ordinary API paths remain consent-gated: clients cannot set `demoData`, supply their own trip money or save new travel without collection consent. This seed is not a production import, a GPS migration, live source data or permission to collect travel. Simulated paths are historical illustrations, not independently validated current access or navigation recommendations.
 
-Focused automated tests cover host/project guards, idempotence, preserving other records/edits/deletions, point-chunk storage, timestamps/distance/fuel arithmetic, abbreviated early-month generation, retention, authorized history actions and simulated export metadata. The **23 seed/history cases** pass; current integrated seed/API/browser/build evidence belongs in [implementation status](IMPLEMENTATION_STATUS.md).
+Focused automated tests cover host/project guards, idempotence, preserving other records/edits/deletions, point-chunk storage, timestamps/distance/fuel arithmetic, abbreviated early-month generation, retention, authorized history/share actions and simulated download metadata. Current integrated seed/API/browser/build evidence and final counts belong in [implementation status](IMPLEMENTATION_STATUS.md).
 
 Historical verification: the earlier 17 October v1 local Auth/API check confirmed **12 summary-only trips / 142.5 km / PKR 2,751.72**, two disabled journeys, one sample alert and collection off. Those figures describe the superseded fictional summary fixture. They do not describe the new simulated geometry totals or prove a real GPS capture.
 

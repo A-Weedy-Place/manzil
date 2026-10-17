@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from 'react';
 import { BarChart3, Fuel, Info } from 'lucide-react';
-import type { AppState, TravelStatistics, TripStatistics, TripStatisticsDay } from '../../shared/types';
+import type { AppState, FuelPriceStatus, TravelStatistics, TripStatistics, TripStatisticsDay } from '../../shared/types';
 import { api } from '../lib/api';
 import { distance, duration } from '../lib/format';
 import { rupees } from '../lib/fuel';
@@ -15,11 +15,10 @@ function Information({ label, children }: { label: string; children: string }) {
   </span>;
 }
 
-function DailyChart({ days, metric, period }: { days: TripStatisticsDay[] | undefined; metric: 'distance' | 'fuel'; period: 'week' | 'month' }) {
+function DailyChart({ days, period }: { days: TripStatisticsDay[] | undefined; period: 'week' | 'month' }) {
   const id = useId(), [valuesOpen, setValuesOpen] = useState(false);
-  const title = metric === 'distance' ? 'Distance travelled' : 'Estimated fuel used';
-  const unit = metric === 'distance' ? 'km' : 'L';
-  const value = (day: TripStatisticsDay) => metric === 'distance' ? day.distanceMeters / 1000 : day.litres;
+  const title = 'Distance travelled', unit = 'km';
+  const value = (day: TripStatisticsDay) => day.distanceMeters / 1000;
   // A missing older-server series is unavailable, never fabricated from an overall total.
   const valid = days && days.length > 0 && days.length <= 31 && days.every(day => /^\d{4}-\d{2}-\d{2}$/.test(day.date) && Number.isFinite(value(day)) && value(day) >= 0);
   const locale = getLanguage() === 'ur' ? 'ur-PK' : 'en-GB';
@@ -27,7 +26,7 @@ function DailyChart({ days, metric, period }: { days: TripStatisticsDay[] | unde
   const max = valid ? Math.max(1, ...days.map(value)) : 1;
   const ceiling = Math.ceil(max / (max > 10 ? 5 : max > 2 ? 1 : .5)) * (max > 10 ? 5 : max > 2 ? 1 : .5);
   const chartWidth = 280, top = 14, height = 84, bottom = top + height, step = valid ? chartWidth / days.length : 0;
-  return <section className={`statistics-chart statistics-chart-${metric}`} aria-labelledby={`${id}-heading`}>
+  return <section className="statistics-chart statistics-chart-distance" aria-labelledby={`${id}-heading`}>
     <div className="statistics-chart-heading"><h3 id={`${id}-heading`}>{t(title)}</h3><span>{unit}</span></div>
     {!valid ? <p className="small muted" role="status">{t('Daily chart unavailable.')}</p> : <>
       <svg className="statistics-chart-svg" viewBox="0 0 320 133" role="img" aria-labelledby={`${id}-chart-title ${id}-chart-description`}>
@@ -45,8 +44,43 @@ function DailyChart({ days, metric, period }: { days: TripStatisticsDay[] | unde
   </section>;
 }
 
+function FuelPriceHistory({ status, summary, fuelType }: { status?: FuelPriceStatus; summary: TripStatistics; fuelType: 'petrol' | 'diesel' }) {
+  const id = useId(), [product, setProduct] = useState(fuelType);
+  const locale = getLanguage() === 'ur' ? 'ur-PK' : 'en-GB', end = Date.parse(summary.until), pkt = 5 * 3600_000, day = 86400_000;
+  const local = new Date(end + pkt), today = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()) - pkt;
+  const from = summary.from === null ? summary.period === 'week' ? today - ((local.getUTCDay() + 6) % 7) * day : Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), 1) - pkt : Date.parse(summary.from);
+  const price = (record: NonNullable<FuelPriceStatus['records']>[number]) => product === 'petrol' ? record.petrolPerLitre : record.dieselPerLitre;
+  const known = [...new Map((status?.records ?? []).slice(0, 400).filter(record => Number.isFinite(Date.parse(record.effectiveFrom)) && Date.parse(record.effectiveFrom) <= end && Number.isFinite(price(record)) && price(record) > 0).map(record => [record.effectiveFrom, record])).values()].sort((a, b) => Date.parse(a.effectiveFrom) - Date.parse(b.effectiveFrom));
+  const initial = [...known].reverse().find(record => Date.parse(record.effectiveFrom) <= from);
+  const changes = known.filter(record => Date.parse(record.effectiveFrom) > from);
+  const records = initial ? [initial, ...changes] : changes;
+  const cached = status?.state !== 'fresh' || !status.nextCheckAt || Date.parse(status.nextCheckAt) <= end;
+  const date = (at: number, short = false) => new Intl.DateTimeFormat(locale, { timeZone: 'Asia/Karachi', day: 'numeric', ...(short ? {} : { month: 'short' }) }).format(new Date(at));
+  const low = records.length ? Math.min(...records.map(price)) : 0, high = records.length ? Math.max(...records.map(price)) : 0;
+  const margin = Math.max(1, (high - low) * .18), minimum = Math.max(0, low - margin), maximum = high + margin;
+  const x = (at: number) => 37 + (Math.max(from, at) - from) / Math.max(1, end - from) * 273;
+  const y = (amount: number) => 98 - (amount - minimum) / Math.max(1, maximum - minimum) * 80;
+  const line = records.map((record, index) => `${index ? 'H' : 'M'}${x(Date.parse(record.effectiveFrom)).toFixed(2)}${index ? ' V' : ' '}${y(price(record)).toFixed(2)}`).join(' ') + (records.length ? ` H${x(end).toFixed(2)}` : '');
+  return <section className="statistics-chart statistics-chart-prices" aria-labelledby={`${id}-heading`}>
+    <div className="statistics-price-heading"><div><h3 id={`${id}-heading`}>{t('Fuel price history')}</h3><span>{t('PKR / litre')}</span></div><Information label="About fuel price history">Published PSO reference prices at their effective dates. The line stays flat until the next known price; no daily changes are invented. Earlier uncached prices are unavailable. Outlet freight is excluded.</Information></div>
+    <div className="statistics-fuel-products" role="group" aria-label={t('Fuel product')}><button type="button" aria-pressed={product === 'petrol'} onClick={() => setProduct('petrol')}>{t('Petrol')}</button><button type="button" aria-pressed={product === 'diesel'} onClick={() => setProduct('diesel')}>{t('Diesel')}</button></div>
+    {!records.length ? <p className="small muted" role="status">{t('Fuel price history unavailable for this period.')}</p> : <>
+      {cached && <p className="statistics-price-status" role="status">{t('Cached reference')}</p>}
+      <svg className="statistics-chart-svg" viewBox="0 0 320 133" role="img" aria-labelledby={`${id}-title ${id}-description`}>
+        <title id={`${id}-title`}>{t('Fuel price history')} · {t(product === 'petrol' ? 'Petrol' : 'Diesel')}</title><desc id={`${id}-description`}>{t('Stepped at published effective dates. Use View price history for exact prices.')}</desc>
+        {[0, .5, 1].map(level => <g key={level}><line x1="37" x2="310" y1={98 - level * 80} y2={98 - level * 80} className="statistics-gridline" /><text x="31" y={101 - level * 80} textAnchor="end" className="statistics-axis-label">{(minimum + level * (maximum - minimum)).toLocaleString(locale, { maximumFractionDigits: 1 })}</text></g>)}
+        <path d={line} className="statistics-price-line" />
+        {records.map(record => <circle key={record.effectiveFrom} cx={x(Date.parse(record.effectiveFrom))} cy={y(price(record))} r="3" className="statistics-price-point"><title>{date(Date.parse(record.effectiveFrom))}: {rupees(price(record))} / {t('litre')}</title></circle>)}
+        {[from, from + (end - from) / 2, end].map((at, index) => <text key={index} x={x(at)} y="117" textAnchor={index === 0 ? 'start' : index === 2 ? 'end' : 'middle'} className="statistics-axis-label">{date(at)}</text>)}
+      </svg>
+      <details className="statistics-chart-values"><summary>{t('View price history')}</summary><div className="statistics-table-scroll"><table><caption className="sr-only">{t('Fuel price history')}</caption><thead><tr><th scope="col">{t('Effective from')}</th><th scope="col">{t('PKR / litre')}</th></tr></thead><tbody>{records.map(record => <tr key={record.effectiveFrom}><th scope="row">{date(Date.parse(record.effectiveFrom))}</th><td>{price(record).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>)}</tbody></table></div></details>
+      <a className="statistics-price-source" href={records.at(-1)!.sourceUrl} target="_blank" rel="noreferrer">{t('PSO reference prices')}</a>
+    </>}
+  </section>;
+}
+
 /** Reads private aggregate summaries only. Opening statistics never starts location capture. */
-export default function MonthlyStatistics({ state, active = true }: { state: AppState; active?: boolean }) {
+export default function MonthlyStatistics({ state, active = true, showCharts = true }: { state: AppState; active?: boolean; showCharts?: boolean }) {
   const [result, setResult] = useState<{ owner: string; value: TravelStatistics } | null>(null), [period, setPeriod] = useState<'week' | 'month'>('month');
   const [error, setError] = useState(''), [loading, setLoading] = useState(false), [attempt, setAttempt] = useState(0);
   const panelId = useId();
@@ -66,7 +100,7 @@ export default function MonthlyStatistics({ state, active = true }: { state: App
       .finally(() => { window.clearTimeout(timeout); if (current) setLoading(false); });
     return () => { current = false; window.clearTimeout(timeout); controller.abort(); };
   }, [active, tripRevision, attempt, calendarDate, owner]);
-  return <section className="monthly-statistics" aria-label={t('Personal statistics')}>
+  return <section className={`monthly-statistics${showCharts ? '' : ' statistics-summary-only'}`} aria-label={t('Personal statistics')}>
     <div className="statistics-period-tabs" role="tablist" aria-label={t('Statistics period')} onKeyDown={event => {
       const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button')];
       if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -80,11 +114,12 @@ export default function MonthlyStatistics({ state, active = true }: { state: App
       {error && <div className="error-box" role="alert"><p>{t(error)}</p><button className="text-button" onClick={() => setAttempt(value => value + 1)}>{t('Retry')}</button></div>}
       {!loading && !error && result?.owner === owner && !summary && <p role="status">{t('Statistics unavailable for this period.')}</p>}
       {summary && <>
-        <div className="statistics-metrics"><div><strong>{summary.tripCount}</strong><span>{t('saved trips')}</span></div><div><strong>{distance(summary.distanceMeters)}</strong><span>{t('recorded distance')}</span></div><div><strong>{summary.durationSeconds ? duration(summary.durationSeconds) : t('0 min')}</strong><span>{t('travel time')}</span></div></div>
-        <div className="statistics-fuel-card"><div className="statistics-fuel-heading"><span><Fuel size={17} aria-hidden="true" />{t('Estimated fuel cost')}</span><Information label="About fuel estimates">Based on recorded distance, saved mileage and prices at the time. Estimates, not fuel receipts. Trips without an estimate are excluded; changing your vehicle never reprices history.</Information></div><strong>{summary.pricedTripCount ? `≈ ${rupees(summary.costPkr)}` : '—'}</strong><p>{summary.pricedTripCount} {t('priced trips')} · {summary.litres.toFixed(2)} {t('litres')}</p>{summary.unpricedTripCount > 0 && <p className="statistics-unpriced">{summary.unpricedTripCount} {t('trips without a fuel estimate')}</p>}</div>
+        <div className="statistics-metrics"><div><strong>{summary.tripCount}</strong><span>{t('saved trips')}</span></div><div><strong>{distance(summary.distanceMeters)}</strong><span>{t('recorded distance')}</span></div><div><strong>{summary.durationSeconds ? duration(summary.durationSeconds) : t('0 min')}</strong><span>{t('travel time')}</span></div>{!showCharts && <div className="statistics-summary-cost"><strong>{summary.pricedTripCount ? `≈ ${rupees(summary.costPkr)}` : '—'}</strong><span>{t('Estimated fuel cost')}</span><Information label="About fuel estimates">Based on recorded distance, saved mileage and prices at the time. Estimates, not fuel receipts. Trips without an estimate are excluded; changing your vehicle never reprices history.</Information></div>}</div>
+        {showCharts && <div className="statistics-fuel-card"><div className="statistics-fuel-heading"><span><Fuel size={17} aria-hidden="true" />{t('Estimated fuel cost')}</span><Information label="About fuel estimates">Based on recorded distance, saved mileage and prices at the time. Estimates, not fuel receipts. Trips without an estimate are excluded; changing your vehicle never reprices history.</Information></div><strong>{summary.pricedTripCount ? `≈ ${rupees(summary.costPkr)}` : '—'}</strong><p>{summary.pricedTripCount} {t('priced trips')} · {summary.litres.toFixed(2)} {t('litres')}</p>{summary.unpricedTripCount > 0 && <p className="statistics-unpriced">{summary.unpricedTripCount} {t('trips without a fuel estimate')}</p>}</div>}
+        {!showCharts && summary.unpricedTripCount > 0 && <p className="small muted">{summary.unpricedTripCount} {t('trips without a fuel estimate')}</p>}
         {!summary.tripCount && <p className="monthly-statistics-empty">{t(period === 'week' ? 'No recorded trips this week.' : 'No recorded trips this month.')}</p>}
-        <div className="statistics-chart-section-heading"><h3>{t('Daily activity')}</h3><Information label="About daily charts">Distance includes all saved trips. Fuel includes only trips with a saved estimate. Quiet days show zero; unavailable fuel estimates are excluded.</Information></div>
-        <DailyChart days={summary.daily} metric="distance" period={period} /><DailyChart days={summary.daily} metric="fuel" period={period} />
+        {showCharts && <><div className="statistics-chart-section-heading"><h3>{t('Daily activity')}</h3><Information label="About daily charts">Distance includes all saved trips. Quiet days show zero; missing trip data is unavailable.</Information></div>
+          <DailyChart days={summary.daily} period={period} /><FuelPriceHistory status={state.fuel} summary={summary} fuelType={state.profile.vehicle?.fuelType ?? 'petrol'} /></>}
         {!summary.complete && <p className="small muted" role="status">{t('Partial totals: the retained-history limit was reached.')}</p>}
         <p className="statistics-footnote">{t('PKT · Trip departure dates · Up to 90 days of history')}</p>
       </>}

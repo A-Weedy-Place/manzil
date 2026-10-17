@@ -1,4 +1,4 @@
-/** GeoNames derivative. Source, exact scope and CC BY 4.0 attribution: docs/PAKISTAN_CITIES.md. */
+/** Curated major-city GeoNames derivative. Source and CC BY 4.0: docs/PAKISTAN_CITIES.md. */
 export interface PakistanCity { name: string; region: string; aliases?: string; search: string }
 type CityRow = [name: string, region: string, aliases?: string];
 const regions: Record<string, string> = {
@@ -22,8 +22,8 @@ const cityOrder = new Intl.Collator('en', { sensitivity: 'base', numeric: true }
 const orderedCatalogues = new WeakMap<readonly PakistanCity[], PakistanCity[]>();
 const lastSearches = new WeakMap<readonly PakistanCity[], { query: string; matches: PakistanCity[] }>();
 
-/** Alphabetic pages share one lazy sort and the latest search, with a bounded rendered page. */
-export function findPakistanCities(cities: readonly PakistanCity[], query: string, limit = 60, offset = 0): { items: PakistanCity[]; more: boolean; total: number } {
+/** The curated list stays alphabetic and small; searches reuse its latest normalized matches. */
+export function findPakistanCities(cities: readonly PakistanCity[], query: string, limit = 100): { items: PakistanCity[]; total: number } {
   let ordered = orderedCatalogues.get(cities);
   if (!ordered) {
     ordered = [...cities].sort((a, b) => cityOrder.compare(a.name, b.name) || cityOrder.compare(pakistanRegionName(a.region), pakistanRegionName(b.region)));
@@ -35,6 +35,5 @@ export function findPakistanCities(cities: readonly PakistanCity[], query: strin
     search = { query: normalized, matches: tokens.length ? ordered.filter(city => tokens.every(token => city.search.includes(token))) : ordered };
     lastSearches.set(cities, search);
   }
-  const start = Math.max(0, Math.floor(offset)), size = Math.max(1, Math.floor(limit));
-  return { items: search.matches.slice(start, start + size), more: search.matches.length > start + size, total: search.matches.length };
+  return { items: search.matches.slice(0, Math.max(1, Math.floor(limit))), total: search.matches.length };
 }

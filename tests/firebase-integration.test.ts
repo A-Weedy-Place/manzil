@@ -88,7 +88,7 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
       const token = await created.user.getIdToken();
       const state = await (await request('/state', token)).json();
       expect(state.membership.role).toBe('user');
-      expect(state.profile).toMatchObject({ theme: 'dark', mapStyle: 'night', collectTravelData: false,
+      expect(state.profile).toMatchObject({ theme: 'dark', mapStyle: 'outdoors', collectTravelData: false,
         inferFrequentRoutes: false, travelDataChoiceMade: false });
       expect(state.trips).toEqual([]); expect(state.commutes).toEqual([]);
       expect((await request('/admin/users', token)).status).toBe(403);
@@ -195,14 +195,14 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
     await expect(personal.addAlertOnce('optout-alert-fixture', { title: 'Must not be written', message: 'Synthetic fixture', createdAt: trip.createdAt, read: false, frequentRouteId: 'usual-fixture' })).rejects.toMatchObject({ status: 409 });
     expect(await personal.get('alert', 'optout-alert-fixture')).toBeUndefined();
   });
-  it('persists a skipped data choice per UID without opting in, defaults missing styles to Night and preserves saved palettes', async () => {
-    expect(await (await request('/profile')).json()).toMatchObject({ theme: 'dark', mapStyle: 'night', collectTravelData: false, travelDataChoiceMade: false });
-    expect(await store.forUser('bob').profile()).toMatchObject({ theme: 'dark', mapStyle: 'night', collectTravelData: false, travelDataChoiceMade: false });
+  it('persists a skipped data choice per UID without opting in, defaults missing styles to Classic and preserves saved palettes', async () => {
+    expect(await (await request('/profile')).json()).toMatchObject({ theme: 'dark', mapStyle: 'outdoors', collectTravelData: false, travelDataChoiceMade: false });
+    expect(await store.forUser('bob').profile()).toMatchObject({ theme: 'dark', mapStyle: 'outdoors', collectTravelData: false, travelDataChoiceMade: false });
     const styleStore = store.forUser('legacy-style-fixture');
     const { mapStyle: _oldStyle, ...legacyStyle } = { ...await styleStore.profile(), displayName: 'Legacy style fixture', theme: 'light' as const,
       updatedAt: '2026-10-01T12:00:00.000Z' };
     await styleStore.setMeta('profile', legacyStyle);
-    expect(await styleStore.profile()).toEqual({ ...legacyStyle, mapStyle: 'night' });
+    expect(await styleStore.profile()).toEqual({ ...legacyStyle, mapStyle: 'outdoors' });
     expect(await styleStore.meta('profile')).toEqual(legacyStyle);
     for (const mapStyle of ['outdoors', 'minimal', 'night', 'streets', 'contrast'] as const) {
       const chosen = await styleStore.updateProfile({ mapStyle });
@@ -234,9 +234,9 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
     }
     const { theme: _theme, mapStyle: _style, ...withoutAppearance } = await personal.profile();
     await personal.setMeta('profile', withoutAppearance);
-    expect(await personal.profile()).toEqual({ ...withoutAppearance, theme: 'dark', mapStyle: 'night' });
+    expect(await personal.profile()).toEqual({ ...withoutAppearance, theme: 'dark', mapStyle: 'outdoors' });
     expect(await personal.meta('profile')).toEqual(withoutAppearance);
-    expect(await personal.updateProfile({ displayName: 'Both appearance fields missing' })).toMatchObject({ theme: 'dark', mapStyle: 'night', createdAt: legacy.createdAt });
+    expect(await personal.updateProfile({ displayName: 'Both appearance fields missing' })).toMatchObject({ theme: 'dark', mapStyle: 'outdoors', createdAt: legacy.createdAt });
   });
   it('isolates simultaneous users, profiles and saved records and persists across repository instances', async () => {
     await Promise.all([request('/profile', alice, { displayName: 'Alice' }, 'PATCH'), request('/profile', bob, { displayName: 'Bob' }, 'PATCH')]);

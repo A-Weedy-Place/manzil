@@ -92,7 +92,7 @@ export default function ProfilePanel({ account, onSignOut, personalFeaturesAvail
   }
   const ownDialog = activeSection && activeSection !== 'statistics' && activeSection !== 'history' && (personalFeaturesAvailable || activeSection === 'appearance' || activeSection === 'fuel') ? activeSection : null;
   const pending = busy || preparingPhoto;
-  const mapName = t(profile.mapStyle === 'minimal' ? 'Minimal' : !profile.mapStyle || profile.mapStyle === 'night' ? 'Night' : 'Classic');
+  const mapName = t(profile.mapStyle === 'minimal' ? 'Minimal' : profile.mapStyle === 'night' ? 'Night' : 'Classic');
   function settingsRow(key: ProfileSection, Icon: LucideIcon, summary: string, badge?: string) {
     return <button className={`settings-link profile-setting-link ${activeSection === key ? 'is-active' : ''}`} aria-label={t(profileSectionTitle[key])} aria-haspopup="dialog" aria-expanded={activeSection === key} onClick={() => openSection(key)}>
       <span className="profile-setting-icon"><Icon size={20} /></span><span><strong>{t(profileSectionTitle[key])}</strong><small>{summary}</small></span>{badge && <span className={`tag ${profile.collectTravelData ? 'green' : 'neutral'}`}>{badge}</span>}<ChevronRight size={18} />
@@ -130,7 +130,7 @@ export default function ProfilePanel({ account, onSignOut, personalFeaturesAvail
       {ownDialog === 'appearance' && <>
         <label className="field-label">{t('Language')}<select value={language} onChange={event => setLanguage(event.target.value === 'ur' ? 'ur' : 'en')}><option value="en">English</option><option value="ur">اردو</option></select></label>
         <span className="field-label">{t('App theme')}</span><div className="segmented-control" role="group" aria-label={t('App theme')}>{(['light', 'dark', 'system'] as const).map(theme => <button disabled={busy} key={theme} className={(profile.theme ?? 'dark') === theme ? 'selected' : ''} aria-pressed={(profile.theme ?? 'dark') === theme} onClick={() => update({ theme })}>{theme === 'dark' ? <Moon size={17} /> : theme === 'light' ? <Sun size={17} /> : <Map size={17} />}{t(theme[0].toUpperCase() + theme.slice(1))}</button>)}</div>
-        <h3 className="profile-map-style-heading">{t('Map style')}</h3><MapStyleChoices value={profile.mapStyle ?? 'night'} disabled={busy} onChange={mapStyle => update({ mapStyle })} />
+        <h3 className="profile-map-style-heading">{t('Map style')}</h3><MapStyleChoices value={profile.mapStyle ?? 'outdoors'} disabled={busy} onChange={mapStyle => update({ mapStyle })} />
         <label className="field-label map-detail-setting">{t('Map detail')}<select value={profile.mapDetail} disabled={busy} onChange={event => update({ mapDetail: event.target.value as LocalProfile['mapDetail'] })}><option value="clean">{t('Clean · essential roads and places')}</option><option value="standard">{t('Detailed · more labels and places')}</option></select></label>
       </>}
       {ownDialog === 'alerts' && <>

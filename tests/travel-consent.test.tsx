@@ -29,13 +29,15 @@ describe('foreground navigation trip consent', () => {
     act(() => { result.current.capture(sample(now)); result.current.capture(sample(now + 60_000, 73.002)); result.current.capture(null); });
     expect(watch).not.toHaveBeenCalled(); expect(mock.api).not.toHaveBeenCalled();
   });
-  it('saves one meaningful trip from the existing guidance samples without road-sharing consent', async () => {
+  it('saves the original journey name from existing guidance samples without road-sharing consent after the destination changes', async () => {
     vi.useFakeTimers(); const saved = vi.fn();
-    const { result } = renderHook(() => useTravelCapture({ userId: 'one', profile: { ...profile, collectTravelData: true }, onSaved: saved }));
-    act(() => { result.current.capture(sample(now)); result.current.capture(sample(now + 60_000, 73.002)); result.current.capture(null); result.current.capture(null); });
+    const { result, rerender } = renderHook(({ tripName }) => useTravelCapture({ userId: 'one', profile: { ...profile, collectTravelData: true }, tripName, onSaved: saved }), { initialProps: { tripName: 'Faisal Mosque → Centaurus' } });
+    act(() => result.current.capture(sample(now)));
+    rerender({ tripName: 'Faisal Mosque → Blue Area' });
+    act(() => { result.current.capture(sample(now + 60_000, 73.002)); result.current.capture(null); result.current.capture(null); });
     await act(async () => { await Promise.resolve(); });
     expect(mock.api).toHaveBeenCalledTimes(1);
-    const draft = JSON.parse(mock.api.mock.calls[0][1].body); expect(draft).toMatchObject({ name: 'Navigation trip', contributeToRoadDiscovery: false });
+    const draft = JSON.parse(mock.api.mock.calls[0][1].body); expect(draft).toMatchObject({ name: 'Faisal Mosque → Centaurus', contributeToRoadDiscovery: false });
     expect(draft.points).toHaveLength(2); expect(draft.points[0].coordinate).toEqual([73, 33.7]); expect(saved).toHaveBeenCalledTimes(1);
   });
   it('discards samples on opt-out or account changes and aborts an outstanding save', () => {
@@ -188,23 +190,21 @@ describe('personal permission and profile controls', () => {
     expect((screen.getByLabelText('Your name') as HTMLInputElement).value).toBe('Traveller');
     expect(screen.queryByRole('alert')).toBeNull();
   });
-  it('does not start manual recording before permission and clears its watcher after revocation', () => {
+  it('keeps Activity read-only regardless of collection consent without starting or clearing a navigation watcher', () => {
     const watch = vi.fn(() => 7), clear = vi.fn(); Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { watchPosition: watch, clearWatch: clear } });
-    const points = vi.fn(); const activity = { points: [], setPoints: points, reload: props.reload, notify: props.notify, onView: vi.fn() };
+    const activity = { reload: props.reload, notify: props.notify, onView: vi.fn() };
     const ui = render(<ActivityPanel {...activity} state={state()} />);
-    expect(screen.getByRole('button', { name: 'Start recording' }).matches(':disabled')).toBe(true); expect(watch).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Start recording' })).toBeNull(); expect(watch).not.toHaveBeenCalled();
     ui.rerender(<ActivityPanel {...activity} state={state({ collectTravelData: true })} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Start recording' })); expect(watch).toHaveBeenCalledTimes(1);
-    ui.rerender(<ActivityPanel {...activity} state={state()} />); expect(clear).toHaveBeenCalledWith(7); expect(points).toHaveBeenLastCalledWith([]);
+    expect(screen.queryByText('Record a trip')).toBeNull(); expect(watch).not.toHaveBeenCalled();
+    ui.rerender(<ActivityPanel {...activity} state={state()} />); expect(clear).not.toHaveBeenCalled(); expect(mock.send).not.toHaveBeenCalled();
   });
-  it('pauses manual recording when leaving Activity and ignores queued fixes from its former watcher', () => {
-    let callback!: PositionCallback; const watch = vi.fn((next: PositionCallback) => { callback = next; return 9; }), clear = vi.fn();
+  it('does not create an Activity GPS watcher when opening, leaving or unmounting the overview', () => {
+    const watch = vi.fn(() => 9), clear = vi.fn();
     Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { watchPosition: watch, clearWatch: clear } });
-    const points = vi.fn(), activity = { points: [], setPoints: points, reload: props.reload, notify: props.notify, onView: vi.fn(), state: state({ collectTravelData: true }) };
-    const ui = render(<ActivityPanel {...activity} active />); fireEvent.click(screen.getByRole('button', { name: 'Start recording' }));
-    ui.rerender(<ActivityPanel {...activity} active={false} />); expect(clear).toHaveBeenCalledWith(9);
-    const before = points.mock.calls.length;
-    act(() => callback({ timestamp: Date.now(), coords: { longitude: 73, latitude: 33.7, accuracy: 10 } } as GeolocationPosition));
-    expect(points).toHaveBeenCalledTimes(before);
+    const activity = { reload: props.reload, notify: props.notify, onView: vi.fn(), state: state({ collectTravelData: true }) };
+    const ui = render(<ActivityPanel {...activity} active />);
+    ui.rerender(<ActivityPanel {...activity} active={false} />); ui.unmount();
+    expect(watch).not.toHaveBeenCalled(); expect(clear).not.toHaveBeenCalled(); expect(mock.send).not.toHaveBeenCalled();
   });
 });

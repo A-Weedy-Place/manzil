@@ -4,11 +4,12 @@ import { api } from './api';
 import { getAuthSession } from './auth';
 import { meters } from './navigation';
 
-interface Options { userId: string | null | undefined; profile: LocalProfile | null | undefined; onSaved?: () => void | Promise<void>; onError?: (message: string) => void }
+interface Options { userId: string | null | undefined; profile: LocalProfile | null | undefined; tripName?: string; onSaved?: () => void | Promise<void>; onError?: (message: string) => void }
 /** Receives existing navigation GPS fixes. It never starts a location watcher. */
-export function useTravelCapture({ userId, profile, onSaved, onError }: Options) {
-  const current = useRef({ userId, allowed: profile?.collectTravelData === true, onSaved, onError });
-  current.current = { userId, allowed: profile?.collectTravelData === true, onSaved, onError };
+export function useTravelCapture({ userId, profile, tripName, onSaved, onError }: Options) {
+  const current = useRef({ userId, allowed: profile?.collectTravelData === true, tripName, onSaved, onError });
+  current.current = { userId, allowed: profile?.collectTravelData === true, tripName, onSaved, onError };
+  const name = useRef('Navigation trip');
   const points = useRef<RecordedPoint[]>([]), owner = useRef<string | null>(null);
   const pending = useRef<AbortController | null>(null);
   const discard = useCallback(() => { points.current = []; owner.current = null; pending.current?.abort(); pending.current = null; }, []);
@@ -30,6 +31,7 @@ export function useTravelCapture({ userId, profile, onSaved, onError }: Options)
       if (last && timestamp - Date.parse(last.timestamp) < 4000) return;
       if (last && timestamp - Date.parse(last.timestamp) > 120_000) points.current = [];
       if (points.current.length >= 20_000) { discard(); return; }
+      if (!points.current.length) name.current = settings.tripName?.slice(0, 120) || 'Navigation trip';
       owner.current = settings.userId!;
       points.current.push({ ...point, coordinate: [...point.coordinate] });
       return;
@@ -39,7 +41,7 @@ export function useTravelCapture({ userId, profile, onSaved, onError }: Options)
     const travelled = samples.reduce((sum, item, i) => sum + (i ? meters(samples[i - 1].coordinate, item.coordinate) : 0), 0);
     if (travelled < 100) return;
     const controller = new AbortController(); pending.current?.abort(); pending.current = controller;
-    const draft: TripDraft = { name: 'Navigation trip', startedAt: samples[0].timestamp, endedAt: samples.at(-1)!.timestamp, points: samples, contributeToRoadDiscovery: false };
+    const draft: TripDraft = { name: name.current, startedAt: samples[0].timestamp, endedAt: samples.at(-1)!.timestamp, points: samples, contributeToRoadDiscovery: false };
     void api('/trips', { method: 'POST', body: JSON.stringify(draft), signal: controller.signal }).then(async () => {
       if (!controller.signal.aborted && current.current.allowed && current.current.userId === settings.userId) await current.current.onSaved?.();
     }).catch(error => {
