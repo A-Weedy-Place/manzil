@@ -22,6 +22,7 @@
     "test": "vitest run",
     "start": "tsx server/index.ts",
     "data:import": "tsx scripts/import-osm.ts",
+    "art:entry-preview": "tsx scripts/generate-entry-preview.ts",
     "source:check": "tsx scripts/check-source.ts"
   },
   "dependencies": {

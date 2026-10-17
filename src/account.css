@@ -26,15 +26,18 @@
 .account-development .dev-account { min-height: 80px; }
 .account-entry { padding: 30px; background: #15362d; background-image: none; isolation: isolate; }
 .account-entry .modal-card { z-index: 1; width: min(1120px,100%); border-radius: 28px; padding: 0; overflow: hidden; box-shadow: 0 8px 20px #071b2026; }
-.entry-motion-control { position: absolute; bottom: 108px; inset-inline-end: 24px; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; border: 1px solid #d9e5dc; color: #234d40; background: #fffffff2; cursor: pointer; }
+.entry-motion-control { position: absolute; top: 34px; inset-inline-end: 24px; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; border: 1px solid #d9e5dc; color: #234d40; background: #fffffff2; cursor: pointer; }
 .entry-motion-control:hover { background: #fff; }
 .entry-motion-control:focus-visible { outline: 3px solid #2164e8; outline-offset: 3px; }
 .account-entry .account-layout { display: grid; grid-template-columns: minmax(320px,.9fr) minmax(0,1.1fr); min-height: 680px; }
 .account-entry .account-form-column { display: flex; align-items: center; padding: 48px 44px 38px; }
 .account-map-preview { position: relative; overflow: hidden; min-height: 100%; background: #f4f4e7; isolation: isolate; }
-.account-map-art { position: absolute; width: 100%; height: 100%; object-fit: cover; inset: 0; }
+.account-map-art { position: absolute; width: 100%; height: 100%; object-fit: contain; inset: 0; }
 .account-preview-city { position: absolute; top: 34px; inset-inline-start: 28px; display: flex; align-items: center; gap: 9px; min-height: 46px; padding: 10px 17px; border-radius: 30px; background: #fffffff2; color: #234d40; font-size: 14px; font-weight: 600; box-shadow: 0 3px 14px #274b3021; }
-.account-preview-legend { position: absolute; bottom: 27px; inset-inline: 23px; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 13px 22px; padding: 16px 18px; border-radius: 16px; border: 1px solid #ffffffc2; background: #fffffff0; color: #2c4351; box-shadow: 0 4px 20px #17345614; }
+.account-preview-legend { position: absolute; bottom: 48px; inset-inline: 23px; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 13px 22px; padding: 16px 18px; border-radius: 16px; border: 1px solid #ffffffc2; background: #fffffff0; color: #2c4351; box-shadow: 0 4px 20px #17345614; }
+.account-map-credit { position: absolute; bottom: 12px; inset-inline: 23px; width: fit-content; max-width: calc(100% - 46px); margin-inline: auto; padding: 4px 8px; border-radius: 6px; background: #fffef9ed; color: #3b5047; font-size: 11px; line-height: 1.4; text-align: center; text-decoration: none; }
+.account-map-credit:hover { text-decoration: underline; }
+.account-map-credit:focus-visible { outline: 3px solid #2164e8; outline-offset: 3px; }
 .account-preview-legend > span { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 550; }
 .account-preview-legend i { display: block; width: 23px; height: 5px; border-radius: 3px; }
 .preview-route-key { background: #2164e8; }
@@ -64,7 +67,8 @@
   .account-entry .account-development { margin-top: 10px; }
   .account-entry .account-development > summary { min-height: 44px; }
   .account-entry .account-preview-city { top: 24px; }
-  .account-entry .account-preview-legend { bottom: 23px; }
+  .account-entry .entry-motion-control { top: 24px; }
+  .account-entry .account-preview-legend { bottom: 46px; }
 }
 /* Leave clear canvas around the form for the country, journey and roadside scenes. */
 @media (min-width: 1100px) {

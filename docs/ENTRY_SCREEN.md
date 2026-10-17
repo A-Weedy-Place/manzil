@@ -9,7 +9,19 @@ Feature-branch localhost work, updated 18 October 2026. The deployment developer
 - Registration, password reset, Back to sign in and guest access remain available. Loading disables the form, failures retain a retryable form, and changing screen clears old feedback/password text.
 - The backdrop stays flat matte green (`#15362d`), with a small card shadow (`0 8px 20px`, 15% dark ink). There is no backdrop gradient, glow or blur. Desktop layout reserves side gutters and a top band for the scenery; narrow screens prioritize the form.
 
-## Decorative artwork
+## Fixed road-map preview
+
+The map **inside the login card** is a fixed SVG generated from the bundled public OpenStreetMap Islamabad road snapshot, rather than a hand-drawn street pattern. Roads, the blue detour, red affected road section and A/B markers use the same geographic projection. The local router calculates the detour around an explicitly synthetic Park Road closure in F-8. This is an example of the product, not a current verified traffic advisory; the legend identifies the example route and illustrative closure.
+
+Generate the committed asset with `npm run art:entry-preview` using the project's Node runtime. The generator reads public bundled road data and does not use account records, private traces, live closures, tile services or GPS. It must fail if the example cannot be validated, rather than draw an invented alternative. The snapshot represents available OSM data at its recorded timestamp and does not promise current road/access conditions or exhaustive cartographic detail. No invented parks, buildings or waterways are added to the road-only extract.
+
+The current asset uses **420 actual OSM road ways** from the **14 October 2026, 18:17:34 UTC** snapshot and a **1,324 m** detour with **13 directed segments**. Every route segment must exist in both the router graph and the displayed raw OSM street geometry. A Turf intersection check rejects any route crossing the synthetic closure; red sections come from the ordinary closure/road clipping code. The **120 m drawing width** is a synthetic closure-area parameter, not a claim about the actual road width or a real incident. All geometry uses a single uniformly scaled, rotated local projection. The generator is deterministic, and output metadata retains its source timestamp, attribution and fictional-closure provenance.
+
+The image is fitted without cropping, keeping both endpoints and the closure visible across card proportions. A visible linked **© OpenStreetMap contributors** credit stays outside the image and above the card edge, independent of image scaling. The static image adds no runtime mapping library or external map request to login.
+
+The image URL includes a version query for this replacement, so browsers can fetch the corrected asset rather than retain the old illustration. The background-animation control sits at the preview's top right, clear of the wrapping legend. At phone widths the existing form-only layout still hides the preview. The peripheral Pakistan silhouette and its roads remain decorative as described below; this correction applies to the card's geographic route preview.
+
+## Decorative background artwork
 
 `EntryDoodles.tsx`, `entryRoadNetwork.ts`, `EntryIntersection.tsx` and their CSS contain original SVG/CSS artwork. The scenes illustrate the product without loading a map, fetching tiles, reading location, creating events or running a JavaScript frame loop.
 

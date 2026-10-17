@@ -1,5 +1,6 @@
 /** App-owned copy only. User notices, names and original source evidence remain verbatim. */
 export const urdu: Record<string, string> = {
+  'Example route': 'مثالی راستہ', 'Illustrative closure': 'فرضی بندش',
   'Cached fuel reference. Latest check overdue or failed.': 'ایندھن کی محفوظ حوالہ قیمت۔ تازہ جانچ میں تاخیر یا ناکامی ہوئی۔',
   'Search a place or address': 'مقام یا پتہ تلاش کریں', 'Use current location': 'موجودہ مقام استعمال کریں',
   'Current location': 'موجودہ مقام', 'Choose on map': 'نقشے پر منتخب کریں', 'Finding your location…': 'آپ کا مقام تلاش ہو رہا ہے…',
