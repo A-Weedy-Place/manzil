@@ -3,7 +3,7 @@
 .entry-doodles .entry-doodle { position: absolute; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 /* Match the entry card's 174px minimum gutter and 960px maximum width. */
 .entry-doodles .entry-doodle-left { width: clamp(156px,calc((100vw - 960px)/2 - 28px),320px); height: auto; left: max(92px,calc((100vw - 960px)/4 + 5px)); top: 53%; transform: translate(-50%,-43%); }
-.entry-doodles .entry-doodle-right { width: clamp(156px,calc((100vw - 960px)/2 - 18px),234px); height: auto; right: 12px; top: 50%; transform: translateY(-43%); }
+.entry-doodles .entry-doodle-right { width: clamp(156px,calc((100vw - 960px)/2 - 28px),234px); height: auto; right: max(92px,calc((100vw - 960px)/4 + 5px)); top: 50%; transform: translate(50%,-43%); }
 .entry-doodles .entry-doodle-top { width: min(800px,calc(100vw - 48px)); height: 90px; top: 0; left: 50%; transform: translateX(-50%); overflow: visible; }
 .entry-pakistan-cycle { animation: entry-map-cycle 28s ease-in-out infinite; }
 .entry-pakistan-outline { opacity: .56; stroke-width: 2.2; stroke-dasharray: 1; stroke-dashoffset: 1; animation: entry-pakistan-outline 28s ease-in-out infinite; }
@@ -27,14 +27,13 @@
 .entry-route-traveler ellipse { fill: currentColor; stroke: none; opacity: .45; }
 .entry-doodles[data-paused='true'] * { animation-play-state: paused; }
 @keyframes entry-map-cycle { 0%,88% { opacity: 1; } 96%,100% { opacity: 0; } }
-@keyframes entry-pakistan-outline { 0%,3% { stroke-dashoffset: 1; } 30%,100% { stroke-dashoffset: 0; } }
+@keyframes entry-pakistan-outline { 0%,3% { stroke-dasharray: 1; stroke-dashoffset: 1; } 30% { stroke-dasharray: 1; stroke-dashoffset: 0; } 31%,100% { stroke-dasharray: none; stroke-dashoffset: 0; } }
 @keyframes entry-pakistan-reveal { 0%,30% { transform: scaleY(0); } 73%,100% { transform: scaleY(1); } }
-@keyframes entry-pakistan-scan { 0%,30% { opacity: 0; transform: translateY(0); } 32% { opacity: .45; } 73% { opacity: .45; transform: translateY(450px); } 75%,100% { opacity: 0; transform: translateY(450px); } }
+@keyframes entry-pakistan-scan { 0%,30% { opacity: 0; transform: translateY(0); } 32% { opacity: .45; } 73% { opacity: .45; transform: translateY(284px); } 75%,100% { opacity: 0; transform: translateY(284px); } }
 @keyframes entry-detour-draw { 0%,3% { stroke-dashoffset: 1; } 20%,90% { stroke-dashoffset: 0; opacity: .4; } 98%,100% { stroke-dashoffset: 0; opacity: 0; } }
 @keyframes entry-travel-detour { 0%,4% { opacity: 0; offset-distance: 0%; } 7% { opacity: .82; } 48% { opacity: .82; offset-distance: 100%; } 52%,100% { opacity: 0; offset-distance: 100%; } }
 @media (max-width: 1099px) {
-  .entry-doodles .entry-doodle-left { width: 150px; left: 42px; opacity: .7; }
-  .entry-doodles .entry-doodle-right { width: 130px; right: -10px; opacity: .7; }
+  .entry-doodles .entry-doodle-left,.entry-doodles .entry-doodle-right { display: none; }
   .entry-doodles .entry-doodle-top { height: 70px; }
 }
 /* Static scenery on phones: no peripheral movement while reading/signing in. */
@@ -42,6 +41,7 @@
   .entry-doodles * { animation: none !important; }
   .entry-pakistan-cycle { opacity: .7; }
   .entry-pakistan-outline,.entry-detour-route { stroke-dashoffset: 0; }
+  .entry-pakistan-outline { stroke-dasharray: none; }
   .entry-pakistan-reveal { transform: scaleY(1); }
   .entry-pakistan-scanner { opacity: 0; }
   .entry-route-traveler { opacity: .65; offset-distance: 38%; }

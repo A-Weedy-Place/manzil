@@ -79,6 +79,22 @@ describe('active road display and independently toggled demos', () => {
     expect(await roads('2027-02-01T00:00:00Z')).toHaveLength(1);
     expect((await request('/closures/roads?at=not-a-date')).status).toBe(400);
   });
+  it('provides opt-in future road geometry beyond a month without publishing drafts, changing time state or routing activation', async () => {
+    const { store, request } = await setup();
+    const future = store.saveClosure({ ...draft, title: 'Upcoming public event', startsAt: '2027-03-15T11:00:00Z', endsAt: '2027-03-16T11:00:00Z' });
+    store.saveClosure({ ...draft, title: 'Private future draft', status: 'draft', startsAt: future.startsAt, endsAt: future.endsAt });
+    store.saveClosure({ ...draft, title: 'Cancelled future', status: 'cancelled', startsAt: future.startsAt, endsAt: future.endsAt });
+    const before = `/closures/roads?at=${encodeURIComponent(at)}`;
+    expect((await (await request(before)).json()).features).toHaveLength(0);
+    const upcoming = (await (await request(`${before}&includeUpcoming=true`)).json()).features;
+    expect(upcoming).toHaveLength(1); expect(upcoming[0].properties.closureId).toBe(future.id);
+    expect(upcoming[0].geometry.coordinates).toEqual([[73.004, 33.68], [73.006, 33.68]]);
+    expect((await (await request(`${before}&includeUpcoming=false`)).json()).features).toHaveLength(0);
+    expect((await request(`${before}&includeUpcoming=1`)).status).toBe(400);
+    expect((await (await request(`/closures/roads?at=${encodeURIComponent(future.endsAt!)}&includeUpcoming=true`)).json()).features).toHaveLength(0);
+    expect(activeClosureRoads(graph, store.routingClosures(), at).features).toHaveLength(0);
+    expect(store.get<Closure>('closure', future.id)?.startsAt).toBe(future.startsAt);
+  });
   it('offers six road chains and four optional street-route examples with independent schedules', async () => {
     const { store, request } = await setup(getRoutingGraph()!);
     const initial: DemoCatalogue = await (await request(`/demos?at=${at}`)).json();

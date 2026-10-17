@@ -17,7 +17,10 @@ export default function EntryIntersection() {
       <path d="M0 0h38l9 11-9 11H0ZM16 22v59m-8 0h16M8 11h27m-6-5 6 5-6 5M-4 34h35v20H-4Zm9 10h17m-12-5-5 5 5 5" />
     </g>
     <g className="entry-intersection-bus-position">
-      <g className="entry-intersection-exhaust"><path d="M-4 34q-10-5-16 0t-15-2m17-9q-10-8-18-3" /><circle cx="-29" cy="13" r="4" /><circle cx="-42" cy="30" r="3" /></g>
+      <g className="entry-intersection-exhaust">
+        <path className="entry-exhaust-wisp" d="M-3 39c-6-3-10 3-15 0s-9-3-12-1" />
+        <path className="entry-exhaust-wisp is-trailing" d="M-11 35c-3-5-8-5-11-2s-8 2-11-1" />
+      </g>
       <g className="entry-intersection-bus">
         <path d="M3 2h71q8 0 11 9l7 17v18H0V9q0-7 3-7Z" />
         <path d="M7 7h47v19H7Zm53 0h12q5 0 7 7l4 12H60ZM19 7v19M31 7v19M43 7v19M59 30h15v16H59Z" />

@@ -90,8 +90,10 @@ p.muted { font-size:14px; line-height:1.65; } .small { font-size:12px; } .field-
 .legend-upcoming { border-color:#df950c; border-style:solid; border-radius:50%; }
 .map-legend { flex-wrap:wrap; }
 .map-route-label.is-blocked { color:#8b1730; background:#fff1f2; border-color:#f4a8b1; }
-.map-closure-marker.is-scheduled { width:28px; height:28px; background:#fff7df; color:#9c6306; border-color:#f5a623; box-shadow:0 1px 5px #7a4b2326; font-size:17px; }
+.map-closure-marker.is-scheduled { width:36px; height:36px; background:#ffbf18; color:#533600; border-color:#fff8dc; box-shadow:0 2px 7px #7a4b2340; font-size:18px; }
+.map-closure-marker.is-scheduled::before { content:''; position:absolute; inset:-4px; border-radius:50%; }
 .map-closure-marker.is-scheduled::after { display:none; }
+.map-closure-marker.is-scheduled.is-previewing { outline:3px solid #ffbf18; outline-offset:2px; }
 .map-endpoint-waypoint { background:#bc7900; width:34px; height:34px; font-size:14px; }
 .waypoint-row { position:relative; border-top:1px solid var(--border); padding-top:5px; }
 .waypoint-actions { display:flex; justify-content:flex-end; gap:4px; padding-bottom:7px; }

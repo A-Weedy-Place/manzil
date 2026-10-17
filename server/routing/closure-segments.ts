@@ -173,10 +173,11 @@ function outsideGraphDrawing(graph: RoutingGraph, closure: Closure): Coordinate[
   }
   return structuredClone(coordinates);
 }
-export function activeClosureRoads(graph: RoutingGraph, closures: Closure[], at: string): FeatureCollection<LineString, ClosureRoadProperties> {
+/** Display geometry only. Including upcoming events does not activate them in routing. */
+export function activeClosureRoads(graph: RoutingGraph, closures: Closure[], at: string, includeUpcoming = false): FeatureCollection<LineString, ClosureRoadProperties> {
   const instant = Date.parse(at), features: FeatureCollection<LineString, ClosureRoadProperties>['features'] = [];
   for (const closure of closures) {
-    if (closure.status !== 'published' || Date.parse(closure.startsAt) > instant || (closure.endsAt !== null && Date.parse(closure.endsAt) <= instant)) continue;
+    if (closure.status !== 'published' || (!includeUpcoming && Date.parse(closure.startsAt) > instant) || (closure.endsAt !== null && Date.parse(closure.endsAt) <= instant)) continue;
     const seen = new Set<string>();
     for (const [index, intervals] of geometryFractions(graph, closure.geometry).display) {
       const edge = graph.edges[index], key = [edge.from, edge.to].sort((a, b) => a - b).join(':');

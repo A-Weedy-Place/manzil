@@ -7,7 +7,7 @@ import type { Closure, Coordinate, Drawing, MapFocus, MapMode, MapStyleId, Place
 import { closureState, dateTime } from '../lib/format';
 import { api } from '../lib/api';
 import { emptyMapStyle, loadMapStyle, MAP_ATTRIBUTION, normalizeMapStyleId, type MapDetail, type MapTheme } from '../lib/mapStyle';
-import { closureRoadKey, exclusiveBaselineSegments, routeMatchesMapSnapshot, visibleClosureRoads, type ClosureRoads } from '../lib/mapOverlays';
+import { closureMarkerCoordinate, closureRoadKey, exclusiveBaselineSegments, previewClosureRoads, routeMatchesMapSnapshot, visibleClosureRoads, type ClosureRoads } from '../lib/mapOverlays';
 import { preserveMapOverlays, updateSourceIfChanged } from '../lib/mapSourceUpdates';
 import { tripTraceSections, usableTracePoints } from '../lib/tripTrace';
 import './trip-history.css';
@@ -35,7 +35,7 @@ export interface MapViewProps {
   onClosureSelect: (id: string) => void; onReady?: () => void;
 }
 
-const SOURCE_IDS = ['baseline', 'routes', 'connectors', 'closure-roads', 'drawing', 'trace', 'trace-end'] as const;
+const SOURCE_IDS = ['baseline', 'routes', 'connectors', 'closure-roads', 'upcoming-roads', 'drawing', 'trace', 'trace-end'] as const;
 const sid = (id: typeof SOURCE_IDS[number]) => `manzil-${id}`;
 const emptyFeatures = (): FeatureCollection => ({ type: 'FeatureCollection', features: [] });
 const feature = (geometry: Geometry, properties: Record<string, unknown> = {}): Feature => ({ type: 'Feature', geometry, properties });
@@ -60,6 +60,9 @@ function installOverlays(map: LibreMap) {
   addLayer({ id: 'manzil-route-line', type: 'line', source: sid('routes'), filter: ['==', ['get', 'selected'], true], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#2563eb', 'line-width': 10 } });
   addLayer({ id: 'manzil-route-hit', type: 'line', source: sid('routes'), paint: { 'line-color': '#2563eb', 'line-width': 23, 'line-opacity': .01 } });
   addLayer({ id: 'manzil-connectors-line', type: 'line', source: sid('connectors'), paint: { 'line-color': '#2563eb', 'line-width': 2, 'line-dasharray': [1, 2], 'line-opacity': .75 } });
+  addLayer({ id: 'manzil-upcoming-roads-casing', type: 'line', source: sid('upcoming-roads'), layout: { 'line-cap': 'butt', 'line-join': 'round' }, paint: { 'line-color': '#fff9dd', 'line-width': 16, 'line-opacity': .98 } });
+  addLayer({ id: 'manzil-upcoming-roads-line', type: 'line', source: sid('upcoming-roads'), layout: { 'line-cap': 'butt', 'line-join': 'round' }, paint: { 'line-color': '#ffbf18', 'line-width': 11, 'line-opacity': 1 } });
+  // Active red restrictions take precedence if an upcoming preview shares a road.
   addLayer({ id: 'manzil-closure-roads-casing', type: 'line', source: sid('closure-roads'), layout: { 'line-cap': 'butt', 'line-join': 'round' }, paint: { 'line-color': '#fff6f8', 'line-width': 16, 'line-opacity': .98 } });
   addLayer({ id: 'manzil-closure-roads-line', type: 'line', source: sid('closure-roads'), layout: { 'line-cap': 'butt', 'line-join': 'round' }, paint: { 'line-color': '#ff163a', 'line-width': 11, 'line-opacity': 1 } });
   addLayer({ id: 'manzil-drawing-fill', type: 'fill', source: sid('drawing'), filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': '#ed353b', 'fill-opacity': .16 } });
@@ -154,10 +157,13 @@ export default function MapView(props: MapViewProps) {
   const [closureRoads, setClosureRoads] = useState<{ key: string; data: ClosureRoads } | null>(null);
   const roadCache = useRef(new Map<string, ClosureRoads>());
   const [closureRoadError, setClosureRoadError] = useState('');
-  const roadKey = closureRoadKey(props.closures, props.departureAt);
+  const [upcomingInspection, setUpcomingInspection] = useState<{ hovered: string | null; focused: string | null; pinned: string | null; dismissed: boolean }>({ hovered: null, focused: null, pinned: null, dismissed: false });
+  const roadKey = closureRoadKey(props.closures, props.departureAt, true);
   const cachedRoads = roadCache.current.get(roadKey);
   const snapshotRoads = cachedRoads ? { key: roadKey, data: cachedRoads } : closureRoads;
-  const hasActiveClosures = props.closures.some(closure => closureState(closure, props.departureAt) === 'active');
+  const hasVisibleClosures = props.closures.some(closure => ['active', 'scheduled'].includes(closureState(closure, props.departureAt)));
+  const inspectionCandidate = upcomingInspection.hovered ?? upcomingInspection.focused ?? upcomingInspection.pinned;
+  const upcomingPreviewId = upcomingInspection.dismissed ? null : inspectionCandidate;
   // Keep the basemap identity independent of app theme, route selection and
   // polling; retired palette aliases must not trigger an equivalent style swap.
   const mapStyle = normalizeMapStyleId(props.mapStyle), theme = mapStyle === 'night' ? 'dark' : 'light', detail = props.mapDetail ?? 'clean';
@@ -214,6 +220,7 @@ export default function MapView(props: MapViewProps) {
     map.on('webglcontextlost', () => setMapError('Map graphics were interrupted. Try restarting the map; your saved local data is retained.'));
     map.on('webglcontextrestored', () => setMapError(''));
     map.on('click', event => {
+      setUpcomingInspection({ hovered: null, focused: null, pinned: null, dismissed: false });
       const p = current.current, coordinate: Coordinate = [event.lngLat.lng, event.lngLat.lat];
       if (p.mode === 'origin' || p.mode === 'destination' || p.mode === 'waypoint') { p.onPick(coordinate); return; }
       if (p.mode === 'road') { pickRoad(coordinate); return; }
@@ -267,11 +274,11 @@ export default function MapView(props: MapViewProps) {
 
   useEffect(() => {
     setClosureRoadError('');
-    if (!props.showClosures || !hasActiveClosures) return;
+    if (!props.showClosures || !hasVisibleClosures) return;
     const cached = roadCache.current.get(roadKey);
     if (cached) { setClosureRoads({ key: roadKey, data: cached }); return; }
     const controller = new AbortController();
-    api<ClosureRoads>(`/closures/roads?at=${encodeURIComponent(props.departureAt)}`, { signal: controller.signal })
+    api<ClosureRoads>(`/closures/roads?at=${encodeURIComponent(props.departureAt)}&includeUpcoming=true`, { signal: controller.signal })
       .then(data => {
         if (controller.signal.aborted) return;
         roadCache.current.set(roadKey, data);
@@ -280,7 +287,28 @@ export default function MapView(props: MapViewProps) {
       })
       .catch(() => { if (!controller.signal.aborted) setClosureRoadError('Closed-road highlighting unavailable.'); });
     return () => controller.abort();
-  }, [roadKey, props.showClosures, hasActiveClosures, retry]);
+  }, [roadKey, props.showClosures, hasVisibleClosures, retry]);
+
+  useEffect(() => {
+    const clear = () => setUpcomingInspection({ hovered: null, focused: null, pinned: null, dismissed: false });
+    const outside = (event: PointerEvent) => { if (!(event.target instanceof Element) || !event.target.closest('.map-closure-marker')) clear(); };
+    const escape = (event: KeyboardEvent) => {
+      // Keep the real hover/focus channels: Escape does not move the pointer or
+      // blur the button. Duplicate native entry/focus events must not reopen it.
+      if (event.key === 'Escape') setUpcomingInspection(state => ({ ...state, pinned: null, dismissed: true }));
+    };
+    document.addEventListener('pointerdown', outside); document.addEventListener('keydown', escape);
+    return () => { document.removeEventListener('pointerdown', outside); document.removeEventListener('keydown', escape); };
+  }, []);
+
+  useEffect(() => {
+    const scheduled = new Set(props.showClosures ? props.closures.filter(closure => closureState(closure, props.departureAt) === 'scheduled').map(closure => closure.id) : []);
+    setUpcomingInspection(state => {
+      const keep = (id: string | null) => id && scheduled.has(id) ? id : null;
+      const next = { ...state, hovered: keep(state.hovered), focused: keep(state.focused), pinned: keep(state.pinned) };
+      return Object.keys(state).every(key => state[key as keyof typeof state] === next[key as keyof typeof state]) ? state : next;
+    });
+  }, [props.closures, props.departureAt, props.showClosures]);
 
   useEffect(() => {
     const map = mapRef.current; if (!map) return;
@@ -394,18 +422,36 @@ export default function MapView(props: MapViewProps) {
       let marker = closureMarkers.current.get(closure.id);
       if (!marker) {
         const element = button('map-closure-marker', label, '−');
-        element.addEventListener('click', () => current.current.onClosureSelect(closure.id));
-        marker = new Marker({ element, anchor: 'center' }).setLngLat(polygonCentre(closure.geometry)).addTo(map);
+        const isUpcoming = () => { const latest = current.current.closures.find(item => item.id === closure.id); return latest && closureState(latest, current.current.departureAt) === 'scheduled'; };
+        element.addEventListener('mouseenter', () => { if (isUpcoming()) setUpcomingInspection(state => state.hovered === closure.id ? state : { ...state, hovered: closure.id, dismissed: false }); });
+        element.addEventListener('mouseleave', () => setUpcomingInspection(state => state.hovered === closure.id ? { ...state, hovered: null } : state));
+        element.addEventListener('focus', () => { if (isUpcoming()) setUpcomingInspection(state => state.focused === closure.id ? state : { ...state, focused: closure.id, dismissed: false }); });
+        element.addEventListener('blur', () => setUpcomingInspection(state => state.focused === closure.id ? { ...state, focused: null } : state));
+        element.addEventListener('click', () => {
+          if (isUpcoming()) setUpcomingInspection(state => state.pinned === closure.id ? { ...state, pinned: null, dismissed: true } : { ...state, pinned: closure.id, dismissed: false });
+          else setUpcomingInspection({ hovered: null, focused: null, pinned: null, dismissed: false });
+          current.current.onClosureSelect(closure.id);
+        });
+        marker = new Marker({ element, anchor: 'center' }).setLngLat(closureMarkerCoordinate(closure, snapshotRoads, roadKey)).addTo(map);
         closureMarkers.current.set(closure.id, marker);
       }
       const element = marker.getElement();
-      element.className = `map-closure-marker${state === 'scheduled' ? ' is-scheduled' : ''}${selected ? ' is-selected' : ''}`;
-      element.textContent = state === 'scheduled' ? '!' : '−'; element.setAttribute('aria-label', label);
-      marker.setLngLat(polygonCentre(closure.geometry));
+      // Marker owns positioning classes and inline transforms. Replacing className
+      // removes its absolute positioning and makes coordinates drift with zoom.
+      element.classList.toggle('is-scheduled', state === 'scheduled'); element.classList.toggle('is-selected', selected);
+      element.classList.toggle('is-previewing', state === 'scheduled' && closure.id === upcomingPreviewId);
+      const symbol = state === 'scheduled' ? '!' : '−';
+      if (element.textContent !== symbol) element.textContent = symbol;
+      element.setAttribute('aria-label', label); element.title = label;
+      if (state === 'scheduled') element.setAttribute('aria-pressed', String(upcomingInspection.pinned === closure.id));
+      else element.removeAttribute('aria-pressed');
+      const coordinate = closureMarkerCoordinate(closure, snapshotRoads, roadKey), previous = marker.getLngLat();
+      if (previous.lng !== coordinate[0] || previous.lat !== coordinate[1]) marker.setLngLat(coordinate);
     }
     for (const [id, marker] of closureMarkers.current) if (!retained.has(id)) { marker.remove(); closureMarkers.current.delete(id); }
     updateSource(map, 'closure-roads', props.showClosures ? visibleClosureRoads(snapshotRoads, roadKey, props.closures, props.departureAt) : emptyFeatures());
-  }, [props.closures, props.selectedClosureId, props.showClosures, props.departureAt, closureRoads, roadKey, language, styleVersion, retry]);
+    updateSource(map, 'upcoming-roads', props.showClosures ? previewClosureRoads(snapshotRoads, roadKey, props.closures, props.departureAt, upcomingPreviewId) : emptyFeatures());
+  }, [props.closures, props.selectedClosureId, props.showClosures, props.departureAt, closureRoads, roadKey, upcomingPreviewId, upcomingInspection.pinned, language, styleVersion, retry]);
 
   useEffect(() => {
     const map = mapRef.current; if (!map) return;

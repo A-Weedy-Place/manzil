@@ -1,16 +1,16 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { act, cleanup, render } from '@testing-library/react';
+import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import type { FeatureCollection } from 'geojson';
 import type { MapViewProps } from '../src/components/MapView';
-import type { Coordinate, RouteOption } from '../shared/types';
+import type { Closure, Coordinate, RouteOption } from '../shared/types';
 
-const maps = vi.hoisted(() => ({ instances: [] as MockMap[] }));
+const maps = vi.hoisted(() => ({ instances: [] as MockMap[], markers: [] as { coordinate: Coordinate; options: { element: HTMLElement }; remove: () => void }[] }));
 
 class MockMap {
   sources = new Map<string, { setData: ReturnType<typeof vi.fn>; data: FeatureCollection }>();
   layers = new Map<string, object>();
-  listeners = new Map<string, Set<() => void>>();
+  listeners = new Map<string, Set<(event?: unknown) => void>>();
   touchZoomRotate = { disableRotation: vi.fn() };
   keyboard = { disableRotation: vi.fn() };
   doubleClickZoom = { enable: vi.fn(), disable: vi.fn() };
@@ -19,9 +19,9 @@ class MockMap {
   setStyle = vi.fn(() => this.emit('style.load'));
   constructor(readonly options: { container: HTMLElement; style: { layers: { paint?: object }[] } }) { maps.instances.push(this); }
   addControl() { return this; }
-  on(name: string, listener: () => void) { if (!this.listeners.has(name)) this.listeners.set(name, new Set()); this.listeners.get(name)!.add(listener); return this; }
-  off(name: string, listener: () => void) { this.listeners.get(name)?.delete(listener); return this; }
-  emit(name: string) { for (const listener of this.listeners.get(name) ?? []) listener(); }
+  on(name: string, listener: (event?: unknown) => void) { if (!this.listeners.has(name)) this.listeners.set(name, new Set()); this.listeners.get(name)!.add(listener); return this; }
+  off(name: string, listener: (event?: unknown) => void) { this.listeners.get(name)?.delete(listener); return this; }
+  emit(name: string, event?: unknown) { for (const listener of this.listeners.get(name) ?? []) listener(event); }
   getSource(id: string) { return this.sources.get(id); }
   addSource(id: string, source: { data: FeatureCollection }) {
     const value = { data: source.data, setData: vi.fn((data: FeatureCollection) => { value.data = data; }) }; this.sources.set(id, value);
@@ -37,9 +37,9 @@ vi.mock('maplibre-gl', () => ({
   Map: class { constructor(options: ConstructorParameters<typeof MockMap>[0]) { return new MockMap(options); } },
   Marker: class {
     coordinate: Coordinate = [0, 0];
-    constructor(readonly options: { element: HTMLElement }) {}
+    constructor(readonly options: { element: HTMLElement }) { options.element.classList.add('maplibregl-marker', 'maplibregl-marker-anchor-center'); maps.markers.push(this); }
     setLngLat(coordinate: Coordinate) { this.coordinate = coordinate; return this; }
-    addTo() { return this; } on() { return this; } remove() {}
+    addTo(map: MockMap) { map.options.container.append(this.options.element); return this; } on() { return this; } remove() { this.options.element.remove(); }
     getElement() { return this.options.element; }
     getLngLat() { return { lng: this.coordinate[0], lat: this.coordinate[1] }; }
   },
@@ -55,9 +55,11 @@ vi.mock('../src/lib/mapStyle', async importOriginal => ({
 
 import MapView from '../src/components/MapView';
 import { loadMapStyle } from '../src/lib/mapStyle';
+import { api } from '../src/lib/api';
 
 beforeEach(() => {
-  maps.instances.length = 0; vi.mocked(loadMapStyle).mockClear();
+  maps.instances.length = 0; maps.markers.length = 0; vi.mocked(loadMapStyle).mockClear();
+  vi.mocked(api).mockReset(); vi.mocked(api).mockResolvedValue({ type: 'FeatureCollection', features: [] });
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   vi.stubGlobal('matchMedia', () => ({ matches: false }));
 });
@@ -150,4 +152,108 @@ it('draws recorded history green with a white halo and separate start/end marker
   expect(map.fitBounds).toHaveBeenLastCalledWith([[73.03, 33.64], [73.032, 33.641]], expect.objectContaining({ padding: { top: 60, bottom: 90, left: 48, right: 104 } }));
   result.rerender(<MapView {...props()} focus={{ ...focus, token: 3 }} />); await act(async () => {});
   expect(map.fitBounds).toHaveBeenLastCalledWith([[73.03, 33.64], [73.032, 33.641]], expect.objectContaining({ padding: { top: 88, bottom: 80, left: 48, right: 104 } }));
+});
+
+const closureFixture = (id: string, scheduled = false): Closure => ({
+  id, title: id, reason: 'other', description: '', status: 'published', revision: 1,
+  startsAt: scheduled ? '2026-11-18T12:00:00Z' : departureAt, endsAt: '2026-12-18T12:00:00Z', createdAt: departureAt, updatedAt: departureAt,
+  geometry: { type: 'Polygon', coordinates: [[[73, 33.6], [73.2, 33.6], [73.2, 33.8], [73, 33.8], [73, 33.6]]] },
+});
+const closureGeometry = (id: string): FeatureCollection => ({ type: 'FeatureCollection', features: [{ type: 'Feature',
+  geometry: { type: 'LineString', coordinates: [[73.03, 33.64], [73.05, 33.64]] }, properties: { closureId: id, title: id } }] });
+
+it('retains MapLibre positioning classes and road anchors across selection, map movement, style and time refreshes', async () => {
+  const closure = closureFixture('active'), base = { ...props(), closures: [closure] };
+  vi.mocked(api).mockResolvedValue(closureGeometry(closure.id));
+  const result = render(<MapView {...base} />); await act(async () => {});
+  const map = maps.instances[0], marker = maps.markers.find(item => item.options.element.classList.contains('map-closure-marker'))!;
+  expect(marker.coordinate[0]).toBeCloseTo(73.04, 10); expect(marker.coordinate[1]).toBe(33.64);
+  expect(marker.options.element.classList.contains('maplibregl-marker')).toBe(true);
+  expect(marker.options.element.classList.contains('maplibregl-marker-anchor-center')).toBe(true);
+  result.rerender(<MapView {...base} selectedClosureId={closure.id} departureAt="2026-10-17T12:01:00Z" mapStyle="night" />);
+  await act(async () => {}); act(() => { map.emit('moveend'); map.emit('zoom'); });
+  expect(marker.coordinate[0]).toBeCloseTo(73.04, 10); expect(marker.coordinate[1]).toBe(33.64); expect(marker.options.element.classList.contains('maplibregl-marker')).toBe(true);
+  expect(marker.options.element.classList.contains('is-selected')).toBe(true);
+  expect(vi.mocked(api)).toHaveBeenCalledOnce();
+});
+
+it('keeps future road sections hidden until hover/focus, supports pinned taps, and dismisses outside or on Escape', async () => {
+  const closure = closureFixture('future', true), onClosureSelect = vi.fn(), base = { ...props(), closures: [closure], onClosureSelect };
+  vi.mocked(api).mockResolvedValue(closureGeometry(closure.id));
+  const result = render(<MapView {...base} />); await act(async () => {});
+  const map = maps.instances[0], future = result.container.querySelector('.map-closure-marker.is-scheduled')!;
+  const yellow = () => map.getSource('manzil-upcoming-roads')!.data.features;
+  expect(yellow()).toHaveLength(0); expect(map.getSource('manzil-closure-roads')!.data.features).toHaveLength(0);
+  const layerOrder = [...map.layers.keys()];
+  expect(layerOrder.indexOf('manzil-upcoming-roads-line')).toBeLessThan(layerOrder.indexOf('manzil-closure-roads-line'));
+  expect(vi.mocked(api).mock.calls[0][0]).toContain('includeUpcoming=true');
+  fireEvent.mouseEnter(future); expect(yellow()).toHaveLength(1);
+  fireEvent.mouseLeave(future); expect(yellow()).toHaveLength(0);
+  fireEvent.focus(future); expect(yellow()).toHaveLength(1);
+  fireEvent.blur(future); expect(yellow()).toHaveLength(0);
+  fireEvent.click(future); fireEvent.mouseLeave(future); expect(yellow()).toHaveLength(1);
+  expect(future.getAttribute('aria-pressed')).toBe('true'); expect(onClosureSelect).toHaveBeenCalledWith(closure.id);
+  fireEvent.click(future); expect(yellow()).toHaveLength(0); expect(future.getAttribute('aria-pressed')).toBe('false');
+  fireEvent.mouseEnter(future); fireEvent.keyDown(document, { key: 'Escape' }); expect(yellow()).toHaveLength(0);
+  fireEvent.click(future); expect(yellow()).toHaveLength(1);
+  fireEvent.pointerDown(document.body); expect(yellow()).toHaveLength(0);
+  fireEvent.focus(future); result.rerender(<MapView {...base} showClosures={false} />); await act(async () => {});
+  expect(yellow()).toHaveLength(0); expect(result.container.querySelector('.map-closure-marker')).toBeNull();
+  result.rerender(<MapView {...base} />); await act(async () => {}); expect(yellow()).toHaveLength(0);
+});
+
+it('switches future inspection to red only when its map time becomes active and suppresses stale edited road geometry', async () => {
+  const closure = closureFixture('future', true), base = { ...props(), closures: [closure] };
+  vi.mocked(api).mockResolvedValue(closureGeometry(closure.id));
+  const result = render(<MapView {...base} />); await act(async () => {});
+  const map = maps.instances[0], future = result.container.querySelector('.map-closure-marker')!;
+  fireEvent.mouseEnter(future); expect(map.getSource('manzil-upcoming-roads')!.data.features).toHaveLength(1);
+  result.rerender(<MapView {...base} departureAt={closure.startsAt} />); await act(async () => {});
+  expect(map.getSource('manzil-upcoming-roads')!.data.features).toHaveLength(0);
+  expect(map.getSource('manzil-closure-roads')!.data.features).toHaveLength(1);
+  expect(future.classList.contains('is-scheduled')).toBe(false); expect(future.classList.contains('maplibregl-marker')).toBe(true);
+  vi.mocked(api).mockImplementation(() => new Promise(() => {}));
+  result.rerender(<MapView {...base} closures={[{ ...closure, revision: 2 }]} departureAt={closure.startsAt} />); await act(async () => {});
+  expect(map.getSource('manzil-closure-roads')!.data.features).toHaveLength(0);
+  result.rerender(<MapView {...base} departureAt={closure.endsAt!} />); await act(async () => {});
+  expect(result.container.querySelector('.map-closure-marker')).toBeNull();
+});
+
+it('keeps Escape and second-tap dismissal latched under a stationary hovered and focused marker', async () => {
+  const closure = closureFixture('future', true), base = { ...props(), closures: [closure] };
+  vi.mocked(api).mockResolvedValue(closureGeometry(closure.id));
+  const result = render(<MapView {...base} />); await act(async () => {});
+  const future = result.container.querySelector('.map-closure-marker')!, map = maps.instances[0];
+  const yellow = () => map.getSource('manzil-upcoming-roads')!.data.features;
+  fireEvent.mouseEnter(future); fireEvent.focus(future); fireEvent.click(future);
+  expect(yellow()).toHaveLength(1); expect(future.getAttribute('aria-pressed')).toBe('true');
+  fireEvent.keyDown(future, { key: 'Escape' });
+  expect(yellow()).toHaveLength(0); expect(future.getAttribute('aria-pressed')).toBe('false');
+  // Browsers may repeat entry/focus as the marker's outline/position is updated.
+  fireEvent.mouseEnter(future); fireEvent.focus(future);
+  result.rerender(<MapView {...base} selectedClosureId={closure.id} departureAt="2026-10-17T12:01:00Z" />); await act(async () => {});
+  expect(yellow()).toHaveLength(0); expect(future.classList.contains('is-previewing')).toBe(false);
+  fireEvent.mouseLeave(future); fireEvent.mouseEnter(future); expect(yellow()).toHaveLength(1);
+  fireEvent.keyDown(future, { key: 'Escape' }); expect(yellow()).toHaveLength(0);
+  fireEvent.blur(future); fireEvent.focus(future); expect(yellow()).toHaveLength(1);
+  fireEvent.click(future); fireEvent.click(future); expect(yellow()).toHaveLength(0);
+  fireEvent.focus(future); fireEvent.mouseEnter(future);
+  expect(yellow()).toHaveLength(0); expect(future.classList.contains('is-previewing')).toBe(false);
+});
+
+it('ignores a late upcoming-road response after its revision has changed', async () => {
+  const closure = closureFixture('future', true), base = { ...props(), closures: [closure] };
+  let oldResolve!: (data: FeatureCollection) => void;
+  vi.mocked(api).mockImplementationOnce(() => new Promise(resolve => { oldResolve = resolve; }));
+  const result = render(<MapView {...base} />); await act(async () => {});
+  const latest = closureGeometry(closure.id);
+  latest.features[0].geometry = { type: 'LineString', coordinates: [[73.06, 33.66], [73.08, 33.66]] };
+  vi.mocked(api).mockResolvedValue(latest);
+  result.rerender(<MapView {...base} closures={[{ ...closure, revision: 2 }]} />); await act(async () => {});
+  const marker = maps.markers.find(item => item.options.element.classList.contains('map-closure-marker'))!;
+  fireEvent.mouseEnter(marker.options.element);
+  expect(maps.instances[0].getSource('manzil-upcoming-roads')!.data.features).toEqual(latest.features);
+  await act(async () => oldResolve(closureGeometry(closure.id)));
+  expect(maps.instances[0].getSource('manzil-upcoming-roads')!.data.features).toEqual(latest.features);
+  expect(marker.coordinate[0]).toBeCloseTo(73.07, 10); expect(marker.coordinate[1]).toBe(33.66);
 });

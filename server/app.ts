@@ -226,7 +226,8 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
   });
   routes.get('/closures/roads', async (request, response) => {
     const at = instantSchema.parse(request.query.at ?? new Date().toISOString());
-    response.json(activeClosureRoads(requireRoadGraph(), (await store.routingSnapshot()).closures, at));
+    const includeUpcoming = z.enum(['true', 'false']).optional().parse(request.query.includeUpcoming) === 'true';
+    response.json(activeClosureRoads(requireRoadGraph(), (await store.routingSnapshot()).closures, at, includeUpcoming));
   });
   routes.get('/closures/:id', async (request, response) => {
     const closure = await getRecord<Closure>(store, 'closure', id(request));

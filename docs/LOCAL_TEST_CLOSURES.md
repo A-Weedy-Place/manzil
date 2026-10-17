@@ -1,4 +1,24 @@
-# Seven month-long localhost test closures
+# Month-long and upcoming localhost test closures
+
+## Upcoming fixtures added on 18 October
+
+The separate **`scripts/seed-local-upcoming-closures.ts`** command creates three more synthetic public-OSM road restrictions. They start at **09:00 PKT** on the same calendar date next month, then the following two days, and each lasts **32 days**. Month-end dates clamp to the next month's last day; the script uses Asia/Karachi's date rather than the host timezone. These are synthetic test events, not verified road closure announcements.
+
+Actual local execution on **18 October 2026** created these published/approved fixtures in the existing guarded `demo-manzil` emulators:
+
+| Deterministic ID | Road | Starts (PKT) | Ends (PKT) |
+| --- | --- | --- | --- |
+| `local-test-upcoming-v1-ibn-e-sina` | Ibn-e-Sina Road | 18 November, 09:00 | 20 December, 09:00 |
+| `local-test-upcoming-v1-aabpara` | Aabpara · Municipal Road | 19 November, 09:00 | 21 December, 09:00 |
+| `local-test-upcoming-v1-zero-point` | Zero Point · Islamabad Expressway | 20 November, 09:00 | 22 December, 09:00 |
+
+All schedules above are **2026**. Geometry reuses contiguous named-road chains from the public OSM demo catalogue; it does not invent street lines or copy private GPS data. Run with the same guarded environment below, changing only the final script filename to `scripts/seed-local-upcoming-closures.ts`. No launcher or production startup calls this command.
+
+Its independent **`demoScenario:local-test-upcoming:v1`** marker preserves later edits, cancellations and deletions. The command leaves the original seven active fixtures unchanged. Actual second execution returned **already-seeded / 0 created**, with event revision **18** retained after the first three inserts. The running API reports all **seven original + three upcoming** fixture records. At 18 October, none of the upcoming sections paints as active red; the display endpoint with `includeUpcoming=true` returns matched public-road preview sections for all three (12 Ibn-e-Sina, 39 Aabpara and 7 Zero Point segments). At **18 November, 09:00 PKT**, only Ibn-e-Sina among these three becomes active. Start is inclusive; end is exclusive.
+
+`tests/local-upcoming-closures.test.ts` verifies emulator/cloud guards, PKT midnight/month-end/year boundaries, all three exact schedules, real-road matching, inactive-now/start/end behavior, atomic revision writes, untouched original fixtures and preservation of owner edits/deletions. Together with the existing active-fixture tests, **10 cases pass**. The initial sandboxed SDK connection could not complete; the explicitly loopback-only run succeeded with local connection permission. No deployment, production data change, account alteration or private-data migration was performed.
+
+## Original seven active fixtures
 
 This is an explicit local QA fixture, not a traffic feed or a report of real road closures. The separate seed command creates **seven synthetic published restrictions**, starting when the command runs and ending **32 days later**. It is never called by the app launcher or production startup.
 
