@@ -38,6 +38,12 @@ Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright
 - A* search using estimated road-class speeds, posted-speed caps, rough-surface caps and small junction delays. These are ordinary estimates, not measured traffic speeds or a turn-by-turn navigation guarantee.
 - Endpoint snapping to actual road nodes within 220 metres. The response returns snapped coordinates and discloses the distance. Access from the original pin to that point is not routed; choose the correct carriageway on the map.
 
+### Streets are part of ordinary routing
+
+Public residential, living-street and permitted service roads participate in every local search; no street-detour mode, forced waypoint or UI opt-in is needed. Routes optimize ordinary estimated driving time, including the lower street speeds and junction delays. A shorter street is therefore chosen when it saves estimated time; a longer faster main road may still win. Published closures exclude affected traversals through the same ordinary connected search. Private/destination-only roads, footways and other excluded access classes remain unavailable.
+
+The [demo catalogue](DEMOS.md) now supplies optional endpoint pairs and synthetic closures on Park Road, Rohtas Road, Tipu Sultan Road and Sumbal Road. `tests/routing-public-streets.test.ts` checks original directed OSM edges and residential tags for all four (489 m, 361 m, 1,042 m and 396 m of residential detour respectively), cancellation/reopening, travel-time ranking and private/footway exclusion. These are real-graph local test results, not current traffic advice. National OSRM requests use the provider's car profile; candidate filtering there cannot force an arbitrary street detour around Manzil polygons.
+
 ## Scheduled closures in the local router
 
 Ordered intermediate stops are supported through `waypoints?: Place[]` (maximum five). The continuous search retains the incoming edge across each stop, so a prohibited turn is not bypassed by splitting the trip into independent legs. It carries elapsed travel time across the whole journey, adds no stop dwell time, and returns snapped stop coordinates. Saved commute checks preserve the same ordered stops. See [map time and stops](MAP_TIME_AND_STOPS.md).

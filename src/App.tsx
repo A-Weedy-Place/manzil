@@ -1,6 +1,6 @@
 import { t } from './lib/language';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlaskConical, Palette } from 'lucide-react';
+import { Palette } from 'lucide-react';
 import type { LocalProfile, MapStyleId } from '../shared/types';
 import { Activity, ArrowDown, ArrowDownUp, ArrowRight, ArrowUp, ArrowUpRight, Bell, Bookmark, CalendarClock, Check, ChevronRight, Clock3, Download, ExternalLink, Eye, EyeOff, Flag, Inbox, Layers2, LocateFixed, MapPinned, Navigation, Pencil, Plus, RefreshCw, Repeat2, Route, Search, ShieldCheck, SlidersHorizontal, Trash2, TriangleAlert, Upload, UserRound, WifiOff, X } from 'lucide-react';
 import type { Polygon } from 'geojson';
@@ -24,6 +24,7 @@ import { signOut, useAuth } from './lib/auth';
 import { useAlertNotifications } from './lib/notifications';
 import { api, send } from './lib/api';
 import { closureState, dateTime, dayDate, distance, downloadJSON, inputISO, localInput, relative, time } from './lib/format';
+import { normalizeMapStyleId } from './lib/mapStyle';
 
 type View = 'journey' | 'closures' | 'commutes' | 'activity' | 'sources' | 'alerts' | 'profile' | 'navigation';
 const NAV = [
@@ -35,7 +36,6 @@ const NAV = [
 ] as const;
 const EXAMPLE_ORIGIN: Place = { id: 'faisal-mosque', name: 'Faisal Mosque · approach road', coordinate: [73.0376503, 33.7314163] };
 const EXAMPLE_DESTINATION: Place = { id: 'centaurus', name: 'Centaurus · Nazimuddin Road', coordinate: [73.0492744, 33.7081776] };
-interface StreetRouteDemo { id: string; title: string; origin: Place; destination: Place; closure: ClosureDraft; closureId?: string; streetNames: string[]; expectedStreetMeters: number }
 
 export default function App() {
   const { language, setLanguage } = useLanguage();
@@ -77,9 +77,6 @@ export default function App() {
   const [navigationPosition, setNavigationPosition] = useState<Coordinate | null>(null);
   const [closureFilter, setClosureFilter] = useState('current');
   const [toast, setToast] = useState(''); const [demoBusy, setDemoBusy] = useState(false);
-  const [streetDemoBusy, setStreetDemoBusy] = useState(false);
-  const [demoStreetNames, setDemoStreetNames] = useState<string[]>([]);
-  const [streetDemoClosureId, setStreetDemoClosureId] = useState<string | null>(null);
   const [commuteOpen, setCommuteOpen] = useState(0);
   const [recordedPoints, setRecordedPoints] = useState<RecordedPoint[]>([]);
   const [historyTrace, setHistoryTrace] = useState<RecordedPoint[]>([]);
@@ -92,6 +89,8 @@ export default function App() {
   const lastLoadedState = useRef<AppState | null>(null);
   const latestView = useRef(view); latestView.current = view;
   const theme = state?.profile?.theme === 'system' || !state?.profile?.theme ? systemDark ? 'dark' : 'light' : state.profile.theme;
+  const mapStyle = normalizeMapStyleId(state?.profile.mapStyle);
+  const profileName = state?.profile.displayName && state.profile.displayName !== 'Traveller' ? state.profile.displayName : user?.displayName ?? state?.profile.displayName ?? 'Guest';
   useEffect(() => { const media = window.matchMedia('(prefers-color-scheme: dark)'); const changed = () => setSystemDark(media.matches); media.addEventListener('change', changed); return () => media.removeEventListener('change', changed); }, []);
   useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
   useEffect(() => { const tick = () => setClock(new Date().toISOString()); const timer = setInterval(tick, 60000); window.addEventListener('focus', tick); return () => { clearInterval(timer); window.removeEventListener('focus', tick); }; }, []);
@@ -130,6 +129,8 @@ export default function App() {
   const focusPoints = useCallback((coordinates: Coordinate[]) => setFocus({ coordinates, token: Date.now() + Math.random() }), []);
   const departureISO = departureMode === 'now' ? clock : inputISO(departure);
   const timelineKey = departureMode === 'now' ? `now-${departureISO}` : departureISO;
+  const journeyInputKey = JSON.stringify([origin, waypoints, destination, compare, mode]);
+  const latestJourneyInput = useRef(journeyInputKey); latestJourneyInput.current = journeyInputKey;
   const requestKey = JSON.stringify([timelineKey, origin, waypoints, destination, compare, state?.eventRevision]);
   const stale = !!plan && !!state && (plan.eventRevision !== state.eventRevision || view !== 'navigation' && planSnapshotKey !== requestKey);
   const sameTimeRoutes = useMemo(() => plan?.options.filter(option => ['direct', 'detour', 'alternative'].includes(option.kind)) ?? [], [plan]);
@@ -144,7 +145,6 @@ export default function App() {
   const activeCount = state?.closures.filter(c => closureState(c, departureISO) === 'active').length ?? 0;
   const upcomingCount = state?.closures.filter(c => closureState(c, departureISO) === 'scheduled').length ?? 0;
   const unread = state?.alerts.filter(alert => !alert.read).length ?? 0;
-  const streetDemoClosure = demoStreetNames.length ? state?.closures.find(closure => closure.id === streetDemoClosureId && closure.status === 'published') : null;
   useEffect(() => {
     if (view !== 'navigation' && planWanted && lastPlanKey.current !== requestKey && origin && destination && waypoints.every(Boolean)) void calculate(undefined, true);
   }, [requestKey, planWanted, view]);
@@ -159,7 +159,7 @@ export default function App() {
     if (letter === 'A') setOrigin(place); else setDestination(place);
     invalidatePlan();
   }
-  function invalidatePlan(resetWanted = true) { planSequence.current++; setPlanning(false); setPlan(null); setPlanError(''); setHistoryTrace([]); if (resetWanted) { setPlanWanted(false); setDemoStreetNames([]); } }
+  function invalidatePlan(resetWanted = true) { planSequence.current++; setPlanning(false); setPlan(null); setPlanError(''); setHistoryTrace([]); if (resetWanted) setPlanWanted(false); }
   function changeMapTime(value: string | null) {
     if (value && departureMode === 'scheduled' && inputISO(value) === departureISO && view !== 'navigation') return;
     lastPlanKey.current = '';
@@ -237,20 +237,14 @@ export default function App() {
     } catch (e) { notify(e instanceof Error ? e.message : 'Could not create the demo restriction.'); }
     finally { setDemoBusy(false); }
   }
-  async function loadStreetDemo() {
-    if (streetDemoBusy) return;
-    invalidatePlan(); const sequence = planSequence.current; setStreetDemoBusy(true);
-    try {
-      const demo = await send<StreetRouteDemo>('/demos/street-route', { at: departureISO });
-      await reload();
-      if (sequence !== planSequence.current || latestView.current !== 'journey') return;
-      setOrigin(demo.origin); setDestination(demo.destination); setWaypoints([]); setDemoStreetNames(demo.streetNames);
-      setSelectedClosure(demo.closureId ?? null); setStreetDemoClosureId(demo.closureId ?? null); setDrawing(null); setEditorOpen(false); setMode('browse');
-      lastPlanKey.current = ''; setPlanWanted(true); setPanelExpanded(false);
-      focusPoints([demo.origin.coordinate, demo.destination.coordinate]);
-      notify('F-8 street detour demo loaded.');
-    } catch (error) { if (sequence === planSequence.current) setPlanError(error instanceof Error ? error.message : 'Could not load the street demo.'); }
-    finally { setStreetDemoBusy(false); }
+  function tryDemoJourney(journey: { origin: Place; destination: Place }) {
+    // A slow demo request must not replace choices edited while it was pending.
+    if (latestJourneyInput.current !== journeyInputKey) return;
+    invalidatePlan();
+    setOrigin(journey.origin); setDestination(journey.destination); setWaypoints([]);
+    setSelectedClosure(null); setDrawing(null); setEditorOpen(false); setMode('browse');
+    lastPlanKey.current = ''; setPlanWanted(true); setView('journey'); setShowClosures(true); setPanelExpanded(false);
+    focusPoints([journey.origin.coordinate, journey.destination.coordinate]);
   }
   function exportClosures() {
     downloadJSON('manzil-restrictions.geojson', { type: 'FeatureCollection', features: state?.closures.map(({ geometry, ...properties }) => ({ type: 'Feature', geometry, properties })) ?? [] });
@@ -286,7 +280,7 @@ export default function App() {
     await reload(); navigate('commutes'); notify('Usual journey saved. You can check its next departure here.');
   }
   async function changeMapStyle(mapStyle: MapStyleId) {
-    if (mapStyleBusy || !state || state.profile.mapStyle === mapStyle) return;
+    if (mapStyleBusy || !state || normalizeMapStyleId(state.profile.mapStyle) === mapStyle) return;
     setMapStyleBusy(true);
     try {
       const profile = await send<LocalProfile>('/profile', { mapStyle }, 'PATCH');
@@ -314,17 +308,16 @@ export default function App() {
   const mapInstructions = mode === 'origin' ? 'Choose start' : mode === 'destination' ? 'Choose destination' : mode === 'waypoint' ? `Choose stop ${pickingWaypoint + 1}` : ['point', 'line', 'polygon'].includes(mode) ? `Draw ${mode === 'point' ? 'a restriction' : mode === 'line' ? 'the closed road' : 'the closed area'} · Esc to pause` : '';
   return <div className="app-shell">
     <a className="skip-link" href="#workspace-panel">{t("Skip to controls")}</a>
-    <header className="app-header"><button className="brand" onClick={() => navigate('journey')} aria-label={t("Manzil journey planner")}><img src="/manzil-logo.png" width="42" height="42" alt={t("Manzil Urdu calligraphy")} /><span className="brand-name">{t("manzil")}<span className="brand-dot">{t(".")}</span></span></button><MapTimeControl at={mapDepartureAt} live={departureMode === 'now'} onChange={changeMapTime} /><div className="header-actions"><button className="language-switch" data-tour="language" lang={language === 'en' ? 'ur' : 'en'} onClick={() => setLanguage(language === 'en' ? 'ur' : 'en')} aria-label={language === 'en' ? 'اردو میں دیکھیں' : 'View in English'}>{language === 'en' ? 'اردو' : 'English'}</button><button className="text-button account-trigger" onClick={() => user ? navigate('profile') : setAccountOpen(true)}>{user ? t(user.displayName ?? 'Guest') : t("Sign in")}</button><button className={`icon-button notification-button ${view === 'alerts' ? 'selected' : ''}`} aria-label={`Alerts${unread ? `, ${unread} unread` : ''}`} onClick={() => navigate('alerts')}><Bell size={22} />{unread > 0 && <span className="notification-count">{unread}</span>}</button><button className="workspace-avatar" aria-label={t("Open profile and settings")} onClick={() => navigate('profile')}>{(user?.displayName ?? 'M').slice(0, 1).toUpperCase()}</button></div></header>
-    {mapStylesOpen && state && <MapStylePicker value={state.profile.mapStyle ?? 'streets'} disabled={mapStyleBusy} onChange={changeMapStyle} onClose={() => setMapStylesOpen(false)} />}
+    <header className="app-header"><button className="brand" onClick={() => navigate('journey')} aria-label={t("Manzil journey planner")}><img src="/manzil-logo.png" width="42" height="42" alt={t("Manzil Urdu calligraphy")} /><span className="brand-name">{t("manzil")}<span className="brand-dot">{t(".")}</span></span></button><MapTimeControl at={mapDepartureAt} live={departureMode === 'now'} onChange={changeMapTime} /><div className="header-actions"><button className="language-switch" data-tour="language" lang={language === 'en' ? 'ur' : 'en'} onClick={() => setLanguage(language === 'en' ? 'ur' : 'en')} aria-label={language === 'en' ? 'اردو میں دیکھیں' : 'View in English'}>{language === 'en' ? 'اردو' : 'English'}</button><button className="text-button account-trigger" type="button" title={user ? t("Open profile") : undefined} onClick={() => user ? navigate('profile') : setAccountOpen(true)}>{user && <UserRound size={17} aria-hidden="true" />}<span>{user ? t(profileName) : t("Sign in")}</span>{user && <ChevronRight size={15} aria-hidden="true" />}</button><button className={`icon-button notification-button ${view === 'alerts' ? 'selected' : ''}`} aria-label={`Alerts${unread ? `, ${unread} unread` : ''}`} onClick={() => navigate('alerts')}><Bell size={22} />{unread > 0 && <span className="notification-count">{unread}</span>}</button><button className="workspace-avatar" aria-label={t("Open profile and settings")} onClick={() => navigate('profile')}>{(user ? profileName : 'M').slice(0, 1).toUpperCase()}</button></div></header>
+    {mapStylesOpen && state && <MapStylePicker value={mapStyle} disabled={mapStyleBusy} onChange={changeMapStyle} onClose={() => setMapStylesOpen(false)} />}
     <div className="workspace">
-      <nav className="nav-rail" aria-label={t("Main navigation")}>{NAV.filter(item => item.id !== 'activity' || !!user).map(({ id, icon: Icon, label }) => <button className={`nav-item ${view === id || id === 'journey' && view === 'navigation' || id === 'profile' && view === 'sources' ? 'active' : ''}`} key={id} aria-current={view === id ? 'page' : undefined} onClick={() => navigate(id)}><Icon size={23} strokeWidth={1.9} aria-hidden="true" /><span>{t(label)}</span></button>)}<div className="rail-bottom"><span>{t("منزل")}</span><small>{t("ISB")}</small></div></nav>
+      <nav className="nav-rail" aria-label={t("Main navigation")}>{NAV.filter(item => item.id !== 'activity' || !!user).map(({ id, icon: Icon, label }) => <button className={`nav-item ${view === id || id === 'journey' && view === 'navigation' || id === 'profile' && view === 'sources' ? 'active' : ''}`} key={id} aria-current={view === id ? 'page' : undefined} onClick={() => navigate(id)}><Icon size={23} strokeWidth={1.9} aria-hidden="true" /><span>{t(label)}</span></button>)}</nav>
       <aside ref={panelRef} className={`side-panel ${panelExpanded ? 'is-expanded' : ''}`} id="workspace-panel" aria-label={`${view} controls`}>
         <button className="sheet-size-toggle" aria-label={panelExpanded ? 'Show more of the map' : 'Expand controls'} aria-expanded={panelExpanded} onClick={() => setPanelExpanded(!panelExpanded)}><span /></button>
         {!state ? <div className="panel-content"><span className="eyebrow">{t("MANZIL LOCAL")}</span><h1>{t("Getting the road ready.")}</h1><p className="muted">{t("Connecting to your local workspace…")}</p>{startupError && <><div className="error-box">{t(startupError)}</div><button className="secondary-button" onClick={() => reload().catch(() => {})}><RefreshCw size={16} />{t("Retry connection")}</button><p className="small muted">{t("Run ")}<code>{t("npm run dev")}</code> {t("from the project folder.")}</p></>}</div> : <>
           {!online && <div className="offline-banner"><WifiOff size={16} />{t("Connection lost. Showing the last loaded data.")}</div>}
           <div className="panel-content" hidden={view !== 'journey'}>
             <div className="section-heading journey-heading"><h1>{plan ? t("Your routes") : t("Where to?")}</h1><button className="text-button" data-tour="help" onClick={() => setHelpOpen(!helpOpen)} aria-expanded={helpOpen}>{t("Help & demos")}</button></div>
-            <button className="secondary-button full" disabled={streetDemoBusy} onClick={loadStreetDemo}><FlaskConical size={18} />{t('Try street detour')}</button>
             <details className="journey-search" open={!plan}><summary><Route size={20} /><span><strong>{origin?.name ?? t('Choose a starting point')}</strong><small>{t("to ")}{destination?.name ?? t('your destination')}{waypoints.length ? ` · ${waypoints.length} stop${waypoints.length === 1 ? t("") : t("s")}` : t("")}</small></span><Pencil size={17} /></summary><form className="journey-form" data-tour="search" onSubmit={calculate}>
               <div className="endpoints"><PlaceInput label={t("Starting point")} letter="A" value={origin} active={mode === 'origin'} onPick={() => setMode(mode === 'origin' ? 'browse' : 'origin')} onChange={place => { setOrigin(place); invalidatePlan(); }} /><button type="button" className="swap-button" aria-label={t("Reverse journey")} onClick={() => { setOrigin(destination); setDestination(origin); setWaypoints(current => [...current].reverse()); setMode('browse'); invalidatePlan(); }}><ArrowDownUp size={16} /></button>
                 {waypoints.map((place, index) => <div className="waypoint-row" key={index}><PlaceInput label={`Stop ${index + 1}`} letter={`${index + 1}`} value={place} active={mode === 'waypoint' && pickingWaypoint === index} onPick={() => { setPickingWaypoint(index); setMode(mode === 'waypoint' && pickingWaypoint === index ? 'browse' : 'waypoint'); }} onChange={next => changeWaypoint(index, next)} /><div className="waypoint-actions"><button type="button" className="icon-button small" aria-label={`Move stop ${index + 1} earlier`} disabled={index === 0} onClick={() => moveWaypoint(index, -1)}><ArrowUp size={15} /></button><button type="button" className="icon-button small" aria-label={`Move stop ${index + 1} later`} disabled={index === waypoints.length - 1} onClick={() => moveWaypoint(index, 1)}><ArrowDown size={15} /></button><button type="button" className="icon-button small danger-text" aria-label={`Remove stop ${index + 1}`} onClick={() => { setWaypoints(current => current.filter((_, i) => i !== index)); setMode('browse'); invalidatePlan(); }}><X size={16} /></button></div></div>)}
@@ -336,8 +329,8 @@ export default function App() {
             {planError && <div className="error-box" role="alert">{t(planError)}</div>}
             {!state.graph.ready && <div className="error-box">{t("Local road data is unavailable. Online routing is available for Pakistan journeys.")}</div>}
             {stale && <div className="notice-box warning"><RefreshCw size={17} /><div><strong>{t("Restrictions changed")}</strong><p>{t("Replan this journey to use the latest map and schedule.")}</p></div></div>}
-            {plan && <RouteResults updating={stale} plan={plan} selectedId={selectedRouteId} onSelect={selectRoute} onNavigate={() => { setNavigationPosition(null); navigate('navigation'); }} onSaveCommute={() => { setCommuteOpen(n => n + 1); navigate('commutes'); }} onDemo={addDemo} demoBusy={demoBusy} showDemo streetDemoNames={demoStreetNames} onReopenDemo={streetDemoClosure ? () => { void cancelClosure(streetDemoClosure); } : undefined} />}
-            {view === 'journey' && <DemoClosures at={departureISO} revision={state.eventRevision} reload={reload} notify={notify} onFocus={focusPoints} />}
+            {plan && <RouteResults updating={stale} plan={plan} selectedId={selectedRouteId} onSelect={selectRoute} onNavigate={() => { setNavigationPosition(null); navigate('navigation'); }} onSaveCommute={() => { setCommuteOpen(n => n + 1); navigate('commutes'); }} onDemo={addDemo} demoBusy={demoBusy} showDemo />}
+            {view === 'journey' && <DemoClosures at={departureISO} revision={state.eventRevision} reload={reload} notify={notify} onFocus={focusPoints} onTryJourney={tryDemoJourney} />}
             {view === 'journey' && helpOpen && <div className="help-panel"><button className="text-button" onClick={() => { navigate('journey'); setTourOpen(true); }}>{t('Replay tour')}</button><button className="text-button" onClick={() => navigate('closures')}>{t('Road closures')}</button><button className="text-button" onClick={() => navigate('sources')}>{t('Source updates')}</button></div>}
           </div>
           <div className="panel-content" hidden={view !== 'closures'}>
@@ -347,7 +340,7 @@ export default function App() {
               <div className="filter-row"><span className="small muted">{t("At ")}{time(departureISO)} {t("· ")}{dayDate(departureISO)}</span><select className="small-select" aria-label={t("Filter restrictions")} value={closureFilter} onChange={e => setClosureFilter(e.target.value)}><option value="current">{t("Current & upcoming")}</option><option value="active">{t("Active")}</option><option value="scheduled">{t("Scheduled")}</option><option value="draft">{t("Drafts")}</option><option value="all">{t("All restrictions")}</option></select></div>
               {!visibleClosures.length && <div className="empty-state"><Flag size={32} /><h3>{t("A clean slate")}</h3><p>{t("No restrictions in this view. Add a point, draw along a road or outline an area.")}</p><button className="text-button" onClick={() => beginClosure()}>{t("Create your first restriction")}<ArrowRight size={15} /></button></div>}
               {visibleClosures.map(closure => { const status = closureState(closure, departureISO); return <article key={closure.id} className={`closure-card ${selectedClosure === closure.id ? 'selected' : ''}`}><button className="closure-main" onClick={() => { setSelectedClosure(closure.id); focusPoints(closure.geometry.coordinates[0] as Coordinate[]); }}><span className={`closure-symbol ${status}`}><Flag size={17} /></span><span><span className="closure-title">{closure.title}</span><span className={`tag ${status === 'active' ? 'red' : status === 'scheduled' ? 'orange' : 'neutral'}`}>{t(status)}</span></span><ChevronRight size={16} /></button><div className="closure-card-details"><span><CalendarClock size={14} />{dateTime(closure.startsAt)}</span><span><Clock3 size={14} />{closure.endsAt ? `Until ${dateTime(closure.endsAt)}` : t("Until cancelled · end unknown")}</span>{closure.description && <p>{closure.description}</p>}{closure.sourceUrl && <a className="text-button" href={closure.sourceUrl} target="_blank" rel="noreferrer">{t("Source")}<ArrowUpRight size={13} /></a>}<div className="row"><button className="text-button" onClick={() => editClosure(closure)}><Pencil size={14} />{t("Edit")}</button>{closure.status !== 'cancelled' && <button className="text-button danger-text" onClick={() => cancelClosure(closure)}><X size={14} />{t("Cancel restriction")}</button>}</div></div></article>; })}
-              {view === 'closures' && <DemoClosures at={departureISO} revision={state.eventRevision} reload={reload} notify={notify} onFocus={focusPoints} />}
+              {view === 'closures' && <DemoClosures at={departureISO} revision={state.eventRevision} reload={reload} notify={notify} onFocus={focusPoints} onTryJourney={tryDemoJourney} />}
             </>}
           </div>
           <div className="panel-content" hidden={view !== 'commutes'}>{!user ? <PersonalFeatureGate onSignIn={() => setAccountOpen(true)} /> : <CommutePanel key={`commutes-${commuteOpen}`} state={state} origin={origin} destination={destination} waypoints={waypoints} initialOpen={commuteOpen > 0} reload={reload} notify={notify} onPlan={selectCommute} onSelectEndpoints={() => navigate('journey')} />}</div>
@@ -365,7 +358,7 @@ export default function App() {
         </>}
       </aside>
       <main className="map-workspace" aria-label={t("Journey map")}><Suspense fallback={<div className="map-status" role="status">{t("Loading the map…")}</div>}>
-        <MapView updating={stale} theme={theme} mapStyle={state?.profile?.mapStyle ?? 'streets'} mapDetail={state?.profile?.mapDetail ?? 'clean'} navigationPosition={navigationPosition} followPosition={view === 'navigation'} routeOptions={mapRouteOptions} onRouteSelect={id => { if (!stale) setSelectedRouteId(id); }} mode={mode} origin={origin} destination={destination} waypoints={waypoints} onWaypointMove={moveWaypointOnMap} closures={state?.closures ?? []} selectedClosureId={selectedClosure} selectedRoute={selectedRoute} baseline={stale || !plan?.conflicts.length ? null : plan.baseline} drawing={editorOpen && view === 'closures' ? drawing : null} departureAt={mapDepartureAt} focus={focus} showClosures={showClosures} showBaseline={showBaseline} recordedPoints={recordedPoints.length ? recordedPoints : historyTrace} onPick={pick} onDraw={setDrawing} onEndpointMove={changeEndpoint} onClosureSelect={id => { if (editorOpen) { notify('Finish or cancel the current edit before selecting another restriction.'); return; } setSelectedClosure(id); navigate('closures'); }} />
+        <MapView updating={stale} theme={theme} mapStyle={mapStyle} mapDetail={state?.profile?.mapDetail ?? 'clean'} navigationPosition={navigationPosition} followPosition={view === 'navigation'} routeOptions={mapRouteOptions} onRouteSelect={id => { if (!stale) setSelectedRouteId(id); }} mode={mode} origin={origin} destination={destination} waypoints={waypoints} onWaypointMove={moveWaypointOnMap} closures={state?.closures ?? []} selectedClosureId={selectedClosure} selectedRoute={selectedRoute} baseline={stale || !plan?.conflicts.length ? null : plan.baseline} drawing={editorOpen && view === 'closures' ? drawing : null} departureAt={mapDepartureAt} focus={focus} showClosures={showClosures} showBaseline={showBaseline} recordedPoints={recordedPoints.length ? recordedPoints : historyTrace} onPick={pick} onDraw={setDrawing} onEndpointMove={changeEndpoint} onClosureSelect={id => { if (editorOpen) { notify('Finish or cancel the current edit before selecting another restriction.'); return; } setSelectedClosure(id); navigate('closures'); }} />
         <div className="map-topline"><div className="city-chip"><MapPinned size={17} /><span>{t("Pakistan")}</span></div><div className="map-layer-controls"><button type="button" className="map-style-trigger" aria-label={t("Choose map style")} aria-expanded={mapStylesOpen} aria-controls="map-style-picker" onClick={() => setMapStylesOpen(!mapStylesOpen)}><Palette size={17} /><span>{t("Style")}</span></button><button aria-label={t("Show restrictions layer")} aria-pressed={showClosures} className={showClosures ? 'active' : ''} onClick={() => setShowClosures(!showClosures)}><Flag size={15} /><span>{t("Closures")}</span>{activeCount > 0 && <b>{activeCount}</b>}</button>{!!plan?.conflicts.length && !stale && <button aria-label={t("Show blocked route layer")} aria-pressed={showBaseline} className={showBaseline ? 'active blocked-toggle' : ''} onClick={() => setShowBaseline(!showBaseline)}>{showBaseline ? <Eye size={15} /> : <EyeOff size={15} />}<span>{t("Blocked route")}</span></button>}</div></div>
         {mapInstructions && <div className="map-instructions" role="status"><span className="status-dot" />{t(mapInstructions)}<button className="icon-button small" aria-label={t("Stop map selection")} onClick={() => setMode('browse')}><X size={16} /></button></div>}
         <div className="map-actions"><button className="map-action" aria-label={t("Use my location as start")} title={t("Use my location as start")} onClick={locate}><LocateFixed size={20} /></button><button className={`map-action ${editorOpen ? 'active' : ''}`} aria-label={t("Add restriction on map")} title={t("Add restriction")} onClick={() => beginClosure()}><Plus size={21} /></button><button className="map-action" aria-label={t("Fit journey on map")} title={t("Fit journey")} onClick={() => { if (selectedRoute) focusPoints(selectedRoute.geometry.coordinates as Coordinate[]); else if (origin && destination) focusPoints([origin.coordinate, destination.coordinate]); else focusPoints([[72.97, 33.60], [73.16, 33.75]]); }}><MapPinned size={20} /></button></div>

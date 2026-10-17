@@ -1,5 +1,7 @@
 /** App-owned copy only. User notices, names and original source evidence remain verbatim. */
 export const urdu: Record<string, string> = {
+  'Classic': 'روایتی', 'Open profile': 'پروفائل کھولیں', 'Try route': 'راستہ آزمائیں', 'Add defaults': 'بنیادی نمونے شامل کریں',
+  'Try labelled test scenarios in Demo closures, or replay this tour from Help. This tour never changes roads or requests location.': 'نمونہ بند راستوں میں آزمائشی صورتیں منتخب کریں، یا مدد سے رہنمائی دوبارہ دیکھیں۔ یہ رہنمائی راستے نہیں بدلتی اور مقام کی اجازت نہیں مانگتی۔',
   'Local Firebase emulators': 'مقامی فائر بیس ایمولیٹرز',
   'Personal profile · your account': 'ذاتی پروفائل · آپ کا اکاؤنٹ', 'Cloud': 'کلاؤڈ',
   'Alerts update when your saved journeys are checked.': 'آپ کے محفوظ سفر کی جانچ ہونے پر اطلاعات تازہ ہوتی ہیں۔',

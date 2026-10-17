@@ -13,7 +13,7 @@ const steps = [
   { title: 'Read the map', text: 'Blue lines are route choices. Red roads are closed at the selected time; amber markers are upcoming closures.', target: '.map-legend' },
   { title: 'Navigate with confidence', text: 'Find routes, select one, then start GPS guidance. Choose English or Urdu voice before you leave.', target: '.plan-button' },
   { title: 'Make it yours', text: 'Change language and map style here. Sign in to use saved journeys and personal history.', target: '[data-tour="language"]' },
-  { title: 'Explore at your own pace', text: 'Try the street detour and labelled demo closures in the planner, or replay this tour from Help. This tour never changes roads or requests location.', target: '[data-tour="help"]' },
+  { title: 'Explore at your own pace', text: 'Try labelled test scenarios in Demo closures, or replay this tour from Help. This tour never changes roads or requests location.', target: '[data-tour="help"]' },
 ];
 export function needsTour() { try { return !localStorage.getItem(TOUR_KEY); } catch { return true; } }
 export default function WelcomeTour({ onClose }: { onClose: () => void }) {

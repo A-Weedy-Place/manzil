@@ -1,42 +1,53 @@
-# Local road-closure scenarios
+# Closure testing scenarios
 
-These are synthetic testing controls over real imported Islamabad roads. They are never scraped notices or verified traffic reports. Every generated closure title begins **Demo ·** and its description retains an internal ownership tag. The ordinary closure editor can inspect these records.
+**Demo closures** contains ten explicitly synthetic examples over real imported Islamabad roads. They are not scraped notices or verified traffic reports. Every generated event has a **Demo ·** title and an ownership tag. Published examples use the same closure geometry, selected-time display and normal route validation as other published events.
 
-Demo controls are directly accessible to guests and signed-in users. **Demo closures** appears in both the planner and Closures view; expand it for the six scenarios and Add all/Clear demos. **Block a point on this route** appears in route results, and the map always shows the **Add restriction** plus button. Opening Help is not required. Guests can skip the automatic tutorial to use these controls immediately.
+In Firebase/emulator modes, enabling, cancelling or trying a scenario changes shared closures and requires an administrator. Guests and ordinary users can view already published examples and plan around them. Standalone localhost mode retains its single-user development controls. These are not separate navigation modes.
 
-## One-click street detour
+## Try ordinary street rerouting
 
-Click **Try street detour** directly below the planner heading. It loads **Park Road · F-8 northeast → Park Road · F-8 southwest**, adds/refreshes a short owned Demo closure on Park Road at the selected time, and calculates the real route automatically. No intermediate stops are forced into the request: the normal router chooses the detour itself.
+Four rows offer **Try route**. The action enables that row's closure, fills its suggested start and destination, clears intermediate stops and invokes the ordinary planner. No streets or detour waypoints are forced. There is no separate Street T2 feature or special routing engine.
 
-- Direct route with the demo road open: approximately **1.09 km / 2 min**.
-- First validated detour: approximately **1.35 km / 3 min**, via **Street 20 → Street 25 → Street 21**.
-- About **489 m** of that detour is on original OSM ways tagged `highway=residential`. The regression checks exact OSM way IDs and directed edges, not merely names. Street 25's nearby footway is excluded.
-- **Reopen demo road** cancels only this owned synthetic restriction and automatically restores the direct route. **Try street detour** blocks it again. The existing six scenarios and ordinary closures are preserved.
-- This example also passes with all six catalogue demos enabled. Other user restrictions can still make it unavailable; no precomputed geometry is substituted for a plan.
+| Demo | Direct route, road open | First validated detour | Residential part of detour |
+| --- | --- | --- | --- |
+| Park Road · F-8 | 1.09 km / about 2 min | 1.35 km / about 3 min, Streets 20 → 25 → 21 | 489 m |
+| Rohtas Road · G-9 | 1.12 km / about 2 min | 1.25 km / about 3 min, Streets 36 → 37 → 43 | 361 m |
+| Tipu Sultan Road · I-8 | 0.78 km / about 2 min | 1.12 km / about 3 min, Streets 104 → 102 | 1,042 m |
+| Sumbal Road · F-10 | 0.73 km / about 2 min | 0.92 km / about 2 min, Streets 57 → 53 → 40 | 396 m |
 
-The source ways include Park Road `8096411`/`159502667`, Street 20 `288861053`, Street 25 `22723925`/`22724330` and Street 21 `158316584` in the bundled attributed OSM snapshot. Estimates are ordinary road speeds without live traffic. The UI shows the street names from the currently selected result, and rounded time/distance.
+These measurements are for one example at a time on the bundled OSM snapshot, with ordinary speed estimates and no live traffic. The UI rounds durations to the nearest minute, with a one-minute minimum. Other published closures, graph updates or departure times can change the chosen route. No measured result is stored as a route substitute. An unavailable plan remains unavailable.
 
-## Toggleable road scenarios
+The new regression tests verify that every selected segment is an original directed graph edge, check its source OSM `highway=residential` tags, validate the closure conflict and clear detour, then cancel the event and confirm the original route returns. Private roads and footways are not shortcuts. Street routing is enabled for every normal journey: the engine uses estimated travel time, so a longer main road can still beat a shorter slow street. A separate speed/access regression verifies both orderings and automatic street selection after the main road closes.
 
-| Scenario ID | Location | Initial schedule relative to selected map time |
-| --- | --- | --- |
-| `faisal-avenue` | Faisal Avenue near the PIMS/Centaurus approaches | Active: −30 min to +2 hr |
-| `nazimuddin-road` | Sir Khwaja Nazimuddin Road | Active: −30 min to +2 hr |
-| `ibn-e-sina` | Ibn-e-Sina Road near PIMS | Active: −30 min to +2 hr |
-| `margalla-road` | Margalla Avenue | Active: −30 min to +2 hr |
-| `aabpara-future` | Muncipal Road by Aabpara | Future: +45 min to +2 hr 30 min |
-| `zero-point-expired` | Islamabad Expressway by Zero Point | Expired: −2 hr to −1 hr |
+Try the four rows individually to compare different parts of Islamabad. Turn a row off to reopen its road. **Clear demos** cancels owned catalogue events and retains their history. Re-enabling reuses their event IDs. The optional route examples are excluded from **Add defaults** to keep the original six-scenario baseline stable; they can still be combined deliberately using their individual toggles.
 
-Each scenario follows a short contiguous chain of named graph edges. A 60-meter-wide corridor deliberately closes several graph segments; this can affect adjacent carriageways, ramps or stacked roads conservatively. Red coating is clipped to the portions actually inside/on that area, leaving open approach junctions clear. It does not claim lane-level precision. **Clear demos** in this catalogue affects these six toggles; use **Reopen demo road** for the separately loaded street example.
+## Full catalogue and schedules
 
-Active sample chains avoid the preset landmark pins so that closing a road demonstrates a detour rather than automatically closing the destination itself. With all four active samples enabled, the tested Faisal Mosque → Centaurus preset still produces valid detours. This does not guarantee that every endpoint pair remains reachable with multiple closures; unavailable results can still be correct or reflect the bounded search.
+Schedules are created relative to the selected map time when a disabled example is enabled. An already enabled example is not silently rescheduled when the map clock moves.
 
-1. Enable one active scenario, select nearby endpoints on opposite sides, and plan at the selected time. Recommended blue routes must pass closure validation; an inaccessible original route can be retained separately as evidence.
-2. Add several active scenarios to test wider disruptions. If no route is verified, the result must say unavailable rather than draw a disconnected shortcut.
-3. Enable Aabpara, then move the map time to its displayed start. It becomes bright red exactly at that start, and disappears at its end. The route planner separately checks whether your vehicle would reach it while active.
-4. Enable Zero Point to inspect an expired example. It remains absent from the red layer until the map time moves back inside its window.
-5. Turn demos off to remove their routing effect. Saved ordinary closures are preserved. Repeated enabling is idempotent; to schedule a demo around a different instant, disable and enable it again there.
+| Scenario ID | Road/area | New schedule | Included in Add defaults |
+| --- | --- | --- | --- |
+| `faisal-avenue` | Faisal Avenue near PIMS/Centaurus approaches | Active: −30 min to +2 hr | Yes |
+| `nazimuddin-road` | Sir Khwaja Nazimuddin Road | Active: −30 min to +2 hr | Yes |
+| `ibn-e-sina` | Ibn-e-Sina Road near PIMS | Active: −30 min to +2 hr | Yes |
+| `margalla-road` | Margalla Avenue | Active: −30 min to +2 hr | Yes |
+| `aabpara-future` | Muncipal Road by Aabpara | Future: +45 min to +2 hr 30 min | Yes |
+| `zero-point-expired` | Islamabad Expressway by Zero Point | Expired: −2 hr to −1 hr | Yes |
+| `park-road-street-detour` | Park Road · F-8 | Active: −30 min to +2 hr | No |
+| `rohtas-road-streets` | Rohtas Road · G-9 | Active: −30 min to +2 hr | No |
+| `tipu-sultan-streets` | Tipu Sultan Road · I-8 | Active: −30 min to +2 hr | No |
+| `sumbal-road-streets` | Sumbal Road · F-10 | Active: −30 min to +2 hr | No |
 
-Toggle records and schedules persist in the ignored local SQLite database. Generated closures, GPS data and local preferences are not committed. Enabling a demo does not create a source notice or Gemini outbox job.
+The original six follow contiguous chains of real named road edges with a 60 m corridor. The four optional examples use short 35 m point closures. Polygons can conservatively affect adjacent carriageways, ramps or stacked roads; this is not lane-level modeling. Bright red road coating is clipped to the area actually affected, leaving open approach junctions clear. Future examples show upcoming markers until the selected clock reaches their start; ended examples disappear from the active red layer. Route timing separately checks when a vehicle reaches the event, with the normal safety margin.
 
-The router includes eligible public residential/service streets, so it can find smaller-street detours when they are connected and legal in the imported graph. Missing roads, private/access-restricted roads and streets outside coverage are not invented. Bounded search can still miss an alternative. See [ROUTING.md](ROUTING.md) for limits and [API.md](API.md) for the catalogue/toggle contract.
+Active bulk sample chains avoid preset landmark pins. With all four active bulk samples enabled, the Faisal Mosque → Centaurus preset still produces a validated detour. The Park Road example also passes with the original six enabled. These cases do not guarantee every endpoint combination stays reachable when many events are enabled together.
+
+Turn an example off and on at another selected instant to reschedule it. Ordinary closures are preserved: cancellation requires the catalogue's exact saved ID and ownership tag, never a matching road name alone. Records live in the selected SQLite or Firestore adapter; enabling a synthetic example creates no source notice or Gemini job. Local databases and private records are not committed.
+
+## Compatibility and API
+
+`GET /api/demos?at=...` includes optional `suggestedJourney: {origin, destination}` and `includeInBulk: false` on the four route examples. Coordinates remain GeoJSON `[longitude, latitude]`. `POST /api/demos` uses the existing `{scenario, at, enabled}` contract for every row. The returned `coordinates` describe a closure centre/chain, never a route polyline.
+
+The older `/api/demos/street-route` preview/load endpoint remains for compatibility and fixture tests. It shares Park Road's event ID, ownership and cancellation history with the catalogue, so older clients do not create a second Park Road event. The main UI uses the catalogue and ordinary `/api/plan` workflow.
+
+Run `npm test -- tests/closure-roads-demos.test.ts tests/street-route-demo.test.ts tests/routing-public-streets.test.ts` for the 18 focused cases. API cases require localhost sockets. See [routing](ROUTING.md) for graph/search limits and [API](API.md) for authentication.

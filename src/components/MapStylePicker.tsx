@@ -2,10 +2,11 @@ import { t } from '../lib/language';
 import { useEffect, useRef } from 'react';
 import { Check, X } from 'lucide-react';
 import type { MapStyleId } from '../../shared/types';
-import { MAP_STYLES } from '../lib/mapStyle';
+import { MAP_STYLES, normalizeMapStyleId } from '../lib/mapStyle';
 
 interface ChoicesProps { value: MapStyleId; disabled?: boolean; onChange: (style: MapStyleId) => void }
 export function MapStyleChoices({ value, disabled, onChange }: ChoicesProps) {
+  value = normalizeMapStyleId(value);
   return <div className="map-style-choices" role="group" aria-label={t("Map style")}>{MAP_STYLES.map(style => <button type="button" key={style.id} className={`map-style-choice ${value === style.id ? 'selected' : ''}`} aria-pressed={value === style.id} aria-label={`${style.name} map style`} disabled={disabled} onClick={() => onChange(style.id)}>
     <span className="style-preview" aria-hidden="true"><svg viewBox="0 0 160 65" preserveAspectRatio="xMidYMid slice"><rect width="160" height="65" fill={style.colours[0]} /><path d="M0 0H64L76 20 47 44 0 35Z M112 43 160 26V65H130Z" fill={style.colours[1]} /><path d="M136 -10Q110 15 132 34T111 80" fill="none" stroke={style.colours[2]} strokeWidth="17" /><path d="M-10 54 174 10 M39 -6 85 77" fill="none" stroke={style.id === 'night' ? '#263b49' : '#d5c6a9'} strokeWidth="10" /><path d="M-10 54 174 10 M39 -6 85 77" fill="none" stroke={style.colours[3]} strokeWidth="6" /><path d="M-2 20 100 56 M62 -2 152 54" fill="none" stroke={style.id === 'night' ? '#49606e' : '#fff'} strokeWidth="4" /></svg>{value === style.id && <span className="style-selected-tick"><Check size={13} /></span>}</span>
     <strong>{t(style.name)}</strong><small>{t(style.description)}</small>
