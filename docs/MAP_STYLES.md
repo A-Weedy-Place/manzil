@@ -18,6 +18,12 @@ The API/storage contract continues to accept `streets | outdoors | contrast | mi
 
 Base JSON is cached per provider URL. Classic and both legacy aliases share Bright; superseded style fetches are cancelled. No new mapping dependencies, credentials or provider subscriptions were added. Internet is still required for provider styles/tiles and attribution is retained. See [OpenFreeMap's official customisation guide](https://openfreemap.org/quick_start/).
 
+## Route-switch stability
+
+The basemap effect depends only on normalized map style, map detail and an explicit restart. Selecting a route, refreshing the same snapshot, or changing the app's light/dark controls does not recreate the MapLibre map or reload its style. Retired Classic aliases normalize before the effect so switching equivalent IDs does not restyle. A missing preference now uses a dark Night fallback backdrop immediately, matching the eventual Night map rather than flashing a light placeholder. Genuine style changes retain existing `manzil-` route/closure sources and layers through the style transform.
+
+`tests/map-lifecycle.test.tsx` mounts the real React map component against an instrumented MapLibre boundary: route switches, copied polling payloads and app theme changes keep one map/style/source, unchanged data avoids worker re-indexing, and explicit detail changes perform a style update. Missing preferences and equivalent Classic aliases are covered too. These are lifecycle regression checks, not a claim to reproduce or fix every intermittent graphics/tile flash. Moving or zooming into uncached areas still requires network tiles; network errors and graphics-context interruptions retain explicit error/restart states.
+
 ## Minimal road visibility
 
 Minimal now uses darker slate minor roads (`#7a8c97`) and main roads (`#607988`), muted casings, stronger labels and pale green/blue geographic areas. This colour-only transformation retains upstream road widths, geometry, filters, opacity and zoom thresholds, including Clean's reduced label/POI density. Rail/ferry/pier lines are not recoloured as streets. Route blue and closure red remain separate overlays; the palette does not change legal access, route ranking or closure/time validation. The transformation follows the transportation layer names and filters in the [official upstream Positron style](https://github.com/openmaptiles/positron-gl-style/blob/master/style.json), rather than bundling another map engine or road network.

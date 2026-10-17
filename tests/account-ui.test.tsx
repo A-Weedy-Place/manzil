@@ -14,6 +14,37 @@ beforeEach(() => { vi.resetAllMocks(); setLanguage('en'); auth.create.mockResolv
 afterEach(() => { cleanup(); setLanguage('en'); });
 
 describe('simplified account entry', () => {
+  it('lets people pause the decorative entry scene without changing the form or entering the app', () => {
+    const close = vi.fn(); render(<AccountPanel entry onClose={close} />);
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'person@manzil.test' } });
+    const scenery = document.querySelector('.entry-doodles');
+    expect(scenery?.getAttribute('aria-hidden')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'Pause background animation' }));
+    expect(scenery?.getAttribute('data-paused')).toBe('true');
+    expect(screen.getByRole('button', { name: 'Play background animation' }).getAttribute('aria-pressed')).toBe('true');
+    expect((screen.getByLabelText('Email') as HTMLInputElement).value).toBe('person@manzil.test');
+    expect(close).not.toHaveBeenCalled(); expect(auth.signIn).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Play background animation' }));
+    expect(scenery?.getAttribute('data-paused')).toBe('false');
+    fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
+    expect(document.querySelector('.entry-doodles')).toBe(scenery);
+    expect(screen.getByRole('dialog', { name: 'Create account' })).toBeTruthy();
+  });
+
+  it('pauses decorative animation when the page is hidden and removes its visibility listener on exit', () => {
+    const remove = vi.spyOn(document, 'removeEventListener');
+    const { unmount } = render(<AccountPanel entry onClose={vi.fn()} />);
+    const visibility = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+    fireEvent(document, new Event('visibilitychange'));
+    expect(document.querySelector('.entry-doodles')?.getAttribute('data-paused')).toBe('true');
+    visibility.mockReturnValue(false);
+    fireEvent(document, new Event('visibilitychange'));
+    expect(document.querySelector('.entry-doodles')?.getAttribute('data-paused')).toBe('false');
+    unmount();
+    expect(remove.mock.calls.some(([event]) => event === 'visibilitychange')).toBe(true);
+    visibility.mockRestore(); remove.mockRestore();
+  });
+
   it('shows the English brand, an optional guest action and decorative map without environment clutter', () => {
     const close = vi.fn(); render(<AccountPanel entry onClose={close} />);
     expect(screen.getByRole('dialog', { name: 'Manzil' })).toBeTruthy();
@@ -54,6 +85,8 @@ describe('simplified account entry', () => {
   it('retains reset feedback, clears it when changing screens and keeps the in-app dialog compact', async () => {
     const close = vi.fn(); render(<AccountPanel onClose={close} />);
     expect(screen.queryByRole('complementary')).toBeNull();
+    expect(document.querySelector('.entry-doodles')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Pause background animation' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Forgot password?' }));
     expect(screen.queryByLabelText('Password')).toBeNull();
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'person@manzil.test' } });

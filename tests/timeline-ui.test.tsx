@@ -56,7 +56,6 @@ async function openApp(signedIn = false) {
   if (signedIn) signInDevelopment('user@manzil.test', 'ManzilUser123!');
   render(<App />);
   await screen.findByRole('button', { name: 'Find routes' });
-  if (!signedIn) fireEvent.click(await screen.findByRole('button', { name: 'Skip tour' }));
   await screen.findByTestId('map');
 }
 function previewInput(): HTMLInputElement {

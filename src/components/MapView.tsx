@@ -6,7 +6,7 @@ import type { Feature, FeatureCollection, Geometry, Polygon } from 'geojson';
 import type { Closure, Coordinate, Drawing, MapFocus, MapMode, MapStyleId, Place, RecordedPoint, RouteOption, RoutePath } from '../../shared/types';
 import { closureState, dateTime } from '../lib/format';
 import { api } from '../lib/api';
-import { emptyMapStyle, loadMapStyle, MAP_ATTRIBUTION, type MapDetail, type MapTheme } from '../lib/mapStyle';
+import { emptyMapStyle, loadMapStyle, MAP_ATTRIBUTION, normalizeMapStyleId, type MapDetail, type MapTheme } from '../lib/mapStyle';
 import { closureRoadKey, exclusiveBaselineSegments, routeMatchesMapSnapshot, visibleClosureRoads, type ClosureRoads } from '../lib/mapOverlays';
 import { preserveMapOverlays, updateSourceIfChanged } from '../lib/mapSourceUpdates';
 
@@ -165,7 +165,9 @@ export default function MapView(props: MapViewProps) {
   const cachedRoads = roadCache.current.get(roadKey);
   const snapshotRoads = cachedRoads ? { key: roadKey, data: cachedRoads } : closureRoads;
   const hasActiveClosures = props.closures.some(closure => closureState(closure, props.departureAt) === 'active');
-  const mapStyle = props.mapStyle ?? 'night', theme = mapStyle === 'night' ? 'dark' : 'light', detail = props.mapDetail ?? 'clean';
+  // Keep the basemap identity independent of app theme, route selection and
+  // polling; retired palette aliases must not trigger an equivalent style swap.
+  const mapStyle = normalizeMapStyleId(props.mapStyle), theme = mapStyle === 'night' ? 'dark' : 'light', detail = props.mapDetail ?? 'clean';
 
   function pickRoad(coordinate: Coordinate) {
     const p = current.current;
@@ -201,7 +203,7 @@ export default function MapView(props: MapViewProps) {
     if (!container.current) return;
     let map: LibreMap;
     try {
-      map = new LibreMap({ container: container.current, style: emptyMapStyle(current.current.mapStyle === 'night' ? 'dark' : 'light'), center: [73.052, 33.715], zoom: 11.9, minZoom: 0, maxZoom: 19,
+      map = new LibreMap({ container: container.current, style: emptyMapStyle(normalizeMapStyleId(current.current.mapStyle) === 'night' ? 'dark' : 'light'), center: [73.052, 33.715], zoom: 11.9, minZoom: 0, maxZoom: 19,
         pitch: 0, minPitch: 0, maxPitch: 0, bearing: 0, dragRotate: false, pitchWithRotate: false, touchPitch: false,
         renderWorldCopies: false, pixelRatio: Math.min(window.devicePixelRatio || 1, 1.75), reduceMotion: reducedMotion(), fadeDuration: 0, maxTileCacheZoomLevels: 2, attributionControl: false });
     } catch {

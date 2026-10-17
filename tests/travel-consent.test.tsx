@@ -9,6 +9,9 @@ const mock = vi.hoisted(() => ({ userId: 'one' as string | null, api: vi.fn(), s
 vi.mock('../src/lib/api', () => ({ api: mock.api, send: mock.send }));
 vi.mock('../src/lib/auth', () => ({ AUTH_MODE: 'emulator', getAuthSession: () => ({ user: mock.userId ? { uid: mock.userId } : null }) }));
 vi.mock('../src/lib/images', () => ({ fileToPhotoDataUrl: mock.photo }));
+// Profile save/consent behavior does not depend on downloading the full gazetteer.
+// The separate real-city-data suite validates that catalogue and its source scope.
+vi.mock('../src/lib/pakistanCities', async original => ({ ...(await original<object>()), loadPakistanCities: async () => [{ name: 'Islamabad', region: '08', search: 'islamabad islamabad capital territory' }] }));
 const profile: LocalProfile = { id: 'local', displayName: 'Traveller', theme: 'light', mapStyle: 'outdoors', mapDetail: 'clean', browserNotifications: false, inferFrequentRoutes: false, transport: 'car', createdAt: '', updatedAt: '' };
 const state = (patch: Partial<LocalProfile> = {}) => ({ profile: { ...profile, ...patch }, trips: [], commutes: [], alerts: [], closures: [], notices: [], eventRevision: 0 } as unknown as AppState);
 const now = Date.parse('2026-10-17T08:00:00Z');

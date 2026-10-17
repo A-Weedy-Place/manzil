@@ -11,6 +11,7 @@ import './map-time.css';
 import './account.css';
 import './profile.css';
 import './account-settings.css';
+import './journey-controls.css';
 import App from './App';
 
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);

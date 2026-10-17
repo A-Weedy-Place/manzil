@@ -1,5 +1,5 @@
 .entry-loading { min-height:100dvh; display:grid; place-items:center; color:var(--green); background:var(--paper); }
-.account-entry { background:#24493e; }
+.account-entry { background:#15362d; }
 .account-entry .modal-card { width:min(100%,470px); box-shadow:0 12px 60px #17345618; }
 .guest-entry-action { display:flex; align-items:center; justify-content:center; gap:9px; margin:0 0 16px; }
 .workspace-avatar { overflow:hidden; }

@@ -36,17 +36,24 @@ it('explicitly connects emulator mode to loopback and retains the test account p
 it('prompts only a successfully registered UID and remembers its optional choice across reloads', async () => {
   const auth = await client('firebase');
   expect(auth.needsTravelDataChoice('new-user')).toBe(false);
+  expect(auth.needsRegistrationTour('new-user')).toBe(false);
   fixture.createAccount.mockResolvedValueOnce({ user: { uid: 'new-user' } });
   expect(await auth.createAccount(' new@example.test ', 'password')).toBe('new-user');
   expect(fixture.createAccount).toHaveBeenCalledWith(fixture.auth, 'new@example.test', 'password');
   expect(auth.needsTravelDataChoice('new-user')).toBe(true);
+  expect(auth.needsRegistrationTour('new-user')).toBe(true);
+  expect(auth.needsRegistrationTour('other-user')).toBe(false);
   expect(auth.needsTravelDataChoice('other-user')).toBe(false);
   vi.resetModules(); const restored = await client('firebase');
   expect(restored.needsTravelDataChoice('new-user')).toBe(true);
+  expect(restored.needsRegistrationTour('new-user')).toBe(true);
   restored.clearTravelDataChoicePrompt('other-user');
   expect(restored.needsTravelDataChoice('new-user')).toBe(true);
   restored.clearTravelDataChoicePrompt('new-user');
   expect(restored.needsTravelDataChoice('new-user')).toBe(false);
+  expect(restored.needsRegistrationTour('new-user')).toBe(true);
+  restored.clearRegistrationTour('new-user');
+  expect(restored.needsRegistrationTour('new-user')).toBe(false);
   vi.resetModules(); expect((await client('firebase')).needsTravelDataChoice('new-user')).toBe(false);
 });
 it('keeps registration pending when the SDK publishes its new UID before the create call resolves', async () => {
@@ -70,12 +77,24 @@ it('does not create an onboarding marker for failed registration and still suppo
   await expect(auth.createAccount('failed@example.test', 'password')).rejects.toThrow('could not be created');
   expect(auth.isCreatingAccount()).toBe(false);
   expect(auth.needsTravelDataChoice('failed-user')).toBe(false);
+  expect(auth.needsRegistrationTour('failed-user')).toBe(false);
   vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('Storage unavailable'); });
   fixture.createAccount.mockResolvedValueOnce({ user: { uid: 'memory-user' } });
   await auth.createAccount('memory@example.test', 'password');
   expect(auth.needsTravelDataChoice('memory-user')).toBe(true);
+  expect(auth.needsRegistrationTour('memory-user')).toBe(true);
   auth.clearTravelDataChoicePrompt('memory-user');
   expect(auth.needsTravelDataChoice('memory-user')).toBe(false);
+  auth.signOut(); expect(auth.needsRegistrationTour('memory-user')).toBe(false);
+});
+it('does not restart a registration tour after sign-out and ordinary sign-in', async () => {
+  const auth = await client('firebase');
+  fixture.createAccount.mockResolvedValueOnce({ user: { uid: 'new-user' } });
+  await auth.createAccount('new@example.test', 'password');
+  expect(auth.needsRegistrationTour('new-user')).toBe(true);
+  auth.signOut(); await auth.signInAccount('new@example.test', 'password');
+  expect(auth.needsRegistrationTour('new-user')).toBe(false);
+  expect(sessionStorage.getItem('manzil-registration-tour-v1:new-user')).toBeNull();
 });
 it('refuses to send requests to a mismatched standalone backend instead of falling back to shared local records', async () => {
   await client('firebase');

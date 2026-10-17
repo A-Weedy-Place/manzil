@@ -40,6 +40,12 @@ html[dir='rtl'] .map-topline, html[dir='rtl'] .map-bottom-info, html[dir='rtl'] 
 .tour-dots i { width: 7px; height: 7px; background: var(--border); border-radius: 50%; }
 .tour-dots i.active { width: 24px; border-radius: 5px; background: var(--green); }
 .tour-modal p { font-size: 15px; }
+.tour-map-key { display: grid; gap: 12px; padding: 0; margin: 18px 0; list-style: none; }
+.tour-map-key li { display: flex; align-items: center; gap: 10px; line-height: 1.5; }
+.tour-map-key i { flex: 0 0 24px; height: 6px; border-radius: 6px; }
+.tour-key-0 { background: #2164e8; }
+.tour-key-1 { background: #ff173c; }
+.tour-map-key .tour-key-2 { flex-basis: 12px; width: 12px; height: 12px; margin-inline: 6px; border-radius: 50%; background: #f6c43c; box-shadow: 0 0 0 1px #856300; }
 .tour-modal .row { gap: 9px; }
 @media (max-width: 760px) {
   .app-header { gap: 6px; padding-inline: 8px; }

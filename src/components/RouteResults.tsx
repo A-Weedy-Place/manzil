@@ -5,7 +5,6 @@ import type { FuelPriceStatus, PlanResponse, RouteOption, VehicleProfile } from 
 import { dateTime, distance, duration, time } from '../lib/format';
 import { estimateRouteFuel } from '../../shared/fuel';
 import { fuelDate, rupees } from '../lib/fuel';
-import FuelPrices from './FuelPrices';
 
 interface Props { vehicle?: VehicleProfile; fuel?: FuelPriceStatus; updating?: boolean; showDemo?: boolean; navigationLabel?: string; baselineSelected?: boolean; onBaselineSelect?: () => void; plan: PlanResponse; selectedId: string | null; onSelect: (route: RouteOption) => void; onSaveCommute: () => void; onNavigate: () => void; onDemo: () => void; demoBusy: boolean }
 export default function RouteResults({ vehicle, fuel, updating = false, showDemo = false, navigationLabel = 'Navigate', baselineSelected, onBaselineSelect, plan, selectedId, onSelect, onSaveCommute, onNavigate, onDemo, demoBusy }: Props) {
@@ -15,6 +14,8 @@ export default function RouteResults({ vehicle, fuel, updating = false, showDemo
   const driving = plan.options.filter(option => ['direct', 'detour', 'alternative'].includes(option.kind));
   const selected = driving.find(option => option.id === selectedId) ?? driving[0];
   const selectedFuel = selected && estimateRouteFuel(selected.distanceMeters, selected.departureAt, vehicle, fuel?.records ?? []);
+  const importantWarnings = [...new Set([...plan.warnings, ...selected?.warnings ?? []].flatMap(warning => /pins? snap|pins snapped|access between/i.test(warning) ? ['Check access between your pins and the nearby roads.'] : /past departure|departure is in the past|schedule replay/i.test(warning) ? ['Past dates show a schedule replay.'] : /reopening/i.test(warning) ? ['Announced reopening times may change.'] : /incomplete|coverage/i.test(warning) ? ['Only reported closures are checked.'] : []))];
+  const fuelStale = fuel?.state === 'stale' || fuel?.state === 'error' || !!fuel?.nextCheckAt && Date.parse(fuel.nextCheckAt) <= Date.now();
   const departures = plan.options.filter(option => ['leave_earlier', 'leave_later'].includes(option.kind));
   const via = (option: RouteOption) => [...new Set(option.steps.map(s => s.roadName).filter(name => name && !/unnamed|local road/i.test(name)))].slice(0, 3).join(' · ') || 'Local roads';
   function cost(distanceMeters: number, departureAt: string) {
@@ -44,9 +45,10 @@ export default function RouteResults({ vehicle, fuel, updating = false, showDemo
       <details className="road-sequence"><summary>{t("Road sequence ")}<ChevronDown size={16} /></summary><ol>{selected.steps.map((step, index) => <li key={index}><span>{t(step.instruction || step.roadName || 'Continue on local road')}</span><small>{distance(step.distanceMeters)}</small></li>)}</ol></details>
     </>}
     <p className="estimate-note">{t("Time estimates use road speeds, without live traffic.")}</p>
-    {vehicle?.kmPerLitre ? <>{selectedFuel && <p className="estimate-note">{t('Fuel price used')}: {rupees(selectedFuel.rates[0].pricePerLitre, 2)} {t('/ litre')} · {t('Effective from')} {fuelDate(selectedFuel.rates[0].effectiveFrom)}</p>}<p className="estimate-note">{t('Fuel costs use your mileage and the published reference price for the departure date. Future prices may change.')}</p><FuelPrices status={fuel} /></> : <p className="estimate-note">{t('Add vehicle mileage in Profile for fuel estimates.')}</p>}
+    {vehicle?.kmPerLitre ? selectedFuel ? <p className="estimate-note">{t('Estimated fuel')} · {rupees(selectedFuel.rates[0].pricePerLitre, 2)} {t('/ litre')} · {fuelDate(selectedFuel.rates[0].effectiveFrom)}{selected && Date.parse(selected.departureAt) > Date.now() && <span> · {t('Future prices may change.')}</span>}</p> : <p className="estimate-note" role="status">{t('Fuel prices unavailable. Check Profile for the latest reference.')}</p> : <p className="estimate-note">{t('Add vehicle mileage in Profile for fuel estimates.')}</p>}
     <p className="estimate-note">{t("Tolls and checkposts are not listed; charges and waiting times are not included.")}</p>
-    {plan.warnings.length > 0 && <details className="planning-notes"><summary>{t("Route details")}</summary>{[...new Set([...plan.warnings, ...selected?.warnings ?? []])].map((warning, i) => <p key={i}>{t(warning)}</p>)}</details>}
+    {selectedFuel && fuelStale && <p className="estimate-note fuel-price-warning" role="status">{t('Cached fuel reference. Latest check overdue or failed.')}</p>}
+    {importantWarnings.length > 0 && <ul className="route-important-notes" aria-label={t('Route cautions')}>{importantWarnings.map((warning, index) => <li key={index}>{t(warning)}</li>)}</ul>}
     {showDemo && <button className="text-button full centered" disabled={!plan.baseline || demoBusy} onClick={onDemo}><PlusDemo />{demoBusy ? t("Adding…") : t("Block a point on this route")}</button>}
   </fieldset></section>;
 }

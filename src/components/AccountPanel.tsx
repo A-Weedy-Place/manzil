@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { ArrowRight, ChevronDown, LoaderCircle, Mail, MapPin, ShieldCheck, X } from 'lucide-react';
+import { ArrowRight, ChevronDown, LoaderCircle, Mail, MapPin, Pause, Play, ShieldCheck, X } from 'lucide-react';
 import { t } from '../lib/language';
 import Modal from './Modal';
+import EntryDoodles from './EntryDoodles';
 import { DEV_ACCOUNTS, DEV_AUTH_ENABLED, EMULATOR_AUTH_ENABLED, FIREBASE_AUTH_ENABLED, signInAccount, createAccount, resetPassword } from '../lib/auth';
 
 type AccountScreen = 'login' | 'signup' | 'reset';
@@ -15,6 +16,7 @@ export default function AccountPanel({ onClose, entry = false, onAuthenticated, 
   const [screen, setScreen] = useState<AccountScreen>('login');
   const [email, setEmail] = useState(''), [password, setPassword] = useState(''), [error, setError] = useState('');
   const [busy, setBusy] = useState(false), [message, setMessage] = useState('');
+  const [backgroundPaused, setBackgroundPaused] = useState(false);
   const action = screen === 'signup' ? 'Create account' : screen === 'reset' ? 'Reset password' : 'Sign in';
   const unavailable = !(DEV_AUTH_ENABLED || FIREBASE_AUTH_ENABLED) || DEV_AUTH_ENABLED && screen !== 'login';
 
@@ -42,7 +44,7 @@ export default function AccountPanel({ onClose, entry = false, onAuthenticated, 
     finally { setBusy(false); }
   }
 
-  return <Modal titleId="account-title" onClose={onClose} className={`account-modal${entry ? ' account-entry' : ''}`}>
+  return <Modal titleId="account-title" onClose={onClose} className={`account-modal${entry ? ' account-entry' : ''}`} overlay={entry ? <EntryDoodles paused={backgroundPaused} /> : undefined}>
     <button className="icon-button modal-close" onClick={onClose} aria-label={t('Continue as guest')}><X size={20} /></button>
     <div className="account-layout">
       <section className="account-form-column">
@@ -77,6 +79,7 @@ export default function AccountPanel({ onClose, entry = false, onAuthenticated, 
       {entry && <aside className="account-map-preview" aria-label={t('Route preview')}>
         <img src="/manzil-route-preview.svg" alt="" className="account-map-art" />
         <div className="account-preview-city"><MapPin size={18} aria-hidden="true" />{t('Islamabad')}</div>
+        <button type="button" className="entry-motion-control" aria-label={t(backgroundPaused ? 'Play background animation' : 'Pause background animation')} title={t(backgroundPaused ? 'Play background animation' : 'Pause background animation')} aria-pressed={backgroundPaused} onClick={() => setBackgroundPaused(value => !value)}>{backgroundPaused ? <Play size={17} aria-hidden="true" /> : <Pause size={17} aria-hidden="true" />}</button>
         <div className="account-preview-legend" aria-hidden="true"><span><i className="preview-route-key" />{t('Recommended route')}</span><span><i className="preview-closed-key" />{t('Closed')}</span></div>
       </aside>}
     </div>

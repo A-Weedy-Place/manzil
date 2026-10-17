@@ -73,12 +73,18 @@ it('shows fuel costs for each actual alternative and keeps the blocked original 
   fireEvent.click(screen.getByRole('button', { name: 'Navigate' })); expect(props.onNavigate).toHaveBeenCalledTimes(1);
 });
 
+it.each(['error', 'stale'] as const)('keeps a compact cached-price disclosure on routes when the fuel check is %s', state => {
+  render(<RouteResults {...routeProps()} vehicle={vehicle} fuel={{ ...fuel, state }} />);
+  expect(screen.getByText('≈ PKR 310')).toBeTruthy();
+  expect(screen.getByText('Cached fuel reference. Latest check overdue or failed.').getAttribute('role')).toBe('status');
+});
+
 it('does not invent prices for missing mileage or an unknown historical fuel period', () => {
   const props = routeProps(); const ui = render(<RouteResults {...props} vehicle={{ ...vehicle, kmPerLitre: null }} fuel={fuel} />);
   expect(screen.queryByText(/≈ PKR/)).toBeNull(); expect(screen.getByText('Add vehicle mileage in Profile for fuel estimates.')).toBeTruthy();
   ui.rerender(<RouteResults {...props} vehicle={vehicle} fuel={{ ...fuel, records: [] }} />);
   expect(screen.queryByText(/≈ PKR/)).toBeNull(); expect(screen.getAllByText('Fuel estimate unavailable')).toHaveLength(2);
-  expect(screen.getByText('Unavailable')).toBeTruthy();
+  expect(screen.getByText('Fuel prices unavailable. Check Profile for the latest reference.')).toBeTruthy();
 });
 
 it('shows daily price provenance with date-only effective dates and labels a failed check as cached', () => {

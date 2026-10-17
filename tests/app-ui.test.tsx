@@ -23,6 +23,25 @@ beforeEach(() => {
   Element.prototype.scrollTo = vi.fn();
 });
 afterEach(() => { cleanup(); signOut(); vi.restoreAllMocks(); vi.unstubAllGlobals(); setLanguage('en'); document.documentElement.dir = 'ltr'; });
+it('offers departure comparisons only in Plan ahead and never requests them for the live map', async () => {
+  const requests: boolean[] = [];
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === '/api/plan') {
+      const request = JSON.parse(init!.body as string); requests.push(request.compareDepartures);
+      return new Response(JSON.stringify({ options: [{ ...option, departureAt: request.departureAt }], baseline: null, conflicts: [], warnings: [], evaluatedAt: date, graphVersion: 'test', eventRevision: 0, source: 'local-osm' }));
+    }
+    return responseFor(url);
+  }));
+  render(<App />); await screen.findByRole('button', { name: 'Find routes' });
+  expect(screen.queryByRole('checkbox', { name: 'Also compare leaving earlier or later' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Find routes' })); await waitFor(() => expect(requests).toEqual([false]));
+  fireEvent.click(screen.getByRole('button', { name: 'Plan ahead' }));
+  expect(screen.getByRole('checkbox', { name: 'Also compare leaving earlier or later' })).toHaveProperty('checked', true);
+  await waitFor(() => expect(requests.at(-1)).toBe(true));
+  fireEvent.click(screen.getByRole('button', { name: 'Map' }));
+  await waitFor(() => expect(requests.at(-1)).toBe(false));
+  expect(screen.queryByRole('checkbox', { name: 'Also compare leaving earlier or later' })).toBeNull();
+});
 it('recentres My location without editing endpoints, stops, route geometry or planned time', async () => {
   let locateSuccess!: PositionCallback;
   const getPosition = vi.fn((success: PositionCallback) => { locateSuccess = success; });
@@ -32,7 +51,6 @@ it('recentres My location without editing endpoints, stops, route geometry or pl
     return responseFor(url);
   });
   vi.stubGlobal('fetch', fetcher); render(<App />); await screen.findByRole('button', { name: 'Find routes' });
-  fireEvent.click(screen.getByRole('button', { name: 'Skip tour' }));
   fireEvent.click(screen.getByRole('button', { name: 'Plan ahead' }));
   fireEvent.click(screen.getByRole('button', { name: 'Add stop' }));
   act(() => capture.props!.onWaypointMove?.(0, [73.041, 33.72]));
@@ -104,6 +122,50 @@ it('takes an administrator from sign-in to the control centre', async () => {
   expect(await screen.findByRole('heading', { name: 'Control centre' })).toBeTruthy();
   expect(screen.getByRole('tab', { name: 'People' })).toBeTruthy();
 });
+it('does not automatically show the tour on ordinary login even on a browser without a completion flag', async () => {
+  sessionStorage.removeItem('manzil-entry-guest'); localStorage.removeItem('manzil-tour-v1');
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => responseFor(url)));
+  render(<App />);
+  fireEvent.click(screen.getByText('Choose a development account'));
+  fireEvent.click(screen.getByRole('button', { name: /Normal user/ }));
+  fireEvent.submit(screen.getByRole('form', { name: 'Sign in' }));
+  await screen.findByRole('button', { name: 'Find routes' });
+  expect(screen.queryByRole('dialog', { name: 'Welcome to Manzil' })).toBeNull();
+  expect(screen.queryByRole('dialog', { name: 'Personal trip data' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Help & demos' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Replay tour' }));
+  expect(screen.getByRole('dialog', { name: 'Welcome to Manzil' })).toBeTruthy();
+});
+it('walks through Closures, Saved and Profile without planning or requesting GPS and preserves a planned route', async () => {
+  const getCurrentPosition = vi.fn(), watchPosition = vi.fn();
+  Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition, watchPosition } });
+  const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === '/api/plan') { const request = JSON.parse(String(init?.body)); return new Response(JSON.stringify({ options: [{ ...option, departureAt: request.departureAt }], baseline: null, conflicts: [], warnings: [], evaluatedAt: date, graphVersion: 'test', eventRevision: 0, source: 'local-osm' })); }
+    return responseFor(url);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<App />); await screen.findByRole('button', { name: 'Find routes' });
+  fireEvent.click(screen.getByRole('button', { name: 'Plan ahead' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Find routes' }));
+  await waitFor(() => expect(capture.props?.routeOptions).toHaveLength(1));
+  const before = capture.props!;
+  fireEvent.click(screen.getByRole('button', { name: 'Help & demos' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Replay tour' }));
+  for (let index = 0; index < 9; index++) fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  expect(screen.getByRole('dialog', { name: 'Road closures' })).toBeTruthy();
+  expect(within(screen.getByRole('complementary', { name: 'closures controls' })).getByRole('heading', { name: 'Road closures' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  expect(screen.getByRole('button', { name: 'Saved' }).getAttribute('aria-current')).toBe('page');
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  expect(screen.getByRole('button', { name: 'Profile' }).getAttribute('aria-current')).toBe('page');
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Finish' }));
+  expect(screen.getByRole('heading', { name: 'Plan ahead' })).toBeTruthy();
+  expect(capture.props!.routeOptions).toEqual(before.routeOptions);
+  expect(capture.props!.departureAt).toBe(before.departureAt);
+  expect(fetcher.mock.calls.filter(([url]) => url === '/api/plan')).toHaveLength(1);
+  expect(getCurrentPosition).not.toHaveBeenCalled(); expect(watchPosition).not.toHaveBeenCalled();
+});
 it('can request and display online routes when the bundled local graph is unavailable', async () => {
   const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
     if (url === '/api/plan') {
@@ -114,8 +176,7 @@ it('can request and display online routes when the bundled local graph is unavai
     return responseFor(url);
   });
   vi.stubGlobal('fetch', fetcher);
-  render(<App />); await screen.findByRole('button', { name: 'Skip tour' });
-  fireEvent.click(screen.getByRole('button', { name: 'Skip tour' }));
+  render(<App />); await screen.findByRole('button', { name: 'Find routes' });
   const plan = screen.getByRole('button', { name: 'Find routes' });
   expect(plan.matches(':disabled')).toBe(false);
   fireEvent.click(plan);
@@ -126,7 +187,6 @@ it('can request and display online routes when the bundled local graph is unavai
 it('unlocks existing personal screens with a dummy account and returns to guest planning on sign-out', async () => {
   vi.stubGlobal('fetch', vi.fn(async (url: string) => responseFor(url)));
   render(<App />); await screen.findByRole('button', { name: 'Find routes' });
-  fireEvent.click(screen.getByRole('button', { name: 'Skip tour' }));
   expect(screen.queryByRole('button', { name: 'Activity' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Open profile' }));
   fireEvent.click(screen.getByRole('button', { name: 'Sign in for personal features' }));
@@ -188,9 +248,11 @@ it('clears a private report editor, its evidence and map selection when signing 
   expect(screen.queryByRole('img', { name: 'Closure photo 1' })).toBeNull();
   expect(capture.props?.drawing).toBeNull(); expect(capture.props?.selectedClosureId).toBeNull(); expect(capture.props?.closures).toEqual([]);
 });
-it('keeps published closures visible, gates guest reports behind sign-in and repeats guest tours', async () => {
+it('starts the tour on explicit guest entry, gates guest reports and resumes without another automatic tour', async () => {
+  sessionStorage.removeItem('manzil-entry-guest');
   vi.stubGlobal('fetch', vi.fn(async (url: string) => responseFor(url)));
   const first = render(<App />);
+  fireEvent.click(screen.getByText('Continue as guest', { selector: 'button' }));
   await screen.findByRole('dialog', { name: 'Welcome to Manzil' });
   fireEvent.click(screen.getByRole('button', { name: 'Skip tour' }));
   expect(screen.queryByRole('button', { name: 'Try street detour' })).toBeNull();
@@ -205,7 +267,8 @@ it('keeps published closures visible, gates guest reports behind sign-in and rep
   expect(screen.getByRole('form', { name: 'Sign in' })).toBeTruthy();
   expect(screen.queryByRole('heading', { name: 'Add a road restriction' })).toBeNull();
   first.unmount(); render(<App />);
-  expect(await screen.findByRole('dialog', { name: 'Welcome to Manzil' })).toBeTruthy();
+  await screen.findByRole('button', { name: 'Find routes' });
+  expect(screen.queryByRole('dialog', { name: 'Welcome to Manzil' })).toBeNull();
 });
 
 it('loads demo endpoints into ordinary planning, clears existing stops and requests the usual plan API', async () => {
@@ -281,7 +344,6 @@ it('preserves map identity and handlers across polling, switches the complete sh
   vi.spyOn(globalThis, 'setInterval').mockImplementation(((callback: () => void, delay: number) => { intervals.set(delay, callback); return delay; }) as typeof setInterval);
   vi.stubGlobal('fetch', vi.fn(async (url: string) => responseFor(url)));
   render(<App />); await screen.findByRole('button', { name: 'Find routes' }); await screen.findByTestId('map');
-  fireEvent.click(screen.getByRole('button', { name: 'Skip tour' }));
   const move = capture.props!.onWaypointMove, camera = capture.props!.focus;
   await act(async () => { intervals.get(20000)!(); });
   expect(capture.mounts).toBe(1); expect(capture.props!.onWaypointMove).toBe(move); expect(capture.props!.focus).toBe(camera);
@@ -373,6 +435,7 @@ it('shows a selected history trace while preserving a paused recording draft for
 });
 it('asks only a newly registered account for optional trip data before its tour and remembers Not now', async () => {
   sessionStorage.setItem('manzil-travel-data-choice-v1:dev-user', 'pending');
+  sessionStorage.setItem('manzil-registration-tour-v1:dev-user', 'pending');
   signInDevelopment('user@manzil.test', 'ManzilUser123!');
   localStorage.removeItem('manzil-tour-v1');
   const fetcher = vi.fn(async (url: string, init?: RequestInit) => url === '/api/profile' && init?.method === 'PATCH' ? new Response(JSON.stringify({ ...state.profile, ...JSON.parse(String(init.body)) })) : responseFor(url));
@@ -382,6 +445,9 @@ it('asks only a newly registered account for optional trip data before its tour 
   expect(screen.queryByRole('dialog', { name: 'Welcome to Manzil' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
   expect(await screen.findByRole('dialog', { name: 'Welcome to Manzil' })).toBeTruthy();
+  expect(sessionStorage.getItem('manzil-registration-tour-v1:dev-user')).toBe('pending');
+  fireEvent.click(screen.getByRole('button', { name: 'Skip tour' }));
+  expect(sessionStorage.getItem('manzil-registration-tour-v1:dev-user')).toBeNull();
   expect(sessionStorage.getItem('manzil-travel-data-choice-v1:dev-user')).toBeNull();
   const request = fetcher.mock.calls.find(([url]) => url === '/api/profile');
   expect(JSON.parse(String(request?.[1]?.body))).toEqual({ travelDataChoiceMade: true, collectTravelData: false, inferFrequentRoutes: false });
@@ -418,8 +484,7 @@ it('keeps pending route geometry labelled unavailable instead of blanking the ma
     }
     return responseFor(url);
   }));
-  render(<App />); await screen.findByRole('button', { name: 'Skip tour' });
-  fireEvent.click(screen.getByRole('button', { name: 'Skip tour' }));
+  render(<App />); await screen.findByRole('button', { name: 'Find routes' });
   fireEvent.click(screen.getByRole('button', { name: 'Find routes' }));
   await waitFor(() => expect(capture.props?.routeOptions).toHaveLength(1));
   expect(screen.queryByRole('button', { name: 'Block a point on this route' })).toBeNull();
