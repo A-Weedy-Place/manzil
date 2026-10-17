@@ -25,7 +25,7 @@
 .account-development .dev-accounts { margin: 0 0 8px; }
 .account-development .dev-account { min-height: 80px; }
 .account-modal .modal-close { z-index: 2; min-width: 44px; height: 44px; inset-inline-end: 10px; top: 10px; }
-.account-entry { padding: 30px; background: radial-gradient(ellipse at 5% 0%,var(--green-soft),transparent 65%),var(--surface); }
+.account-entry { padding: 30px; background: #24493e; }
 .account-entry .modal-card { width: min(1120px,100%); border-radius: 28px; padding: 0; overflow: hidden; box-shadow: 0 18px 75px #17345620; }
 .account-entry .account-layout { display: grid; grid-template-columns: minmax(320px,.9fr) minmax(0,1.1fr); min-height: 680px; }
 .account-entry .account-form-column { display: flex; align-items: center; padding: 48px 44px 38px; }

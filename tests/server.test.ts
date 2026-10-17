@@ -72,7 +72,7 @@ describe('local API', () => {
   it('keeps one local profile, validates partial preferences, and exposes consent-gated proposals', async () => {
     const { request } = await setup();
     const initial = await (await request('/profile')).json();
-    expect(initial).toMatchObject({ id: 'local', displayName: 'Traveller', theme: 'system', mapDetail: 'clean', mapStyle: 'outdoors',
+    expect(initial).toMatchObject({ id: 'local', displayName: 'Traveller', theme: 'system', mapDetail: 'clean', mapStyle: 'night',
       browserNotifications: false, collectTravelData: false, travelDataChoiceMade: false, inferFrequentRoutes: false, transport: 'car' });
     const changed = await request('/profile', 'PATCH', { displayName: 'Ali', theme: 'dark', browserNotifications: true });
     expect(changed.status).toBe(200); expect(await changed.json()).toMatchObject({ displayName: 'Ali', theme: 'dark', browserNotifications: true, inferFrequentRoutes: false });
@@ -197,10 +197,12 @@ describe('durability, commute time, and privacy retention', () => {
       mapDetail: 'standard' as const, browserNotifications: true, inferFrequentRoutes: true,
       createdAt: '2026-10-01T12:00:00.000Z', updatedAt: '2026-10-02T12:00:00.000Z' };
     store.setMeta('profile', legacy); store.close(); store = new Store(path);
-    expect(store.profile()).toEqual({ ...legacy, mapStyle: 'outdoors' });
-    const chosen = store.updateProfile({ mapStyle: 'night' }); store.close(); store = new Store(path);
+    expect(store.profile()).toEqual({ ...legacy, mapStyle: 'night' });
+    for (const mapStyle of ['outdoors', 'minimal', 'night', 'streets', 'contrast'] as const) {
+      const chosen = store.updateProfile({ mapStyle }); store.close(); store = new Store(path);
+      expect(store.profile()).toEqual(chosen); expect(store.profile().createdAt).toBe(legacy.createdAt);
+    }
     cleanup.push(() => store.close());
-    expect(store.profile()).toEqual(chosen); expect(store.profile().createdAt).toBe(legacy.createdAt);
   });
   it('calculates weekdays and midnight in Islamabad time, not server timezone', async () => {
     const commute: Commute = { id: 'commute', name: 'Office', origin: { name: 'A', coordinate: [73, 33] },

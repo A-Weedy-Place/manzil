@@ -23,6 +23,66 @@ beforeEach(() => {
   Element.prototype.scrollTo = vi.fn();
 });
 afterEach(() => { cleanup(); signOut(); vi.restoreAllMocks(); vi.unstubAllGlobals(); setLanguage('en'); document.documentElement.dir = 'ltr'; });
+it('recentres My location without editing endpoints, stops, route geometry or planned time', async () => {
+  let locateSuccess!: PositionCallback;
+  const getPosition = vi.fn((success: PositionCallback) => { locateSuccess = success; });
+  Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition: getPosition, watchPosition: vi.fn() } });
+  const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === '/api/plan') { const request = JSON.parse(init!.body as string); return new Response(JSON.stringify({ options: [{ ...option, departureAt: request.departureAt }], baseline: null, conflicts: [], warnings: [], evaluatedAt: date, graphVersion: 'test', eventRevision: 0, source: 'local-osm' })); }
+    return responseFor(url);
+  });
+  vi.stubGlobal('fetch', fetcher); render(<App />); await screen.findByRole('button', { name: 'Find routes' });
+  fireEvent.click(screen.getByRole('button', { name: 'Skip tour' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Plan ahead' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Add stop' }));
+  act(() => capture.props!.onWaypointMove?.(0, [73.041, 33.72]));
+  fireEvent.click(screen.getByRole('button', { name: 'Find routes' }));
+  await waitFor(() => expect(capture.props?.routeOptions).toHaveLength(1));
+  const before = capture.props!;
+  expect(getPosition).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'My location' }));
+  expect(screen.getByRole('button', { name: 'My location' }).matches(':disabled')).toBe(true);
+  act(() => locateSuccess({ coords: { longitude: 73.123, latitude: 33.678 } } as GeolocationPosition));
+  expect(capture.props!.focus?.coordinates).toEqual([[73.123, 33.678]]);
+  expect(capture.props!.origin).toEqual(before.origin); expect(capture.props!.destination).toEqual(before.destination); expect(capture.props!.waypoints).toEqual(before.waypoints);
+  expect(capture.props!.selectedRoute).toEqual(before.selectedRoute); expect(capture.props!.departureAt).toBe(before.departureAt);
+  expect(fetcher.mock.calls.filter(([url]) => url === '/api/plan')).toHaveLength(1);
+});
+it('ignores an old-account location response and keeps a declined request editable', async () => {
+  signInDevelopment('user@manzil.test', 'ManzilUser123!');
+  let success!: PositionCallback, failure!: PositionErrorCallback;
+  Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition: (ok: PositionCallback, error: PositionErrorCallback) => { success = ok; failure = error; } } });
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => responseFor(url)));
+  render(<App />); await screen.findByRole('button', { name: 'Find routes' });
+  fireEvent.click(screen.getByRole('button', { name: 'My location' }));
+  act(() => failure({ code: 1 } as GeolocationPositionError));
+  expect(screen.getByRole('button', { name: 'My location' }).matches(':disabled')).toBe(false);
+  expect(screen.getByText('Location is unavailable or permission was declined. You can still select any point on the map.')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'My location' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Open profile' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+  await screen.findByRole('dialog', { name: 'Manzil' });
+  act(() => success({ coords: { longitude: 73.123, latitude: 33.678 } } as GeolocationPosition));
+  expect(capture.props!.focus?.coordinates).not.toEqual([[73.123, 33.678]]);
+});
+it.each([false, true])('persists the header appearance toggle independently of the map style (signed in: %s)', async signedIn => {
+  if (signedIn) signInDevelopment('user@manzil.test', 'ManzilUser123!');
+  let profile = { ...state.profile, theme: 'system' as 'system' | 'light' | 'dark' };
+  vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+  const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === '/api/profile') { const patch = JSON.parse(init!.body as string); profile = { ...profile, ...patch }; return new Response(JSON.stringify(patch)); }
+    return new Response(JSON.stringify({ ...state, profile }));
+  });
+  vi.stubGlobal('fetch', fetcher); render(<App />); await screen.findByRole('button', { name: 'Find routes' });
+  if (screen.queryByRole('button', { name: 'Skip tour' })) fireEvent.click(screen.getByRole('button', { name: 'Skip tour' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Switch to light mode' }));
+  await waitFor(() => expect(document.documentElement.dataset.theme).toBe('light'));
+  expect(capture.props!.mapStyle).toBe('outdoors');
+  fireEvent.click(screen.getByRole('button', { name: 'Switch to dark mode' }));
+  await waitFor(() => expect(document.documentElement.dataset.theme).toBe('dark'));
+  expect(capture.props!.mapStyle).toBe('outdoors');
+  expect(fetcher.mock.calls.filter(([url]) => url === '/api/profile').map(([, init]) => JSON.parse(init!.body as string))).toEqual([{ theme: 'light' }, { theme: 'dark' }]);
+});
 it('opens sign-in first and only enters guest planning after an explicit skip', async () => {
   sessionStorage.removeItem('manzil-entry-guest');
   vi.stubGlobal('fetch', vi.fn(async (url: string) => responseFor(url)));
@@ -140,8 +200,8 @@ it('keeps published closures visible, gates guest reports behind sign-in and rep
   expect(screen.getByRole('button', { name: 'Help & demos' }).getAttribute('aria-expanded')).toBe('false');
   fireEvent.click(screen.getByRole('button', { name: 'Closures' }));
   expect(screen.getByRole('heading', { name: 'Road closures' })).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Map' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Add restriction on map' }));
+  expect(screen.queryByRole('button', { name: 'Add restriction on map' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Add closure' }));
   expect(screen.getByRole('form', { name: 'Sign in' })).toBeTruthy();
   expect(screen.queryByRole('heading', { name: 'Add a road restriction' })).toBeNull();
   first.unmount(); render(<App />);
@@ -225,7 +285,8 @@ it('preserves map identity and handlers across polling, switches the complete sh
   const move = capture.props!.onWaypointMove, camera = capture.props!.focus;
   await act(async () => { intervals.get(20000)!(); });
   expect(capture.mounts).toBe(1); expect(capture.props!.onWaypointMove).toBe(move); expect(capture.props!.focus).toBe(camera);
-  fireEvent.change(screen.getByRole('combobox', { name: 'Language' }), { target: { value: 'ur' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Language' }));
+  fireEvent.click(screen.getByRole('menuitemradio', { name: 'اردو' }));
   expect(document.documentElement.dir).toBe('rtl'); expect(document.documentElement.lang).toBe('ur');
   expect(screen.getByRole('button', { name: 'راستے تلاش کریں' })).toBeTruthy(); expect(capture.mounts).toBe(1);
   fireEvent.click(screen.getByRole('button', { name: 'محفوظ' }));

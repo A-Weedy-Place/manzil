@@ -1,9 +1,13 @@
 /* Compact global controls; only the avatar opens the account. */
-.header-language { display:flex; align-items:center; gap:6px; border:1px solid var(--border); border-radius:11px; padding-inline:10px 7px; background:var(--surface); color:var(--muted); }
-.header-language select { min-height:42px; max-width:110px; padding:4px 2px; border:0; outline-offset:3px; background:transparent; color:var(--ink); font:inherit; font-size:13px; cursor:pointer; }
-.header-language:focus-within { outline:2px solid var(--blue); outline-offset:2px; }
-.header-language select:focus { outline:none; }
-.header-language option { background:var(--paper); color:var(--ink); }
+.header-language { position:relative; flex-shrink:0; }
+.header-language-trigger { display:flex; align-items:center; gap:7px; min-height:44px; padding:8px 11px; border:1px solid var(--border); border-radius:12px; background:var(--surface); color:var(--ink); font:inherit; font-size:13px; font-weight:600; }
+.header-language-trigger[aria-expanded='true'] { background:var(--green-soft); border-color:var(--green); }
+.header-language-menu { position:absolute; top:calc(100% + 9px); inset-inline-end:0; display:grid; gap:4px; width:174px; padding:7px; background:var(--paper); border:1px solid var(--border); border-radius:14px; box-shadow:0 10px 30px #102b4230; z-index:2000; }
+.header-language-menu>button { min-height:44px; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:9px 12px; border-radius:8px; color:var(--ink); text-align:start; font-size:14px; }
+.header-language-menu>button:hover,.header-language-menu>button:focus-visible { background:var(--surface); }
+.header-language-menu>button[aria-checked='true'] { color:var(--green); background:var(--green-soft); }
+.header-theme { width:44px; height:44px; border:1px solid var(--border); border-radius:12px; background:var(--surface); color:var(--ink); flex-shrink:0; }
+.header-theme:hover { background:var(--green-soft); color:var(--green); }
 .header-actions { gap:12px; }
 .workspace-avatar { display:grid; width:44px; height:44px; flex-shrink:0; }
 .profile-statistics-dialog { place-items:start; padding:82px 20px 20px; background:rgb(12 25 36 / .12); }
@@ -16,7 +20,7 @@
 .profile-settings-dialog .statistics-dialog-heading .icon-button { width:44px; height:44px; }
 .profile-settings-dialog .modal-card { display:flex; flex-direction:column; overflow:hidden; }
 .profile-settings-dialog .statistics-dialog-heading { flex-shrink:0; }
-.profile-settings-dialog .profile-section-content { min-height:0; overflow-y:auto; overscroll-behavior:contain; }
+.profile-settings-dialog .profile-section-content { min-height:0; min-width:0; overflow-y:auto; overscroll-behavior:contain; padding:5px 6px; margin:-5px -6px; scroll-padding-block:8px; scrollbar-gutter:stable; }
 .travel-choice-icon { width:60px; height:60px; display:grid; place-items:center; background:var(--green-soft); color:var(--green); border-radius:18px; }
 .travel-choice-modal .modal-card>p { line-height:1.65; }
 .travel-choice-actions { display:grid; gap:10px; margin-top:24px; }
@@ -27,12 +31,23 @@
 }
 @media(max-width:760px) {
   .header-actions { gap:5px; }
-  .header-language { gap:0; padding-inline:5px; border-radius:9px; }
-  .header-language>svg { display:none; }
-  .header-language select { font-size:12px; width:74px; max-width:74px; }
+  .brand-name { display:none; }
+  .brand { min-width:32px; flex-shrink:0; }
+  .header-language-trigger { min-width:44px; gap:4px; padding:8px; font-size:12px; }
+  .header-language-trigger>svg:first-child { display:none; }
+  .header-actions .header-theme { width:44px; min-width:44px; }
   .workspace-avatar { display:grid; width:44px; height:44px; font-size:15px; }
   .header-actions .notification-button { width:44px; min-width:44px; height:44px; }
   .app-header { padding-inline:8px; gap:5px; }
   .profile-statistics-dialog { padding:12px; }
   .profile-statistics-dialog .modal-card { padding:22px; max-height:calc(100dvh - 24px); }
+}
+@media(max-width:360px) {
+  .header-language-trigger { width:44px; justify-content:center; padding:8px 4px; }
+  .header-language-trigger>span,.header-language-trigger>svg { display:none; }
+  .header-language-trigger::after { content:attr(data-short-language); font-size:12px; }
+  .map-time-status-clock { font-size:14px; letter-spacing:-.3px; }
+  .map-time-status-clock small { display:none; }
+  .map-time-status-date { font-size:9px; }
+  .header-actions { gap:4px; }
 }

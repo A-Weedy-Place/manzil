@@ -7,7 +7,11 @@ export default function Modal({ children, titleId, onClose, className = '', over
     const focusable = () => Array.from(box.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select, a[href], [tabindex="0"]') ?? []).filter(item => item.getClientRects().length);
     (focusable()[0] ?? box.current)?.focus();
     const key = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') { event.preventDefault(); close.current(); }
+      if (event.key === 'Escape') {
+        // Let an open combobox consume its first Escape before dismissing the dialog.
+        if (event.target instanceof Element && box.current?.contains(event.target) && event.target.closest('[role="combobox"][aria-expanded="true"]')) return;
+        event.preventDefault(); close.current();
+      }
       if (event.key === 'Tab') {
         const items = focusable(), first = items[0], last = items.at(-1);
         if (!first) { event.preventDefault(); box.current?.focus(); }

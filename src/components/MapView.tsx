@@ -165,7 +165,7 @@ export default function MapView(props: MapViewProps) {
   const cachedRoads = roadCache.current.get(roadKey);
   const snapshotRoads = cachedRoads ? { key: roadKey, data: cachedRoads } : closureRoads;
   const hasActiveClosures = props.closures.some(closure => closureState(closure, props.departureAt) === 'active');
-  const mapStyle = props.mapStyle ?? 'streets', theme = mapStyle === 'night' ? 'dark' : 'light', detail = props.mapDetail ?? 'clean';
+  const mapStyle = props.mapStyle ?? 'night', theme = mapStyle === 'night' ? 'dark' : 'light', detail = props.mapDetail ?? 'clean';
 
   function pickRoad(coordinate: Coordinate) {
     const p = current.current;

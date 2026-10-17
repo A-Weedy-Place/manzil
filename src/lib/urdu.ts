@@ -1,5 +1,14 @@
 /** App-owned copy only. User notices, names and original source evidence remain verbatim. */
 export const urdu: Record<string, string> = {
+  'Loading cities…': 'شہر لوڈ ہو رہے ہیں…', 'Could not load cities. Close and try again.': 'شہر لوڈ نہیں ہو سکے۔ بند کر کے دوبارہ کوشش کریں۔',
+  'Quiet colours with distinct roads': 'سادہ رنگ اور واضح سڑکیں',
+  'My location': 'میرا مقام',
+  'Search cities': 'شہر تلاش کریں', 'Clear city': 'شہر ہٹائیں', 'No cities found': 'کوئی شہر نہیں ملا',
+  'Cities in Pakistan': 'پاکستان کے شہر', 'Saved city': 'محفوظ شہر',
+  'More matches. Keep typing to narrow the list.': 'مزید نتائج موجود ہیں۔ تلاش محدود کرنے کے لیے مزید لکھیں۔',
+  'Switch to light mode': 'روشن تھیم لگائیں', 'Switch to dark mode': 'تاریک تھیم لگائیں',
+  'Could not change the app theme.': 'ایپ کی تھیم تبدیل نہیں ہو سکی۔',
+  'PSO reference prices': 'پی ایس او کی حوالہ قیمتیں',
   'Personal information': 'ذاتی معلومات', 'Close settings': 'ترتیبات بند کریں', 'Close trip history': 'سفر کی تاریخ بند کریں',
   'Demo data': 'نمونہ معلومات', 'Sample data': 'نمونہ معلومات', 'Demo fuel price': 'نمونہ ایندھن کی قیمت',
   'Includes sample trips and fuel estimates. No GPS was recorded for these examples.': 'نمونہ سفر اور ایندھن کے تخمینے شامل ہیں۔ ان مثالوں کے لیے جی پی ایس ریکارڈ نہیں کیا گیا۔',

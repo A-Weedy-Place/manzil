@@ -12,6 +12,7 @@ import { fileToPhotoDataUrl } from '../lib/images';
 import VehicleSettings from './VehicleSettings';
 import FuelPrices from './FuelPrices';
 import ProfileSettingsDialog, { profileSectionTitle, type ProfileSection } from './ProfileSettingsDialog';
+import PakistanCitySelect from './PakistanCitySelect';
 export type { ProfileSection } from './ProfileSettingsDialog';
 
 interface Props { account?: AccountUser | null; onSignOut?: () => void; personalFeaturesAvailable?: boolean; onSignIn?: () => void; onTour?: () => void; state: AppState; reload: () => Promise<void>; notify: (text: string) => void; onSources: () => void; onActivity: () => void; onStatistics?: () => void; section?: ProfileSection | null; onSectionChange?: (section: ProfileSection | null) => void; onSaveProposal: (proposal: FrequentRouteProposal) => Promise<void> }
@@ -90,7 +91,7 @@ export default function ProfilePanel({ account, onSignOut, personalFeaturesAvail
   }
   const ownDialog = activeSection && activeSection !== 'statistics' && activeSection !== 'history' && (personalFeaturesAvailable || activeSection === 'appearance' || activeSection === 'fuel') ? activeSection : null;
   const pending = busy || preparingPhoto;
-  const mapName = t(profile.mapStyle === 'minimal' ? 'Minimal' : profile.mapStyle === 'night' ? 'Night' : 'Classic');
+  const mapName = t(profile.mapStyle === 'minimal' ? 'Minimal' : !profile.mapStyle || profile.mapStyle === 'night' ? 'Night' : 'Classic');
   const demoData = !!profile.demoData;
   function settingsRow(key: ProfileSection, Icon: LucideIcon, summary: string, badge?: string) {
     return <button className={`settings-link profile-setting-link ${activeSection === key ? 'is-active' : ''}`} aria-label={t(profileSectionTitle[key])} aria-haspopup="dialog" aria-expanded={activeSection === key} onClick={() => openSection(key)}>
@@ -121,7 +122,7 @@ export default function ProfilePanel({ account, onSignOut, personalFeaturesAvail
       {busy && <p className="small muted" role="status">{t('Saving changes…')}</p>}{preparingPhoto && <p className="small muted" role="status">{t('Preparing photo…')}</p>}{error && <div className="error-box" role="alert">{t(error)}</div>}
       {ownDialog === 'identity' && <form className="profile-details-form" aria-label={t('Edit profile')} aria-busy={pending} onSubmit={event => { event.preventDefault(); if (!pending) void saveProfile(); }}>
         <div className="profile-edit-photo"><span className="profile-avatar">{photoDraft ? <img src={photoDraft} alt={t('Your profile photo')} /> : name.trim().slice(0, 1).toUpperCase()}</span><div className="profile-photo-actions"><label className="secondary-button"><Camera size={17} />{t('Change photo')}<input type="file" accept="image/jpeg,image/png,image/webp" aria-label={t('Choose profile photo')} disabled={pending} onChange={event => { void photo(event.target.files?.[0]); event.target.value = ''; }} /></label>{photoDraft && <button type="button" className="text-button" disabled={pending} onClick={() => setPhotoDraft('')}>{t('Remove photo')}</button>}</div></div>
-        <label className="field-label">{t('Your name')}<input value={name} disabled={pending} onChange={event => setName(event.target.value)} maxLength={60} required autoComplete="nickname" /></label><label className="field-label">{t('City')}<input value={city} disabled={pending} onChange={event => setCity(event.target.value)} maxLength={80} autoComplete="address-level2" /></label><label className="field-label">{t('Area (optional)')}<input value={location} disabled={pending} onChange={event => setLocation(event.target.value)} maxLength={120} placeholder={t('Sector or neighbourhood')} /></label>
+        <label className="field-label">{t('Your name')}<input value={name} disabled={pending} onChange={event => setName(event.target.value)} maxLength={60} required autoComplete="nickname" /></label><PakistanCitySelect value={city} disabled={pending} onChange={setCity} /><label className="field-label">{t('Area (optional)')}<input value={location} disabled={pending} onChange={event => setLocation(event.target.value)} maxLength={120} placeholder={t('Sector or neighbourhood')} /></label>
         <div className="row profile-panel-actions"><button className="primary-button" disabled={pending || !name.trim()}><Check size={17} />{t('Save profile')}</button><button type="button" className="secondary-button" disabled={busy} onClick={closeSection}><X size={16} />{t('Cancel')}</button></div>
       </form>}
       {ownDialog === 'vehicle' && <VehicleSettings vehicle={profile.vehicle} status={state.fuel} busy={busy} showFuelPrices={false} onSave={async vehicle => { await update({ vehicle }); }} />}
@@ -130,7 +131,7 @@ export default function ProfilePanel({ account, onSignOut, personalFeaturesAvail
       {ownDialog === 'appearance' && <>
         <label className="field-label">{t('Language')}<select value={language} onChange={event => setLanguage(event.target.value === 'ur' ? 'ur' : 'en')}><option value="en">English</option><option value="ur">اردو</option></select></label>
         <span className="field-label">{t('App theme')}</span><div className="segmented-control" role="group" aria-label={t('App theme')}>{(['light', 'dark', 'system'] as const).map(theme => <button disabled={busy} key={theme} className={profile.theme === theme ? 'selected' : ''} aria-pressed={profile.theme === theme} onClick={() => update({ theme })}>{theme === 'dark' ? <Moon size={17} /> : theme === 'light' ? <Sun size={17} /> : <Map size={17} />}{t(theme[0].toUpperCase() + theme.slice(1))}</button>)}</div>
-        <h3 className="profile-map-style-heading">{t('Map style')}</h3><MapStyleChoices value={profile.mapStyle ?? 'outdoors'} disabled={busy} onChange={mapStyle => update({ mapStyle })} />
+        <h3 className="profile-map-style-heading">{t('Map style')}</h3><MapStyleChoices value={profile.mapStyle ?? 'night'} disabled={busy} onChange={mapStyle => update({ mapStyle })} />
         <label className="field-label map-detail-setting">{t('Map detail')}<select value={profile.mapDetail} disabled={busy} onChange={event => update({ mapDetail: event.target.value as LocalProfile['mapDetail'] })}><option value="clean">{t('Clean · essential roads and places')}</option><option value="standard">{t('Detailed · more labels and places')}</option></select></label>
       </>}
       {ownDialog === 'alerts' && <>

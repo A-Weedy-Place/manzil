@@ -82,11 +82,40 @@ it('does not invent prices for missing mileage or an unknown historical fuel per
 });
 
 it('shows daily price provenance with date-only effective dates and labels a failed check as cached', () => {
-  render(<FuelPrices status={{ ...fuel, state: 'error' }} />);
+  render(<FuelPrices status={{ ...fuel, state: 'error', records: fuel.records.map(record => ({ ...record, sourceName: 'Long upstream source attribution' })) }} />);
   expect(screen.getByText('Cached reference')).toBeTruthy();
-  const effective = screen.getByText(/Effective from/); expect(effective.textContent).toContain('16 Oct 2026'); expect(effective.textContent).not.toContain('12:00');
+  const effective = screen.getByText('Effective from').closest('p')!; expect(effective.textContent).toContain('16 Oct 2026'); expect(effective.textContent).not.toContain('12:00');
   expect(screen.getByRole('link', { name: 'PSO reference prices' }).getAttribute('href')).toBe('https://psopk.com/example');
   expect(screen.getByText('The latest check is overdue or failed. Estimates use the saved reference price.')).toBeTruthy();
+  expect(screen.queryByText('Long upstream source attribution')).toBeNull();
+  expect(screen.queryByText('PSO reference price; outlet freight and driving conditions can change cost.')).toBeNull();
+});
+
+it('keeps separate dated petrol and diesel cards and never displays a future publication as the current price', () => {
+  vi.spyOn(Date, 'now').mockReturnValue(Date.parse(at));
+  const future = { ...fuel.records[1], effectiveFrom: '2026-10-17T19:00:00Z', petrolPerLitre: 900, dieselPerLitre: 950 };
+  const { container } = render(<FuelPrices status={{ ...fuel, records: [...fuel.records, future] }} expanded />);
+  const cards = container.querySelectorAll('.fuel-price-grid > div');
+  expect(cards).toHaveLength(2);
+  expect(within(cards[0] as HTMLElement).getByText('Petrol')).toBeTruthy();
+  expect(within(cards[0] as HTMLElement).getByText('PKR 310.00')).toBeTruthy();
+  expect(within(cards[1] as HTMLElement).getByText('Diesel')).toBeTruthy();
+  expect(within(cards[1] as HTMLElement).getByText('PKR 330.00')).toBeTruthy();
+  expect(screen.queryByText('PKR 900.00')).toBeNull();
+  expect(container.querySelector('.fuel-effective-date time')?.getAttribute('datetime')).toBe('2026-10-15T19:00:00Z');
+  expect(container.querySelector('.fuel-price-content')?.lastElementChild?.className).toBe('fuel-last-checked');
+});
+
+it('keeps an overdue reference visibly cached and never invents prices when no applicable record is available', () => {
+  vi.spyOn(Date, 'now').mockReturnValue(Date.parse(at));
+  const ui = render(<FuelPrices status={{ ...fuel, nextCheckAt: '2026-10-16T19:00:00Z' }} expanded />);
+  expect(screen.getByText('Cached reference')).toBeTruthy();
+  expect(screen.getByRole('status').textContent).toContain('overdue or failed');
+  ui.rerender(<FuelPrices status={{ ...fuel, records: [], state: 'error' }} expanded />);
+  expect(screen.getByText('Unavailable')).toBeTruthy();
+  expect(screen.getByRole('status').textContent).toContain('No verified fuel price');
+  expect(screen.queryByText('Petrol')).toBeNull();
+  expect(screen.queryByRole('link', { name: 'PSO reference prices' })).toBeNull();
 });
 
 it('shows monthly retained-history totals beyond the recent list without reading raw GPS', async () => {

@@ -76,6 +76,7 @@ describe('personal permission and profile controls', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
     fireEvent.change(screen.getByLabelText('Your name'), { target: { value: 'Ali' } });
     fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Islamabad' } });
+    fireEvent.click(await screen.findByRole('option', { name: 'Islamabad, Islamabad Capital Territory' }));
     fireEvent.change(screen.getByLabelText('Area (optional)'), { target: { value: 'F-8' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save profile' }));
     await waitFor(() => expect(mock.send).toHaveBeenCalledWith('/profile', { displayName: 'Ali', city: 'Islamabad', location: 'F-8' }, 'PATCH'));

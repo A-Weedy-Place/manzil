@@ -146,9 +146,19 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
     await expect(personal.addAlertOnce('optout-alert-fixture', { title: 'Must not be written', message: 'Synthetic fixture', createdAt: trip.createdAt, read: false, frequentRouteId: 'usual-fixture' })).rejects.toMatchObject({ status: 409 });
     expect(await personal.get('alert', 'optout-alert-fixture')).toBeUndefined();
   });
-  it('persists a skipped data choice per UID without opting in, with Classic as the new-profile default', async () => {
-    expect(await (await request('/profile')).json()).toMatchObject({ mapStyle: 'outdoors', collectTravelData: false, travelDataChoiceMade: false });
-    expect(await store.forUser('bob').profile()).toMatchObject({ mapStyle: 'outdoors', collectTravelData: false, travelDataChoiceMade: false });
+  it('persists a skipped data choice per UID without opting in, defaults missing styles to Night and preserves saved palettes', async () => {
+    expect(await (await request('/profile')).json()).toMatchObject({ mapStyle: 'night', collectTravelData: false, travelDataChoiceMade: false });
+    expect(await store.forUser('bob').profile()).toMatchObject({ mapStyle: 'night', collectTravelData: false, travelDataChoiceMade: false });
+    const styleStore = store.forUser('legacy-style-fixture');
+    const { mapStyle: _oldStyle, ...legacyStyle } = { ...await styleStore.profile(), displayName: 'Legacy style fixture', theme: 'light' as const,
+      updatedAt: '2026-10-01T12:00:00.000Z' };
+    await styleStore.setMeta('profile', legacyStyle);
+    expect(await styleStore.profile()).toEqual({ ...legacyStyle, mapStyle: 'night' });
+    expect(await styleStore.meta('profile')).toEqual(legacyStyle);
+    for (const mapStyle of ['outdoors', 'minimal', 'night', 'streets', 'contrast'] as const) {
+      const chosen = await styleStore.updateProfile({ mapStyle });
+      expect(await new FirestoreStore(services.db).forUser('legacy-style-fixture').profile()).toEqual(chosen);
+    }
     expect((await request('/profile', undefined, { travelDataChoiceMade: true }, 'PATCH')).status).toBe(401);
     for (const invalid of ['true', 1, null]) expect((await request('/profile', alice, { travelDataChoiceMade: invalid }, 'PATCH')).status).toBe(400);
     expect((await request('/profile', alice, { demoData: true }, 'PATCH')).status).toBe(400);

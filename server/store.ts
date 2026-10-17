@@ -52,11 +52,11 @@ export class Store {
       const profile = this.meta<LocalProfile>('profile');
       if (!profile) {
         const now = new Date().toISOString();
-        this.setMeta('profile', { id: 'local', displayName: 'Traveller', theme: 'system', mapDetail: 'clean', mapStyle: 'outdoors',
+        this.setMeta('profile', { id: 'local', displayName: 'Traveller', theme: 'system', mapDetail: 'clean', mapStyle: 'night',
           browserNotifications: false, collectTravelData: false, travelDataChoiceMade: false, inferFrequentRoutes: false, transport: 'car', createdAt: now, updatedAt: now } satisfies LocalProfile);
       } else if (profile.mapStyle === undefined) {
         // Add the independent basemap preference without resetting older preferences or timestamps.
-        this.setMeta('profile', { ...profile, mapStyle: 'outdoors' });
+        this.setMeta('profile', { ...profile, mapStyle: 'night' });
       }
     });
     if (!this.meta<SourceStatus>('sourceStatus')) this.setMeta('sourceStatus', {
