@@ -1,6 +1,6 @@
 # Login entry artwork and account verification
 
-Feature-branch localhost work, 17 October 2026. The deployment developer handles release to the existing Firebase app. No production account, email configuration or cloud service is changed here.
+Feature-branch localhost work, updated 18 October 2026. The deployment developer handles release to the existing Firebase app. No production account, email configuration or cloud service is changed here.
 
 ## Controls
 
@@ -11,11 +11,11 @@ Feature-branch localhost work, 17 October 2026. The deployment developer handles
 
 ## Decorative artwork
 
-`EntryDoodles.tsx` and `entry-doodles.css` contain original SVG/CSS artwork. The scenes illustrate the product without loading a map, fetching tiles, reading location, creating events or running a JavaScript frame loop.
+`EntryDoodles.tsx`, `entryRoadNetwork.ts`, `EntryIntersection.tsx` and their CSS contain original SVG/CSS artwork. The scenes illustrate the product without loading a map, fetching tiles, reading location, creating events or running a JavaScript frame loop.
 
-1. The left country silhouette follows the owner's requested depiction including Pakistan's claimed Kashmir region. An outline draws first, then a downward scanner reveals schematic roads clipped to the silhouette, followed by a hold, fade and repeat.
+1. The left country silhouette follows the owner's requested depiction including Pakistan's claimed Kashmir region. Its full-height proportions replace the former 0.65 vertical compression; it is centered within the left desktop gutter. An outline draws first, then a downward scanner reveals schematic roads clipped to the silhouette, followed by a hold, fade and repeat. The deterministic 161-path network has curved connecting highways, regional branches and differently sized/rotated local street grids, with separate stroke hierarchies. No per-frame randomness is used.
 2. The top scene follows a location pin along a detour around a barricade, from its origin to an endpoint kept within the illustration's safe bounds.
-3. The right roadside scene contains a drawn road, a detailed bus with exhaust, an articulated walking figure and road signs.
+3. The right roadside scene is an intersection of vertical and horizontal roads. A side-view bus with windows, doors, wheels and exhaust travels left to right on the horizontal road. A clothed pedestrian crosses the vertical road at a zebra crossing, using separate hip/knee joints and opposing arm/leg phases. Their movement is sequenced rather than passing through one another.
 
 The country drawing is an artistic schematic, **not an authoritative boundary file**. It follows the requested claimed depiction rather than asserting resolution of a territorial dispute. The roads inside are invented illustration. Neither silhouette nor drawn streets enter GeoJSON/API contracts, map providers, search coverage, country validation or routing. Those data and boundaries are unchanged.
 
@@ -31,7 +31,7 @@ Visual references, without copying third-party assets:
 The isolated `demo-manzil-test` Auth/Firestore suite now creates a unique disposable account through the Firebase client SDK and verifies:
 
 1. Registration succeeds; duplicate registration is rejected.
-2. The new UID has ordinary member permissions, Dark/Night defaults, empty private journeys and trip collection/inference Off. It cannot access the admin directory.
+2. The new UID has ordinary member permissions, Dark/Classic defaults, empty private journeys and trip collection/inference Off. It cannot access the admin directory. Classic supersedes the Night default in the subsequent 18 October startup refinement.
 3. Its profile can be saved and read with its verified token.
 4. A password-reset request generates an emulator action code. The code verifies and changes the disposable password, then rejects reuse.
 5. The old password fails and the new password signs into the same UID, retaining its profile.

@@ -1,0 +1,43 @@
+/* Side-view transit and articulated pedestrian, isolated from the login form. */
+.entry-intersection-road { opacity:.35; }
+.entry-intersection-edge { stroke-width:2; stroke-dasharray:1; stroke-dashoffset:1; animation:entry-intersection-draw 28s ease-in-out infinite; }
+.entry-intersection-centre { stroke-dasharray:8 13; opacity:.65; }
+.entry-intersection-curb { opacity:.4; stroke-width:1; }
+.entry-intersection-crossing { stroke-width:3; opacity:.7; }
+.entry-intersection-sign { opacity:.48; fill:var(--entry-art-paper); }
+.entry-intersection-sign text { fill:currentColor; stroke:none; font:700 8px/1 system-ui,sans-serif; }
+.entry-intersection-bus-position { opacity:0; transform:translate(-112px,274px); animation:entry-intersection-bus-travel 28s linear infinite; }
+.entry-intersection-bus { fill:var(--entry-art-paper); stroke-width:1.7; }
+.entry-intersection-wheel,.entry-intersection-hair,.entry-intersection-shoe { fill:currentColor; }
+.entry-intersection-bus-detail { opacity:.6; stroke-width:1; }
+.entry-intersection-exhaust { opacity:.5; animation:entry-intersection-smoke 1.7s ease-out infinite; }
+.entry-intersection-walker-position { opacity:0; transform:translate(75px,384px); animation:entry-intersection-cross 28s linear infinite; }
+.entry-intersection-walker-bob { fill:var(--entry-art-paper); stroke-width:1.35; animation:entry-intersection-bob 1.4s ease-in-out infinite; }
+.entry-intersection-shirt { fill:#ffffff18; }
+.entry-intersection-face { stroke-width:1; }
+.entry-intersection-thigh,.entry-intersection-calf,.entry-intersection-arm { transform-box:view-box; transform-origin:0px 0px; }
+.entry-intersection-thigh-front { animation:entry-intersection-thigh 1.4s ease-in-out infinite; }
+.entry-intersection-thigh-back { animation:entry-intersection-thigh 1.4s ease-in-out -.7s infinite; }
+.entry-intersection-calf-front { animation:entry-intersection-knee 1.4s ease-in-out infinite; }
+.entry-intersection-calf-back { animation:entry-intersection-knee 1.4s ease-in-out -.7s infinite; }
+.entry-intersection-arm-front { animation:entry-intersection-arm 1.4s ease-in-out -.7s infinite; }
+.entry-intersection-arm-back { animation:entry-intersection-arm 1.4s ease-in-out infinite; }
+.entry-intersection-flourish { opacity:.25; }
+@keyframes entry-intersection-draw { 0%,3% { stroke-dashoffset:1; } 22%,94% { stroke-dashoffset:0; opacity:1; } 100% { stroke-dashoffset:0; opacity:0; } }
+@keyframes entry-intersection-bus-travel { 0%,59% { opacity:0; transform:translate(-112px,274px); } 63% { opacity:.75; } 94% { opacity:.75; transform:translate(266px,274px); } 98%,100% { opacity:0; transform:translate(266px,274px); } }
+@keyframes entry-intersection-cross { 0%,22% { opacity:0; transform:translate(75px,384px); } 25% { opacity:.72; } 55% { opacity:.72; transform:translate(205px,384px); } 58%,100% { opacity:0; transform:translate(216px,384px); } }
+@keyframes entry-intersection-smoke { from { opacity:.5; transform:translate(0,0); } to { opacity:0; transform:translate(-12px,-7px); } }
+@keyframes entry-intersection-bob { 0%,50%,100% { transform:translateY(0); } 25%,75% { transform:translateY(-1px); } }
+@keyframes entry-intersection-thigh { 0%,100% { transform:rotate(-23deg); } 50% { transform:rotate(23deg); } }
+@keyframes entry-intersection-knee { 0%,50%,100% { transform:rotate(5deg); } 72% { transform:rotate(39deg); } }
+@keyframes entry-intersection-arm { 0%,100% { transform:rotate(-19deg); } 50% { transform:rotate(19deg); } }
+@media (max-width:680px), (prefers-reduced-motion:reduce) {
+  .entry-intersection-scene * { animation:none!important; }
+  .entry-intersection-edge { stroke-dashoffset:0; }
+  .entry-intersection-bus-position { opacity:.65; transform:translate(41px,274px); }
+  .entry-intersection-walker-position { opacity:.65; transform:translate(202px,384px); }
+  .entry-intersection-thigh-front { transform:rotate(-13deg); }
+  .entry-intersection-thigh-back { transform:rotate(13deg); }
+  .entry-intersection-calf { transform:rotate(5deg); }
+  .entry-intersection-exhaust { opacity:.3; }
+}
