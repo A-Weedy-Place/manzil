@@ -219,7 +219,7 @@ it('takes an administrator from sign-in to the control centre', async () => {
   fireEvent.click(screen.getByRole('button', { name: /Admin user/ }));
   fireEvent.submit(screen.getByRole('form', { name: 'Sign in' }));
   expect(await screen.findByRole('heading', { name: 'Control centre' })).toBeTruthy();
-  expect(screen.getByRole('tab', { name: 'People' })).toBeTruthy();
+  expect(screen.getByRole('tab', { name: 'Users' })).toBeTruthy();
 });
 it('opens an agent proposal with its map drawing and populated fields, then approves through the protected proposal endpoint', async () => {
   signInDevelopment('admin@manzil.test', 'ManzilAdmin123!');
@@ -368,7 +368,7 @@ it('clears a private report editor, its evidence and map selection when signing 
   fireEvent.click(screen.getByRole('button', { name: /Private service road/ }));
   expect(await screen.findByRole('img', { name: 'Closure photo 1' })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
-  expect(await screen.findByRole('heading', { name: 'Edit restriction' })).toBeTruthy();
+  expect(await screen.findByRole('heading', { name: 'Edit closure' })).toBeTruthy();
   expect(screen.getByRole('textbox', { name: 'Road / place' }).getAttribute('value')).toBe(privateReport.title);
   expect(capture.props?.drawing).toEqual(privateReport.drawing); expect(capture.props?.selectedClosureId).toBe(privateReport.id);
   fireEvent.click(screen.getByRole('button', { name: 'Open profile' }));
@@ -378,7 +378,7 @@ it('clears a private report editor, its evidence and map selection when signing 
   await screen.findByRole('button', { name: 'Skip tour' }); fireEvent.click(screen.getByRole('button', { name: 'Skip tour' }));
   fireEvent.click(screen.getByRole('button', { name: 'Closures' }));
   expect(screen.getByRole('heading', { name: 'Road closures' })).toBeTruthy();
-  expect(screen.queryByRole('heading', { name: 'Edit restriction' })).toBeNull();
+  expect(screen.queryByRole('heading', { name: 'Edit closure' })).toBeNull();
   expect(screen.queryByDisplayValue(privateReport.title)).toBeNull(); expect(screen.queryByText(privateReport.description)).toBeNull();
   expect(screen.queryByRole('img', { name: 'Closure photo 1' })).toBeNull();
   expect(capture.props?.drawing).toBeNull(); expect(capture.props?.selectedClosureId).toBeNull(); expect(capture.props?.closures).toEqual([]);

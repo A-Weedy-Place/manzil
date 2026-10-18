@@ -5,7 +5,7 @@ import { createApp } from '../server/app';
 import { readConfig } from '../server/config';
 import { Store } from '../server/store';
 import { photoSchema } from '../server/validation';
-import type { DirectoryUser } from '../server/community';
+import { authenticateToken, type DirectoryUser } from '../server/community';
 
 const cleanup: (() => Promise<void> | void)[] = [];
 afterEach(async () => { for (const run of cleanup.splice(0).reverse()) await run(); });
@@ -18,7 +18,8 @@ async function setup() {
   const users: DirectoryUser[] = ['alice','bob','reviewer','admin'].map(uid => ({ uid, email: `${uid}@example.test`, disabled: false, customClaims: { admin: uid === 'admin' } }));
   store.setMeta('community:member:reviewer', { verified: true });
   const directory = { listUsers: vi.fn(async (_limit: number, _token?: string) => ({ users, pageToken: 'next-page' })),
-    getUser: vi.fn(async (uid: string) => { const user = users.find(item => item.uid === uid); if (!user) throw new Error(); return user; }) };
+    getUser: vi.fn(async (uid: string) => { const user = users.find(item => item.uid === uid); if (!user) throw {code:'auth/user-not-found'}; return user; }),
+    setCustomUserClaims: vi.fn(async (uid: string, claims: Record<string,unknown> | null) => { const user = users.find(item => item.uid === uid); if (!user) throw {code:'auth/user-not-found'}; user.customClaims = claims ?? {}; }) };
   const { app } = createApp(store, { graph: () => graph, config: readConfig({ MANZIL_MODE:'emulator', FIREBASE_PROJECT_ID:'demo-community-test', FIRESTORE_EMULATOR_HOST:'127.0.0.1:8180', FIREBASE_AUTH_EMULATOR_HOST:'127.0.0.1:9199' }),
     verifyToken: async token => { const user = users.find(item => item.uid === token); if (!user) throw new Error(); return { uid: user.uid, admin: user.customClaims?.admin === true }; }, userDirectory: directory });
   const server = await new Promise<Server>(resolve => { const server = app.listen(0,'127.0.0.1',() => resolve(server)); });
@@ -26,7 +27,7 @@ async function setup() {
   const base = `http://127.0.0.1:${(server.address() as { port:number }).port}/api`;
   const request = (path:string, token?:string, body?:unknown, method = body === undefined ? 'GET' : 'POST') => fetch(`${base}${path}`, { method,
     headers: { 'Content-Type':'application/json', ...(token ? { Authorization:`Bearer ${token}` } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
-  return { store, request, directory };
+  return { store, request, directory, users };
 }
 describe('community reports and trusted membership', () => {
   it('keeps normal reports pending/private, strips spoofed authorship and photos from state, and publishes after review', async () => {
@@ -92,8 +93,67 @@ describe('community reports and trusted membership', () => {
     for (const invalid of ['data:image/svg+xml;base64,PHN2Zz4=','data:image/png;base64,aGVsbG8=',`data:image/png;base64,${Buffer.alloc(150001).toString('base64')}`]) {
       expect((await request('/closures','alice',{...draft,photos:[invalid]})).status).toBe(400);
     }
-    expect((await request('/closures','alice',{...draft,photos:[photo,photo,photo]})).status).toBe(400);
+    expect((await request('/closures','alice',{...draft,photos:Array(6).fill(photo)})).status).toBe(201);
+    expect((await request('/closures','alice',{...draft,photos:Array(7).fill(photo)})).status).toBe(400);
+    const largePng = Buffer.alloc(100_000); Buffer.from(photo.split(',')[1],'base64').copy(largePng);
+    const largePhoto = `data:image/png;base64,${largePng.toString('base64')}`;
+    expect(photoSchema.safeParse(largePhoto).success).toBe(true);
+    expect((await request('/closures','alice',{...draft,photos:Array(6).fill(largePhoto)})).status).toBe(400);
     expect((await request('/profile','alice',{verified:true},'PATCH')).status).toBe(400);
+  });
+  it('allows admin grants and revocations while preserving unrelated claims and retained verification', async () => {
+    const { request, directory, users, store } = await setup();
+    users.find(user => user.uid === 'alice')!.customClaims = { subscription: 'trial', feature: ['maps'] };
+    store.setMeta('community:member:alice', { verified: true });
+    expect((await request('/admin/users/alice','bob',{admin:true},'PATCH')).status).toBe(403);
+    const promoted = await request('/admin/users/alice','admin',{admin:true},'PATCH');
+    expect(promoted.status).toBe(200); expect(await promoted.json()).toMatchObject({uid:'alice',role:'admin',verified:true});
+    expect(directory.setCustomUserClaims).toHaveBeenCalledWith('alice',{subscription:'trial',feature:['maps'],admin:true});
+    expect((await request('/admin/users','alice')).status).toBe(200);
+    const demoted = await request('/admin/users/alice','admin',{admin:false},'PATCH');
+    expect(demoted.status).toBe(200); expect(await demoted.json()).toMatchObject({uid:'alice',role:'verified',verified:true});
+    expect(directory.setCustomUserClaims).toHaveBeenLastCalledWith('alice',{subscription:'trial',feature:['maps']});
+    expect((await request('/admin/users','alice')).status).toBe(403);
+    expect((await request('/admin/users/admin','admin',{admin:false},'PATCH')).status).toBe(409);
+    expect((await request('/admin/users/alice','admin',{admin:true,verified:true},'PATCH')).status).toBe(400);
+    expect((await request('/profile','alice',{admin:true},'PATCH')).status).toBe(400);
+  });
+  it('fails closed when the account service cannot change roles or the acting admin has been revoked', async () => {
+    const { request, directory, users } = await setup();
+    directory.setCustomUserClaims.mockRejectedValueOnce({code:'auth/insufficient-permission'});
+    expect((await request('/admin/users/alice','admin',{admin:true},'PATCH')).status).toBe(503);
+    expect(users.find(user => user.uid === 'alice')?.customClaims?.admin).toBe(false);
+    const get = directory.getUser.getMockImplementation()!;
+    directory.getUser.mockImplementationOnce(async uid => ({...await get(uid),customClaims:{admin:false}}));
+    expect((await request('/admin/users/alice','admin',{verified:true},'PATCH')).status).toBe(403);
+    expect(directory.setCustomUserClaims).toHaveBeenCalledTimes(1);
+  });
+  it('prevents disabled account promotion and verification', async () => {
+    const { request, users, directory } = await setup();
+    users.find(user => user.uid === 'alice')!.disabled = true;
+    expect((await request('/admin/users/alice','admin',{admin:true},'PATCH')).status).toBe(409);
+    expect((await request('/admin/users/alice','admin',{verified:true},'PATCH')).status).toBe(409);
+    expect(directory.setCustomUserClaims).not.toHaveBeenCalled();
+  });
+  it('rechecks queued admin writes so cross-demotion cannot revoke both administrators', async () => {
+    const { request, users } = await setup();
+    users.find(user => user.uid === 'alice')!.customClaims = {admin:true};
+    const results = await Promise.all([
+      request('/admin/users/alice','admin',{admin:false},'PATCH'),
+      request('/admin/users/admin','alice',{admin:false},'PATCH'),
+    ]);
+    expect(results.map(result=>result.status).sort()).toEqual([200,403]);
+    expect(users.filter(user=>user.customClaims?.admin===true)).toHaveLength(1);
+  });
+  it('resolves current Auth claims rather than granting an old token continued administrator access', async () => {
+    const getUser = vi.fn(async () => ({uid:'person',disabled:false,customClaims:{admin:false},displayName:'Sara'}));
+    const authority = {verifyIdToken:vi.fn(async () => ({uid:'person',admin:true,name:'Old name'})),getUser};
+    expect(await authenticateToken(authority,'old-admin-token')).toEqual({uid:'person',admin:false,name:'Sara'});
+    getUser.mockResolvedValueOnce({uid:'person',disabled:false,customClaims:{admin:true},displayName:'Sara'});
+    expect((await authenticateToken(authority,'same-token')).admin).toBe(true);
+    getUser.mockResolvedValueOnce({uid:'person',disabled:true,customClaims:{admin:true},displayName:'Sara'});
+    await expect(authenticateToken(authority,'disabled-token')).rejects.toThrow('Account disabled.');
+    expect(authority.verifyIdToken).toHaveBeenCalledWith('old-admin-token',true);
   });
   it('requires collection consent for trip writes and opt-out disables route learning while preserving history', async () => {
     const { request, store } = await setup();

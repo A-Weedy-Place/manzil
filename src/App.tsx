@@ -1,13 +1,14 @@
 import { t } from './lib/language';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BusFront, Moon, Palette, Sun } from 'lucide-react';
-import type { LocalProfile, MapStyleId } from '../shared/types';
+import type { LocalProfile, MapStyleId, RestrictionType } from '../shared/types';
 import { Activity, ArrowDown, ArrowDownUp, ArrowRight, ArrowUp, ArrowUpRight, Bell, Bookmark, CalendarClock, Check, ChevronRight, Clock3, Download, ExternalLink, Eye, EyeOff, Flag, Inbox, Layers2, LocateFixed, MapPinned, Navigation, Pencil, Plus, RefreshCw, Repeat2, Route, Search, ShieldCheck, SlidersHorizontal, Trash2, TriangleAlert, Upload, UserRound, WifiOff, X } from 'lucide-react';
 import type { Polygon } from 'geojson';
 import type { AppState, Closure, ClosureDraft, Commute, CommuteImpact, Coordinate, Drawing, FrequentRouteProposal, MapFocus, MapMode, Place, PlanResponse, RecordedPoint, RouteOption, SourceNotice, Trip } from '../shared/types';
 const MapView = lazy(() => import('./components/MapView'));
 import PlaceInput from './components/PlaceInput';
 import ClosureEditor from './components/ClosureEditor';
+import { useRoadSelection } from './lib/useRoadSelection';
 import RouteResults from './components/RouteResults';
 import SourcePanel from './components/SourcePanel';
 import CommutePanel from './components/CommutePanel';
@@ -113,6 +114,9 @@ export default function App() {
   const [editorKey, setEditorKey] = useState(0);
   const [drawing, setDrawing] = useState<Drawing | null>(null);
   const [selectedRoadName, setSelectedRoadName] = useState('');
+  const [restrictionType, setRestrictionType] = useState<RestrictionType>('road_closure');
+  const [editorRoadReplaced, setEditorRoadReplaced] = useState(false);
+  const roadSelection = useRoadSelection({ enabled: editorOpen && view === 'closures' && mode === 'road', owner: user?.uid ?? null, kind: restrictionType, drawing, onDraw: next => { setDrawing(next); setEditorRoadReplaced(true); }, onRoadName: setSelectedRoadName });
   const [selectedClosure, setSelectedClosure] = useState<string | null>(null);
   const [showClosures, setShowClosures] = useState(true); const [showBaseline, setShowBaseline] = useState(true);
   const [systemDark, setSystemDark] = useState(window.matchMedia('(prefers-color-scheme: dark)').matches);
@@ -227,7 +231,7 @@ export default function App() {
   const mapDepartureAt = localMap ? localAt : departureISO;
   const visibleClosures = state?.closures.filter(closure => {
     const status = closureState(closure, mapDepartureAt);
-    return closureFilter === 'all' || closureFilter === 'current' && ['active', 'scheduled', 'draft'].includes(status) || status === closureFilter;
+    return closureFilter === 'pending' ? closure.moderation === 'pending' && closure.status === 'draft' : closureFilter === 'all' || closureFilter === 'current' && ['active', 'scheduled', 'draft'].includes(status) || status === closureFilter;
   }) ?? [];
   const activeCount = state?.closures.filter(c => closureState(c, mapDepartureAt) === 'active').length ?? 0;
   const upcomingCount = state?.closures.filter(c => closureState(c, mapDepartureAt) === 'scheduled').length ?? 0;
@@ -325,9 +329,10 @@ export default function App() {
   }
   function beginClosure(seed?: Partial<ClosureDraft>) {
     if (!user) { setAccountOpen(true); return; }
-    setView('closures'); setEditing(null); setEditorSeed(seed); setSelectedClosure(null); setAgentReview(null);
+    setView('closures'); setEditing(null); setEditorSeed(seed); setSelectedClosure(null); setAgentReview(null); setEditorRoadReplaced(false); setRestrictionType(seed?.restrictionType ?? 'road_closure');
     setSelectedRoadName(''); setDrawing({ kind: 'line', coordinates: [], widthMeters: 14 }); setMode('road'); setEditorOpen(true); setEditorKey(key => key + 1);
   }
+  function startRoadSelection(kind = restrictionType) { roadSelection.reset(); setRestrictionType(kind); setEditorRoadReplaced(true); setSelectedRoadName(''); setDrawing({ kind: 'line', coordinates: [], widthMeters: kind === 'blockade' ? 4 : 14 }); setMode('road'); setPanelExpanded(false); }
   function reviewAgentOnMap(notice: SourceNotice, proposal?: AgentProposal) {
     beginClosure(proposal?.draft ?? { description: notice.text, sourceUrl: notice.url || undefined });
     if (!proposal) return;
@@ -351,6 +356,7 @@ export default function App() {
     try { closure = await api<Closure>(`/closures/${encodeURIComponent(closure.id)}`); } catch (reason) { notify(reason instanceof Error ? reason.message : 'Could not load the report.'); return; }
     if (latestView.current !== startingView) return;
     setSelectedRoadName('');
+    setRestrictionType(closure.restrictionType ?? 'road_closure'); setEditorRoadReplaced(false);
     setEditing(closure); setEditorSeed(undefined); setAgentReview(null); setSelectedClosure(closure.id); setView('closures');
     setDrawing(closure.drawing ?? { kind: 'polygon', coordinates: closure.geometry.coordinates[0].slice(0, -1) as Coordinate[], widthMeters: 35 });
     setMode('browse'); setEditorOpen(true); setEditorKey(key => key + 1); focusPoints(closure.geometry.coordinates[0] as Coordinate[]);
@@ -359,7 +365,7 @@ export default function App() {
   async function saveClosure(draft: ClosureDraft) {
     if (agentReview) { await decideAgentOnMap('approve', draft); return; }
     const result = editing ? await send<Closure>(`/closures/${editing.id}`, { ...draft, revision: editing.revision }, 'PUT') : await send<Closure>('/closures', draft);
-    cancelEditor(); setSelectedClosure(result.id); await reload(); focusPoints(result.geometry.coordinates[0] as Coordinate[]); notify(result.moderation === 'pending' ? 'Report submitted for review.' : editing ? 'Restriction updated. Replan to use the latest schedule.' : 'Restriction saved. It will apply during its scheduled period.');
+    cancelEditor(); setSelectedClosure(result.id); if (result.moderation === 'pending') setClosureFilter('pending'); await reload(); focusPoints(result.geometry.coordinates[0] as Coordinate[]); notify(result.moderation === 'pending' ? 'Report submitted for review.' : editing ? 'Closure updated.' : 'Closure added.');
   }
   function selectClosure(closure: Closure) { setSelectedClosure(closure.id); focusPoints(closure.geometry.coordinates[0] as Coordinate[]); }
   function canEditClosure(closure: Closure) { return isAdmin || !!user && closure.author?.uid === user.uid && (isReviewer || closure.moderation === 'pending'); }
@@ -497,7 +503,7 @@ export default function App() {
     setOrigin(start); setClock(now); setPlanTimeMode('now'); setPlan(result); setPlanWanted(false); const nextKey = JSON.stringify([`now-${now}`, start, waypoints, destination, false, result.eventRevision]); setPlanSnapshotKey(nextKey); setPlanContextKey(JSON.stringify(['now', null, start, waypoints, destination, false])); lastPlanKey.current = nextKey; setSelectedRouteId(result.options[0].id); setPlanning(false);
     return result.options[0];
   }
-  const mapInstructions = mode === 'road' ? 'Select the start and end of the closed road section' : mode === 'origin' ? 'Choose start' : mode === 'destination' ? 'Choose destination' : mode === 'waypoint' ? `Choose stop ${pickingWaypoint + 1}` : ['point', 'line', 'polygon'].includes(mode) ? `Draw ${mode === 'point' ? 'a restriction' : mode === 'line' ? 'the closed road' : 'the closed area'} · Esc to pause` : '';
+  const mapInstructions = mode === 'road' ? restrictionType === 'blockade' ? roadSelection.anchors.length === 1 ? 'Select the other end of the blockade' : roadSelection.anchors.length === 2 ? 'Blockade selected' : 'Draw across the blocked lanes' : roadSelection.anchors.length === 1 ? 'Select the end on the same road' : roadSelection.anchors.length === 2 ? 'Road selected' : 'Select a road on the map' : mode === 'origin' ? 'Choose start' : mode === 'destination' ? 'Choose destination' : mode === 'waypoint' ? `Choose stop ${pickingWaypoint + 1}` : '';
   if (authStatus === 'loading') return <div className="entry-loading" role="status">{t('Opening your account…')}</div>;
   const accountCreated = (uid: string) => { tourReturnView.current = 'journey'; setTravelChoiceUid(uid); setTourOpen(true); setAccountOpen(false); setEntryAccepted(true); };
   if (!entryAccepted && !user) return <AccountPanel entry onClose={continueAsGuest} onAuthenticated={() => setEntryAccepted(true)} onAccountCreated={accountCreated} />;
@@ -541,10 +547,10 @@ export default function App() {
             {(view === 'journey' || view === 'planning') && helpOpen && <div className="help-panel"><button className="text-button" onClick={startTour}>{t('Replay tour')}</button><button className="text-button" onClick={() => navigate('closures')}>{t('Road closures')}</button>{isAdmin && <button className="text-button" onClick={() => navigate('sources')}>{t('Source updates')}</button>}</div>}
           </div>
           <div className="panel-content" hidden={view !== 'closures'}>
-            {editorOpen && drawing ? agentReview?.proposal.action === 'reopening' ? <AgentReopeningReview proposal={agentReview.proposal} onApprove={() => decideAgentOnMap('approve')} onReject={() => decideAgentOnMap('reject')} onCancel={cancelEditor} /> : <ClosureEditor key={editorKey} closure={editing} seed={editorSeed} drawing={drawing} onDraw={setDrawing} mode={mode} setMode={setMode} onSave={saveClosure} onCancel={cancelEditor} canPublish={isReviewer} selectedRoadName={selectedRoadName} agentProposal={agentReview?.proposal} onReject={agentReview ? () => decideAgentOnMap('reject') : undefined} /> : <>
+            {editorOpen && drawing ? agentReview?.proposal.action === 'reopening' ? <AgentReopeningReview proposal={agentReview.proposal} onApprove={() => decideAgentOnMap('approve')} onReject={() => decideAgentOnMap('reject')} onCancel={cancelEditor} /> : <ClosureEditor key={editorKey} closure={editing} seed={editorSeed} drawing={drawing} onDraw={setDrawing} mode={mode} setMode={setMode} onSave={saveClosure} onCancel={cancelEditor} canPublish={isReviewer} selectedRoadName={selectedRoadName} roadSelection={roadSelection} onStartRoad={() => startRoadSelection()} restrictionType={restrictionType} onTypeChange={startRoadSelection} selectionChanged={editorRoadReplaced} agentProposal={agentReview?.proposal} onReject={agentReview ? () => decideAgentOnMap('reject') : undefined} /> : <>
               <div className="section-heading"><h1>{t("Road closures")}</h1><Flag size={22} /></div><button className="primary-button full" onClick={() => beginClosure()}><Plus size={18} />{t("Add closure")}</button>
               {isAdmin && (<div className="row import-export"><button className="text-button" onClick={exportClosures} disabled={!state.closures.length}><Download size={15} />{t("Export GeoJSON")}</button><button className="text-button" onClick={() => fileInput.current?.click()}><Upload size={15} />{t("Import")}</button><input ref={fileInput} type="file" accept=".geojson,.json,application/geo+json,application/json" hidden onChange={importClosures} /></div>)}
-              <div className="filter-row"><span className="small muted">{t("At ")}{time(departureISO)} {t("· ")}{dayDate(departureISO)}</span><select className="small-select" aria-label={t("Filter restrictions")} value={closureFilter} onChange={e => setClosureFilter(e.target.value)}><option value="current">{t("Current & upcoming")}</option><option value="active">{t("Active")}</option><option value="scheduled">{t("Scheduled")}</option><option value="draft">{t("Drafts")}</option><option value="all">{t("All restrictions")}</option></select></div>
+              <div className="filter-row"><span className="small muted">{t("At ")}{time(departureISO)} {t("· ")}{dayDate(departureISO)}</span><select className="small-select" aria-label={t("Filter restrictions")} value={closureFilter} onChange={e => setClosureFilter(e.target.value)}><option value="current">{t("Current & upcoming")}</option><option value="active">{t("Active")}</option><option value="scheduled">{t("Scheduled")}</option><option value="pending">{t("Pending review")}</option><option value="draft">{t("Drafts")}</option><option value="all">{t("All restrictions")}</option></select></div>
               <ClosureList closures={visibleClosures} at={mapDepartureAt} selectedId={selectedClosure} reviewer={isReviewer} canEdit={canEditClosure} onSelect={selectClosure} onEdit={editClosure} onCancel={cancelClosure} onReview={reviewClosure} />
               {view === 'closures' && isAdmin && <DemoClosures at={departureISO} revision={state.eventRevision} reload={reload} notify={notify} onFocus={focusPoints} onTryJourney={tryDemoJourney} />}
             </>}
@@ -564,7 +570,7 @@ export default function App() {
         </>}
       </aside>
       <main className="map-workspace" aria-label={t("Journey map")}><Suspense fallback={<div className="map-status" role="status">{t("Loading the map…")}</div>}>
-        <MapView transit={transitMap} onTransitPatternSelect={id => transit.selectPattern(id)} refreshing={!localMap && passiveRefresh} updating={!localMap && stale && !passiveRefresh} theme={theme} mapStyle={mapStyle} mapDetail={state?.profile?.mapDetail ?? 'clean'} navigationPosition={localMap ? null : navigationPosition} navigationAccuracy={localMap ? null : navigationAccuracy} followPosition={view === 'navigation'} routeOptions={localMap || showingHistory ? [] : mapRouteOptions} onRouteSelect={id => { if (!stale || passiveRefresh) setSelectedRouteId(id); }} mode={mode} origin={localMap ? transit.origin : showingHistory ? null : origin} destination={localMap ? transit.destination : showingHistory ? null : destination} waypoints={localMap || showingHistory ? [] : waypoints} onWaypointMove={moveWaypointOnMap} closures={state?.closures ?? []} selectedClosureId={selectedClosure} selectedRoute={localMap || showingHistory ? null : selectedRoute} baseline={localMap || showingHistory || stale && !passiveRefresh || !plan?.conflicts.length ? null : plan.baseline} baselineSelected={baselineSelected} onBaselineSelect={() => { if (!stale && view !== 'navigation') { setBaselineSelected(true); navigate(view === 'planning' ? 'planning' : 'journey'); } }} baselineConflictIds={baselineConflictIds} drawing={editorOpen && view === 'closures' ? drawing : null} departureAt={mapDepartureAt} focus={focus} showClosures={showClosures} showBaseline={showBaseline} recordedPoints={localMap ? [] : historyTrace} onPick={pick} onDraw={setDrawing} onRoadSelection={section => setSelectedRoadName(section.roadNames.join(' · '))} onEndpointMove={changeEndpoint} onClosureSelect={id => { if (editorOpen) { notify('Finish or cancel the current edit before selecting another restriction.'); return; } setSelectedClosure(id); navigate('closures'); }} />
+        <MapView transit={transitMap} onTransitPatternSelect={id => transit.selectPattern(id)} refreshing={!localMap && passiveRefresh} updating={!localMap && stale && !passiveRefresh} theme={theme} mapStyle={mapStyle} mapDetail={state?.profile?.mapDetail ?? 'clean'} navigationPosition={localMap ? null : navigationPosition} navigationAccuracy={localMap ? null : navigationAccuracy} followPosition={view === 'navigation'} routeOptions={localMap || showingHistory ? [] : mapRouteOptions} onRouteSelect={id => { if (!stale || passiveRefresh) setSelectedRouteId(id); }} mode={mode} origin={localMap ? transit.origin : showingHistory ? null : origin} destination={localMap ? transit.destination : showingHistory ? null : destination} waypoints={localMap || showingHistory ? [] : waypoints} onWaypointMove={moveWaypointOnMap} closures={state?.closures ?? []} selectedClosureId={selectedClosure} selectedRoute={localMap || showingHistory ? null : selectedRoute} baseline={localMap || showingHistory || stale && !passiveRefresh || !plan?.conflicts.length ? null : plan.baseline} baselineSelected={baselineSelected} onBaselineSelect={() => { if (!stale && view !== 'navigation') { setBaselineSelected(true); navigate(view === 'planning' ? 'planning' : 'journey'); } }} baselineConflictIds={baselineConflictIds} drawing={editorOpen && view === 'closures' ? drawing : null} departureAt={mapDepartureAt} focus={focus} showClosures={showClosures} showBaseline={showBaseline} recordedPoints={localMap ? [] : historyTrace} onPick={pick} onDraw={setDrawing} roadSelection={editorOpen && view === 'closures' ? roadSelection : undefined} closurePickType={restrictionType} onRoadPick={point => { void roadSelection.choose(point); }} onRoadStroke={async (from, to) => { roadSelection.reset(); await roadSelection.choose(from); await roadSelection.choose(to); }} onEndpointMove={changeEndpoint} onClosureSelect={id => { if (editorOpen) { notify('Finish or cancel the current edit before selecting another restriction.'); return; } setSelectedClosure(id); navigate('closures'); }} />
         {localMap && !transit.network && !transit.networkError && <div className="local-map-loading" role="status" aria-live="polite"><span className="local-map-loading-icon"><BusFront size={25} aria-hidden="true" /></span><div><strong>{t("Loading local routes…")}</strong><span>{t("Bus routes and stops")}</span></div><span className="local-map-loading-dots" aria-hidden="true"><i /><i /><i /></span></div>}
         <div className="map-topline"><div className="city-chip"><MapPinned size={17} /><span>{t("Pakistan")}</span></div><div className="map-layer-controls" data-tour="map-controls"><button type="button" className="map-style-trigger" aria-label={t("Choose map style")} aria-expanded={mapStylesOpen} aria-controls="map-style-picker" onClick={() => setMapStylesOpen(!mapStylesOpen)}><Palette size={17} /><span>{t("Style")}</span></button><button aria-label={t("Show restrictions layer")} aria-pressed={showClosures} className={showClosures ? 'active' : ''} onClick={() => setShowClosures(!showClosures)}><Flag size={15} /><span>{t("Closures")}</span>{activeCount > 0 && <b>{activeCount}</b>}</button>{!localMap && !!plan?.conflicts.length && !stale && <button aria-label={t("Show blocked route layer")} aria-pressed={showBaseline} className={showBaseline ? 'active blocked-toggle' : ''} onClick={() => setShowBaseline(!showBaseline)}>{showBaseline ? <Eye size={15} /> : <EyeOff size={15} />}<span>{t("Blocked route")}</span></button>}</div></div>
         {mapInstructions && <div className="map-instructions" role="status"><span className="status-dot" />{t(mapInstructions)}<button className="icon-button small" aria-label={t("Stop map selection")} onClick={() => setMode('browse')}><X size={16} /></button></div>}

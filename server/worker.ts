@@ -10,6 +10,7 @@ import { checkEnabledCommutes } from './commutes.js';
 import { HttpError } from './errors.js';
 import type { FuelService } from './fuel.js';
 import type { AgentService } from './agent.js';
+import { authenticateToken } from './community.js';
 
 export function mountWorker(app: Express, config: RuntimeConfig, store: Repository, source: SourceService, fuel: FuelService, agent: AgentService) {
   app.get('/healthz', (_request, response) => response.json({ ok: true }));
@@ -27,7 +28,7 @@ export function mountWorker(app: Express, config: RuntimeConfig, store: Reposito
       } catch { throw new HttpError(403, 'Worker identity could not be verified.'); }
     } else {
       // Emulator-only admin token, verified against the local Auth emulator.
-      const payload = await firebaseServices(config.projectId).auth.verifyIdToken(token);
+      const payload = await authenticateToken(firebaseServices(config.projectId).auth, token);
       if (payload.admin !== true) throw new HttpError(403, 'Emulator admin identity is required.');
     }
     const { job } = z.object({ job: z.enum(['source', 'commutes', 'fuel', 'agent']) }).strict().parse(request.body);
