@@ -221,6 +221,7 @@ def main():
     parser.add_argument("--download", action="store_true", help="Download the publisher's fixed public URLs")
     parser.add_argument("--supplement", type=Path, help="Reviewed source-attributed normalized additions")
     parser.add_argument("--official-review", type=Path, help="Scoped authority comparison bound to this base dataset version")
+    parser.add_argument("--road-alignment", type=Path, help="Reviewed precomputed OSM bus-road derivative bound to the exact reviewed base")
     parser.add_argument("--retrieved-at", help="UTC source retrieval instant; retained on unchanged re-import")
     args = parser.parse_args()
     args.source_dir.mkdir(parents=True, exist_ok=True)
@@ -284,6 +285,38 @@ def main():
         dataset["limitations"].extend(review.get("limitations", []))
         provenance["officialReviewSha256"] = sha(args.official_review.read_bytes())
         dataset["version"] += "-review-" + provenance["officialReviewSha256"][:8]
+    if args.road_alignment:
+        alignment_bytes = args.road_alignment.read_bytes()
+        alignment = json.loads(gzip.decompress(alignment_bytes))
+        base_bytes = json.dumps(dataset, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")
+        if alignment["baseVersion"] != dataset["version"] or alignment["baseNormalizedSha256"] != sha(base_bytes):
+            raise ValueError("Road alignment belongs to a different exact reviewed base; regenerate after source changes")
+        updates = {pattern["id"]: pattern for pattern in alignment["patterns"]}
+        original = {pattern["id"]: pattern for pattern in dataset["patterns"]}
+        refined = {pattern["id"]: pattern for pattern in alignment.get("refinedSupplied", [])}
+        if any(original.get(pattern_id) != record or record["geometryQuality"] != "provided-shape" for pattern_id, record in refined.items()):
+            raise ValueError("Refined supplied geometry must retain its exact original source evidence")
+        expected_updates = {pattern["id"] for pattern in dataset["patterns"] if pattern["geometryQuality"] == "stops-only"} | set(refined)
+        if len(updates) != len(alignment["patterns"]) or set(updates) != expected_updates:
+            raise ValueError("Road alignment must explicitly account for every schematic and reviewed sparse source pattern only")
+        keys = ["geometry", "geometryQuality", "geometrySourceId", "geometrySegments", "roadSegments", "roadAlignment", "breakAfterStopIndexes", "stopDistancesMeters"]
+        for pattern_id, update in updates.items():
+            old = original[pattern_id]
+            if update["stopIds"] != old["stopIds"] or update["routeId"] != old["routeId"] or update["geometryQuality"] != "road-aligned-estimate" or not set(old.get("breakAfterStopIndexes", [])).issubset(update["breakAfterStopIndexes"]):
+                raise ValueError("Road alignment cannot change source stop identity/order or remove documented gaps")
+            for key in keys:
+                old[key] = update[key]
+        if alignment["source"]["id"] in {source["id"] for source in dataset["sources"]}:
+            raise ValueError("Duplicate road alignment source")
+        dataset["sources"].append(alignment["source"])
+        original_display_limit = "Only supplied shapes with consistent stop projections are treated as mapped route geometry; other lines are dashed stop-order schematics."
+        current_display_limit = "Publisher-supplied geometry remains source evidence; Manzil displays separately attributed precomputed bus-road estimates for legacy stop-order schematics and reviewed sparse shapes. Unresolved links remain gaps, not straight connectors."
+        for source in dataset["sources"]:
+            source["limitations"] = [current_display_limit if text == original_display_limit else text for text in source.get("limitations", [])]
+        dataset["limitations"].append("Some bus geometry is a precomputed OSM bus-road alignment estimate through ordered stops, not an operator-approved street trace. Unresolved/source gaps remain unavailable; road clearance cannot be independently certified.")
+        provenance["roadAlignmentSha256"] = sha(alignment_bytes)
+        provenance["roadAlignment"] = alignment["summary"]
+        dataset["version"] += "-roads-" + provenance["roadAlignmentSha256"][:8]
     encoded = json.dumps(dataset, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("wb") as output:

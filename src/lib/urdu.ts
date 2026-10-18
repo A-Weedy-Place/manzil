@@ -1,5 +1,13 @@
 /** App-owned copy only. User notices, names and original source evidence remain verbatim. */
 export const urdu: Record<string, string> = {
+  'Local routes loading': 'مقامی راستے لوڈ ہو رہے ہیں',
+  'Bus routes and stops': 'بسوں کے راستے اور اسٹاپ',
+  'Road-aligned estimate': 'سڑکوں پر مبنی تخمینی راستہ',
+  'Road alignment unavailable': 'سڑک پر راستے کی تفصیل دستیاب نہیں',
+  'Some road sections are unmapped': 'سڑک کے کچھ حصوں کی تفصیل دستیاب نہیں',
+  'Some bus road geometry is unavailable; unresolved sections are excluded.': 'بس کے راستے کے کچھ حصوں کی تفصیل دستیاب نہیں؛ انہیں سفر میں شامل نہیں کیا گیا۔',
+  'Bus road alignment is estimated from ordered stops and mapped bus-access roads; actual operator streets can differ.': 'بس کے اسٹاپ کی ترتیب اور نقشے میں موجود بسوں کی سڑکوں سے راستے کا تخمینہ لگایا گیا ہے؛ اصل بس کا راستہ مختلف ہو سکتا ہے۔',
+  'Local routes took too long to load. Try again.': 'مقامی راستے لوڈ ہونے میں زیادہ وقت لگا۔ دوبارہ کوشش کریں۔',
   'Pipeline progress': 'پائپ لائن کی پیش رفت',
   'Collected posts': 'حاصل شدہ پوسٹس',
   'Waiting / analysing': 'منتظر / تجزیہ جاری',

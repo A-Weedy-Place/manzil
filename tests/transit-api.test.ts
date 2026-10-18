@@ -1,5 +1,6 @@
 import { afterEach,describe,expect,it } from 'vitest';
-import type { Server } from 'node:http';
+import { get, type IncomingHttpHeaders, type Server } from 'node:http';
+import { gunzipSync } from 'node:zlib';
 import { Store } from '../server/store';
 import { createApp } from '../server/app';
 import { readConfig } from '../server/config';
@@ -15,13 +16,62 @@ async function setup(){
   const server=await new Promise<Server>(resolve=>{const instance=app.listen(0,'127.0.0.1',()=>resolve(instance));});cleanup.push(()=>new Promise<void>(resolve=>{server.closeAllConnections();server.close(()=>resolve());}));
   const base=`http://127.0.0.1:${(server.address() as {port:number}).port}/api`;
   const request=(path:string,token?:string,body?:unknown,method=body===undefined?'GET':'POST')=>fetch(base+path,{method,headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});
-  return{store,data,transit,request};
+  return{store,data,transit,request,base};
+}
+async function rawGet(url:string,headers:Record<string,string>={}) {
+  return new Promise<{status:number;headers:IncomingHttpHeaders;body:Buffer}>((resolve,reject)=>{
+    const request=get(url,{headers},response=>{
+      const chunks:Buffer[]=[];
+      response.on('data',chunk=>chunks.push(Buffer.from(chunk)));
+      response.once('error',reject);
+      response.once('end',()=>resolve({status:response.statusCode!,headers:response.headers,body:Buffer.concat(chunks)}));
+    });
+    request.setTimeout(5000,()=>request.destroy(new Error('Transit HTTP test timed out.')));
+    request.once('error',reject);
+  });
 }
 const draft={routeId:'r1',title:'Metro suspension',description:'Manually reviewed public source',startsAt:TRANSIT_AT,endsAt:'2026-10-18T04:00:00Z',status:'published',sourceUrl:'https://example.test/service'};
 describe('public local-bus API and durable service notices',()=>{
   it('returns public network and lightweight revision without timetable bulk or private profile data',async()=>{
     const {request}=await setup(),response=await request(`/transit/network?at=${TRANSIT_AT}`);expect(response.status).toBe(200);const network=await response.json();expect(network).toMatchObject({version:'test-public-v1',statuses:[{patternId:'p1',availability:'available',closureAssessment:'provided-shape'}]});expect(network.trips).toBeUndefined();expect(network.profile).toBeUndefined();
     expect(await(await request('/transit/revision')).json()).toEqual({version:'test-public-v1',eventRevision:0,disruptionRevision:0});
+  });
+  it('serves negotiated public-network gzip with identical JSON, compressed length and retained response policies',async()=>{
+    const {base}=await setup(),url=`${base}/transit/network?at=${TRANSIT_AT}`,origin='http://127.0.0.1:5173';
+    const plain=await rawGet(url,{'Accept-Encoding':'identity',Origin:origin});
+    const compressed=await rawGet(url,{'Accept-Encoding':'gzip',Origin:origin});
+    expect(plain.status).toBe(200);expect(compressed.status).toBe(200);
+    expect(plain.headers['content-encoding']).toBeUndefined();expect(compressed.headers['content-encoding']).toBe('gzip');
+    expect(gunzipSync(compressed.body)).toEqual(plain.body);
+    expect(compressed.body.length).toBeLessThan(plain.body.length);
+    expect(Number(compressed.headers['content-length'])).toBe(compressed.body.length);
+    expect(Number(plain.headers['content-length'])).toBe(plain.body.length);
+    for(const response of [plain,compressed]){
+      expect(response.headers['content-type']).toBe('application/json; charset=utf-8');
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.headers['access-control-allow-origin']).toBe(origin);
+      expect(String(response.headers.vary).toLowerCase().split(/,\s*/).sort()).toEqual(['accept-encoding','origin']);
+    }
+    const network=JSON.parse(gunzipSync(compressed.body).toString('utf8'));
+    expect(network.profile).toBeUndefined();expect(network.trips).toBeUndefined();
+  });
+  it('honors gzip and identity quality values without compressing other API responses',async()=>{
+    const {base}=await setup(),url=`${base}/transit/network?at=${TRANSIT_AT}`;
+    for(const encoding of [undefined,'identity','br','gzip;q=0','gzip;q=0, *;q=1','gzip;q=0.2, identity;q=0.8']){
+      const response=await rawGet(url,encoding?{'Accept-Encoding':encoding}:{});
+      expect(response.status,encoding).toBe(200);expect(response.headers['content-encoding'],encoding).toBeUndefined();
+      expect(JSON.parse(response.body.toString('utf8')).version).toBe('test-public-v1');
+    }
+    for(const encoding of ['GZip','br, gzip;q=0.8, identity;q=0.1','*;q=1, identity;q=0']){
+      const response=await rawGet(url,{'Accept-Encoding':encoding});
+      expect(response.status,encoding).toBe(200);expect(response.headers['content-encoding'],encoding).toBe('gzip');
+      expect(JSON.parse(gunzipSync(response.body).toString('utf8')).version).toBe('test-public-v1');
+    }
+    expect((await rawGet(url,{'Accept-Encoding':'gzip;q=0, identity;q=0'})).status).toBe(406);
+    const revision=await rawGet(`${base}/transit/revision`,{'Accept-Encoding':'gzip'});
+    expect(revision.status).toBe(200);expect(revision.headers['content-encoding']).toBeUndefined();
+    const denied=await rawGet(`${base}/commutes`,{'Accept-Encoding':'gzip'});
+    expect(denied.status).toBe(401);expect(denied.headers['content-encoding']).toBeUndefined();
   });
   it('accepts public planning, rejects unknown fields/time-less dates and keeps future restrictions inactive',async()=>{
     const {data,request}=await setup(),body={origin:data.stops[0],destination:data.stops[2],departureAt:TRANSIT_AT};

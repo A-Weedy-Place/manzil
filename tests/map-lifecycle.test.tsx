@@ -58,6 +58,7 @@ vi.mock('../src/lib/mapStyle', async importOriginal => ({
 import MapView from '../src/components/MapView';
 import { loadMapStyle } from '../src/lib/mapStyle';
 import { api } from '../src/lib/api';
+import * as transitMap from '../src/lib/transitMap';
 
 beforeEach(() => {
   maps.instances.length = 0; maps.markers.length = 0; vi.mocked(loadMapStyle).mockClear();
@@ -89,8 +90,7 @@ it('adds and removes transit overlays on the retained map, keeping red closures 
   const map = maps.instances[0], source = map.getSource('manzil-transit')!;
   const validation = validateStyleMin({ version: 8, glyphs: 'https://example.com/{fontstack}/{range}.pbf', sources: Object.fromEntries([...map.sources].map(([id, source]) => [id, { type: 'geojson', data: source.data }])), layers: [...map.layers.values()] as LayerSpecification[] });
   expect(validation.map(issue => issue.message)).toEqual([]);
-  expect(map.layers.get('manzil-transit-journey-schematic')).toMatchObject({ paint: { 'line-dasharray': [2, 1.8] }, filter: ['all', ['==', ['get', 'kind'], 'ride'], ['==', ['get', 'schematic'], true]] });
-  expect(map.layers.get('manzil-transit-journey-line')).toMatchObject({ filter: ['all', ['==', ['get', 'kind'], 'ride'], ['==', ['get', 'schematic'], false]] });
+  expect(map.layers.get('manzil-transit-journey-line')).toMatchObject({ source: 'manzil-transit-journey', type: 'line' });
   result.rerender(<MapView {...base} transit={{ network, selectedPatternId: 'bus-0', journey: null, stale: false }} />); await act(async () => {});
   expect(source.data.features[0].properties).toMatchObject({ color: '#697781', selected: true, patternId: 'bus-0' });
   expect(map.getSource('manzil-transit-stops')?.data.features).toHaveLength(2);
@@ -100,7 +100,7 @@ it('adds and removes transit overlays on the retained map, keeping red closures 
   expect(maps.instances).toHaveLength(1); expect(map.setStyle).toHaveBeenCalledOnce();
 });
 
-it('keeps all bus lines and intermediate stops legible at city overview without white bundles or overstating schematic geometry', async () => {
+it('keeps road-aligned bus lines and stops legible, with solid bus strokes and closure precedence', async () => {
   render(<MapView {...props()} mapStyle="minimal" />); await act(async () => {});
   const map = maps.instances[0], layers = [...map.layers.keys()];
   const paint = (id: string) => (map.layers.get(id) as { paint: Record<string, unknown> }).paint;
@@ -110,7 +110,7 @@ it('keeps all bus lines and intermediate stops legible at city overview without 
     if (parsed.result !== 'success') throw new Error(JSON.stringify(parsed.value));
     return parsed.value.evaluate({ zoom }, { type: 'Point', properties: { selected } });
   };
-  for (const name of ['manzil-transit-line', 'manzil-transit-schematic']) {
+  for (const name of ['manzil-transit-line']) {
     const style = paint(name);
     expect(evaluate(style['line-width'], 11.5, false)).toBeGreaterThanOrEqual(4);
     expect(evaluate(style['line-width'], 11.5, true)).toBeGreaterThanOrEqual(7);
@@ -126,12 +126,41 @@ it('keeps all bus lines and intermediate stops legible at city overview without 
   expect(evaluate(stops['circle-radius'], 9, false)).toBeLessThan(evaluate(stops['circle-radius'], 11.5, false));
   expect(evaluate(stops['circle-opacity'], 9, false)).toBeLessThan(evaluate(stops['circle-opacity'], 11.5, false));
   expect(evaluate(stops['circle-radius'], 9, true)).toBeGreaterThanOrEqual(5); expect(evaluate(stops['circle-opacity'], 9, true)).toBe(1);
-  expect((map.layers.get('manzil-transit-casing') as { filter: unknown }).filter).toEqual(['==', ['get', 'schematic'], false]);
-  expect(paint('manzil-transit-schematic')['line-dasharray']).toEqual([2, 1.8]);
-  expect(paint('manzil-transit-journey-schematic')['line-dasharray']).toEqual([2, 1.8]);
-  for (const layer of ['manzil-transit-line', 'manzil-transit-schematic', 'manzil-transit-journey-line', 'manzil-transit-journey-schematic', 'manzil-transit-stops']) expect(layers.indexOf('manzil-closure-roads-line')).toBeGreaterThan(layers.indexOf(layer));
+  const busLayers = [...map.layers.values()].filter((layer): layer is LayerSpecification & { paint: Record<string, unknown> } => {
+    const value = layer as { id: string; type: string; source?: string };
+    return value.type === 'line' && ['manzil-transit', 'manzil-transit-journey'].includes(value.source ?? '') && value.id !== 'manzil-transit-walk-line';
+  });
+  expect(busLayers.length).toBeGreaterThanOrEqual(4);
+  for (const layer of busLayers) {
+    expect(layer.paint['line-dasharray'], layer.id).toBeUndefined();
+    expect(layers.indexOf('manzil-closure-roads-line')).toBeGreaterThan(layers.indexOf(layer.id));
+  }
+  expect(paint('manzil-transit-walk-line')['line-dasharray']).toEqual([1, 1.4]);
+  expect(layers.indexOf('manzil-closure-roads-line')).toBeGreaterThan(layers.indexOf('manzil-transit-stops'));
   const validation = validateStyleMin({ version: 8, glyphs: 'https://example.com/{fontstack}/{range}.pbf', sources: Object.fromEntries([...map.sources].map(([id, source]) => [id, { type: 'geojson', data: source.data }])), layers: [...map.layers.values()] as LayerSpecification[] });
   expect(validation.map(issue => issue.message)).toEqual([]); expect(maps.instances).toHaveLength(1);
+});
+
+it('does not rebuild transit sources for an equivalent wrapper or unrelated map UI changes', async () => {
+  const network: TransitNetwork = { version: 'stable-transit', importedAt: null, evaluatedAt: departureAt, eventRevision: 0, disruptionRevision: 0, sources: [], disruptions: [], limitations: [],
+    routes: [{ id: 'bus', name: 'City bus', shortName: 'B1', agency: 'Test', color: '#2f6fd3', sourceId: 'test', coverage: 'stops-and-shape' }], stops: [{ id: 'a', name: 'First stop', coordinate: [73.03, 33.64] }, { id: 'b', name: 'Last stop', coordinate: [73.05, 33.66] }],
+    patterns: [{ id: 'bus-0', routeId: 'bus', directionId: '0', headsign: 'Last stop', stopIds: ['a', 'b'], geometryQuality: 'provided-shape', geometry: { type: 'LineString', coordinates: [[73.03, 33.64], [73.04, 33.64], [73.05, 33.66]] } }], statuses: [{ patternId: 'bus-0', availability: 'available', closureIds: [], disruptionIds: [], closureAssessment: 'provided-shape' }] };
+  const build = vi.spyOn(transitMap, 'transitOverlayFeatures');
+  try {
+    const base = { ...props(), transit: { network, selectedPatternId: null, journey: null, stale: false } };
+    const result = render(<MapView {...base} />); await act(async () => {});
+    const map = maps.instances[0], before = build.mock.calls.length;
+    const sources = ['manzil-transit', 'manzil-transit-stops', 'manzil-transit-journey'].map(id => map.getSource(id)!);
+    const writes = sources.map(source => source.setData.mock.calls.length);
+    result.rerender(<MapView {...base} theme="dark" departureAt="2026-10-17T12:01:00Z" closures={[]} transit={{ ...base.transit }} />); await act(async () => {});
+    expect(build).toHaveBeenCalledTimes(before);
+    expect(sources.map(source => source.setData.mock.calls.length)).toEqual(writes);
+    result.rerender(<MapView {...base} transit={{ ...base.transit, selectedPatternId: 'bus-0' }} />); await act(async () => {});
+    expect(build).toHaveBeenCalledTimes(before + 1);
+    expect(sources[0].data.features[0].properties?.selected).toBe(true);
+    expect(sources[1].data.features.every(feature => feature.properties?.selected === true)).toBe(true);
+    expect(map.setStyle).toHaveBeenCalledOnce(); expect(maps.instances).toHaveLength(1);
+  } finally { build.mockRestore(); }
 });
 
 it('retains the map, style and overlay sources across route switches, polling and app theme changes', async () => {

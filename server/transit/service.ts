@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { Closure, ClosureAuthor } from '../../shared/types.js';
-import type { TransitDataset, TransitDisruption, TransitDisruptionDraft, TransitDisruptionState, TransitNetwork, TransitPlanRequest } from '../../shared/transit.js';
+import type { TransitDataset, TransitDisruption, TransitDisruptionDraft, TransitDisruptionState, TransitNetwork, TransitPattern, TransitPlanRequest } from '../../shared/transit.js';
 import type { Repository } from '../repository.js';
 import { HttpError } from '../errors.js';
 import { instantSchema, placeSchema } from '../validation.js';
@@ -13,13 +13,25 @@ export const transitPlanSchema=z.object({origin:placeSchema.strict(),destination
 export const transitDisruptionSchema=z.object({routeId:z.string().min(1).max(160),directionId:z.string().max(30).optional(),fromStopId:z.string().max(160).optional(),toStopId:z.string().max(160).optional(),title:z.string().trim().min(1).max(160),description:z.string().trim().max(1000),startsAt:instantSchema,endsAt:instantSchema,status:z.enum(['published','cancelled']),sourceUrl:z.string().url().max(1500).refine(value=>['http:','https:'].includes(new URL(value).protocol)).optional()}).strict().superRefine((value,context)=>{if(Date.parse(value.endsAt)<=Date.parse(value.startsAt))context.addIssue({code:'custom',path:['endsAt'],message:'End must follow start.'});if(!!value.fromStopId!==!!value.toStopId)context.addIssue({code:'custom',path:['fromStopId'],message:'Choose both segment endpoints or neither.'});});
 export const transitDisruptionUpdateSchema=z.object({...transitDisruptionSchema.shape,revision:z.number().int().positive()}).strict().superRefine((value,context)=>{const {revision:_revision,...draft}=value,result=transitDisruptionSchema.safeParse(draft);if(!result.success)for(const issue of result.error.issues)context.addIssue({code:'custom',path:issue.path,message:issue.message});});
 
+const publicPatterns=new WeakMap<TransitDataset,TransitPattern[]>();
+/** Geometry is precomputed once. Avoid sending backend pair paths as a second
+ * and third copy of the same city-wide coordinates on every Local refresh. */
+function mapPatterns(data:TransitDataset):TransitPattern[]{
+  let patterns=publicPatterns.get(data);if(patterns)return patterns;
+  patterns=data.patterns.map(pattern=>{
+    const {roadSegments:_pairs,stopDistancesMeters:_distances,...visible}=pattern;
+    if(pattern.geometryQuality==='road-aligned-estimate'&&visible.geometrySegments?.length===1&&JSON.stringify(visible.geometrySegments[0])===JSON.stringify(visible.geometry))delete visible.geometrySegments;
+    return visible;
+  });publicPatterns.set(data,patterns);return patterns;
+}
+
 export class TransitService {
   constructor(private store:Repository,private data:()=>TransitDataset|null=loadTransitDataset){}
   async disruptions():Promise<TransitDisruptionState>{return await this.store.meta<TransitDisruptionState>('transit:disruptions')??{revision:0,records:[]};}
   async revision(){const [revision,state]=await Promise.all([this.store.meta<number>('eventRevision'),this.disruptions()]);return{version:this.data()?.version??'unavailable',eventRevision:revision??0,disruptionRevision:state.revision};}
   async network(at:string):Promise<TransitNetwork>{
     const [snapshot,state]=await Promise.all([this.store.routingSnapshot(),this.disruptions()]),data=this.data(),instant=Date.parse(at),closures=publishedClosures(snapshot.closures),alerts=state.records.filter(alert=>alert.status==='published');
-    const result:TransitNetwork={version:data?.version??'unavailable',importedAt:data?.importedAt??null,evaluatedAt:at,eventRevision:snapshot.revision,disruptionRevision:state.revision,sources:data?.sources??[],routes:data?.routes??[],stops:data?.stops??[],patterns:data?.patterns??[],statuses:[],disruptions:alerts,limitations:[...(data?.limitations??[]),'Walking links are straight-line estimates, not pedestrian navigation.','Grey road-affected bus lines are uncertain; only a service notice confirms suspension.','No live bus locations or automatic service-alert extraction is connected.'],...(!data?{unavailableReason:'Local bus data is unavailable. No fallback network is presented as real service.'}:{})};
+    const result:TransitNetwork={version:data?.version??'unavailable',importedAt:data?.importedAt??null,evaluatedAt:at,eventRevision:snapshot.revision,disruptionRevision:state.revision,sources:data?.sources??[],routes:data?.routes??[],stops:data?.stops??[],patterns:data?mapPatterns(data):[],statuses:[],disruptions:alerts,limitations:[...(data?.limitations??[]),'Walking links are straight-line estimates, not pedestrian navigation.','Grey road-affected bus lines are uncertain; only a service notice confirms suspension.','No live bus locations or automatic service-alert extraction is connected.'],...(!data?{unavailableReason:'Local bus data is unavailable. No fallback network is presented as real service.'}:{})};
     result.statuses=data?.patterns.map(pattern=>{
       // A schematic chord can establish only a conservative risk, never an exact
       // road closure or clearance. It is still grey/excluded when that risk hits.

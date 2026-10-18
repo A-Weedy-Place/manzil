@@ -14,7 +14,9 @@ export default defineConfig(({ mode }) => {
   server: {
     host: '127.0.0.1', port: Number(env.VITE_DEV_PORT ?? 5173), strictPort: true,
     proxy: { '/api': env.VITE_API_PROXY_TARGET ?? 'http://127.0.0.1:3001' },
-    watch: { ignored: ['**/data/**', '**/*.sqlite*'] },
+    // Development source archives/parsers can hold Windows file locks. They
+    // never belong to application HMR and must not terminate the dev server.
+    watch: { ignored: ['**/data/**', '**/*.sqlite*', '**/.local-tools/**'] },
     fs: { deny: ['.env', '.env.*', '**/.git/**', '**/data/**', '**/.wwebjs_auth/**', '**/.baileys_auth/**'] },
   },
   build: { outDir: 'dist', sourcemap: false },

@@ -59,11 +59,9 @@ function installOverlays(map: LibreMap) {
   addLayer({ id: 'manzil-location-accuracy-line', type: 'line', source: sid('location-accuracy'), paint: { 'line-color': '#367cf5', 'line-width': 1.3, 'line-opacity': .65 } });
   addLayer({ id: 'manzil-transit-casing', type: 'line', source: sid('transit'), filter: ['==', ['get', 'schematic'], false], layout: { 'line-cap': 'round', 'line-join': 'round', 'line-sort-key': ['get', 'order'] }, paint: { 'line-color': '#18394b', 'line-width': ['case', ['get', 'selected'], 10, 6], 'line-opacity': ['case', ['get', 'selected'], .35, .16] } });
   addLayer({ id: 'manzil-transit-line', type: 'line', source: sid('transit'), filter: ['==', ['get', 'schematic'], false], layout: { 'line-cap': 'round', 'line-join': 'round', 'line-sort-key': ['get', 'order'] }, paint: { 'line-color': ['get', 'color'], 'line-width': ['case', ['get', 'selected'], 7.8, 4.5], 'line-opacity': ['case', ['get', 'selected'], 1, .96] } });
-  addLayer({ id: 'manzil-transit-schematic', type: 'line', source: sid('transit'), filter: ['==', ['get', 'schematic'], true], layout: { 'line-cap': 'round', 'line-join': 'round', 'line-sort-key': ['get', 'order'] }, paint: { 'line-color': ['get', 'color'], 'line-width': ['case', ['get', 'selected'], 7.4, 4.4], 'line-dasharray': [2, 1.8], 'line-opacity': ['case', ['get', 'selected'], 1, .96] } });
   addLayer({ id: 'manzil-transit-hit', type: 'line', source: sid('transit'), paint: { 'line-color': '#376edb', 'line-width': 17, 'line-opacity': .01 } });
   addLayer({ id: 'manzil-transit-journey-casing', type: 'line', source: sid('transit-journey'), filter: ['all', ['==', ['get', 'kind'], 'ride'], ['==', ['get', 'schematic'], false]], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': 10.8, 'line-opacity': .82 } });
   addLayer({ id: 'manzil-transit-journey-line', type: 'line', source: sid('transit-journey'), filter: ['all', ['==', ['get', 'kind'], 'ride'], ['==', ['get', 'schematic'], false]], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': 8.8 } });
-  addLayer({ id: 'manzil-transit-journey-schematic', type: 'line', source: sid('transit-journey'), filter: ['all', ['==', ['get', 'kind'], 'ride'], ['==', ['get', 'schematic'], true]], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': 8.2, 'line-dasharray': [2, 1.8] } });
   addLayer({ id: 'manzil-transit-walk-line', type: 'line', source: sid('transit-journey'), filter: ['==', ['get', 'kind'], 'walk'], layout: { 'line-cap': 'round' }, paint: { 'line-color': '#526a7f', 'line-width': 4, 'line-dasharray': [1, 1.4] } });
   // Dots remain visible at city overview. Their radius and opacity shrink only
   // toward regional zooms, while selected/ridden stops retain their emphasis.
@@ -368,7 +366,7 @@ export default function MapView(props: MapViewProps) {
     const map = mapRef.current; if (!map) return;
     const transit = transitOverlayFeatures(props.transit);
     updateSource(map, 'transit', transit.lines); updateSource(map, 'transit-stops', transit.stops); updateSource(map, 'transit-journey', transit.journey);
-  }, [props.transit, styleVersion, retry]);
+  }, [props.transit?.network, props.transit?.selectedPatternId, props.transit?.journey, props.transit?.stale, styleVersion, retry]);
 
   useEffect(() => {
     const map = mapRef.current; if (!map) return;

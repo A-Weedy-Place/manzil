@@ -30,6 +30,7 @@ import { FuelService, travelStatistics, pktDay } from './fuel.js';
 import { estimateTraceFuel } from '../shared/fuel.js';
 import { WeatherService } from './weather.js';
 import { TransitService, transitDisruptionSchema, transitDisruptionUpdateSchema, transitPlanSchema } from './transit/service.js';
+import { sendTransitNetwork } from './transit/network-response.js';
 
 interface AppOptions {
   config?: RuntimeConfig;
@@ -174,7 +175,7 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
   });
   routes.get('/transit/network', async (request,response) => {
     const query=z.object({at:instantSchema.optional()}).strict().parse(request.query);
-    response.json(await transit.network(query.at??new Date().toISOString()));
+    await sendTransitNetwork(request,response,await transit.network(query.at??new Date().toISOString()));
   });
   routes.get('/transit/revision', async (request,response) => { z.object({}).strict().parse(request.query);response.json(await transit.revision()); });
   routes.post('/transit/plan', async (request,response) => response.json(await transit.plan(transitPlanSchema.parse(request.body))));
