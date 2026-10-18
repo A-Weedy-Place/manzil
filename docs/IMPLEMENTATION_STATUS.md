@@ -1,5 +1,9 @@
 # Implementation status
 
+## Administrator role-update permission corrected - 18 October 2026
+
+The deployed API had Firebase Auth Viewer access, so its administrator-only role-change endpoint returned 503 when setting custom claims. Created project custom role `manzilAuthClaimsUpdater`, containing only `firebaseauth.users.update`, and bound it to `manzil-api@manzil-app-v1.iam.gserviceaccount.com`. Read-back verified the exact permission and binding. No broader Auth Admin role, application deployment, user-role mutation or account change was performed. The actual authenticated promotion should be retried through the existing admin UI; its success is not claimed from IAM read-back alone.
+
 ## Road/Metro lifecycle and feature PR #4 deployed - 18 October 2026
 
 [PR #4](https://github.com/A-Weedy-Place/manzil/pull/4) merged into main at **33b5af5**, integrating validated application tree **ec7345f**. Final frontend correction **f4a1460** fixes the new Urdu labels/timeline separators and adds a rendered Urdu regression check. Backend source is unchanged by that correction.

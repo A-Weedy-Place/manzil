@@ -53,7 +53,7 @@ Create separate dedicated API, worker and Scheduler service accounts as needed. 
 
 | Identity | Access needed |
 | --- | --- |
-| API runtime | `roles/datastore.user`; Firebase Auth user read access for token/account checks. The Users directory's role-management feature also needs `firebaseauth.users.update`, for example through `roles/firebaseauth.admin` on this dedicated runtime. A viewer-only grant cannot update claims. |
+| API runtime | `roles/datastore.user`; Firebase Auth user read access for token/account checks. The Users directory's role-management feature also needs `firebaseauth.users.update`, through a narrow custom role containing only that permission. The recorded installation binds `projects/manzil-app-v1/roles/manzilAuthClaimsUpdater` to `manzil-api@manzil-app-v1.iam.gserviceaccount.com`; existing Viewer access supplies reads. A viewer-only grant cannot update claims. |
 | Worker runtime | `roles/datastore.user`; source bucket object create/view when media is enabled; access to its one Gemini secret when Gemini is enabled |
 | Scheduler identity | `roles/run.invoker` on the **private worker service only** |
 | API runtime, optional manual analysis | `roles/run.invoker` on that worker only; worker permits this identity for `agent` jobs only |
