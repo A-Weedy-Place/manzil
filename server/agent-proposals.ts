@@ -1,3 +1,4 @@
+import type { TransitDisruption, TransitDisruptionState } from '../shared/transit.js';
 import { createHash, randomUUID } from 'node:crypto';
 import type { AgentExtraction, AgentProposal, AgentProposalDecision, AgentProposalReview, AgentResult } from '../shared/agent.js';
 import type { Closure, Place, SourceNotice } from '../shared/types.js';
@@ -32,6 +33,7 @@ export async function prepareAgentProposals(notice: SourceNotice, extraction: Ag
   if (extraction.category !== 'traffic') return [];
   const proposals: AgentProposal[] = [];
   for (const [index, event] of extraction.events.entries()) {
+    if (event.kind === 'transit' || event.transit) continue;
     const steps: NonNullable<AgentProposal['steps']> = [{ tool: 'interpret_source', state: 'done', detail: 'Gemini interpretation is available.' }];
     const issues = [...extraction.warnings, ...event.uncertainties];
     if (event.action === 'disruption' || event.impact !== 'closed') issues.push('This reports disruption or uncertain road access. Confirm an actual road restriction before approving.');
@@ -94,7 +96,7 @@ export async function prepareAgentProposals(notice: SourceNotice, extraction: Ag
       steps: [...steps, { tool: 'prepare_draft', state: 'done', detail: 'Saved a private proposal. Administrator approval is required for map changes.' }],
       draft: { title: event.title, description: `${extraction.summary}\n\n${notice.text}`.slice(0, 4000), reason: event.reason,
         ...(startsAt ? { startsAt } : {}), endsAt, status: 'draft', ...(notice.url ? { sourceUrl: notice.url } : {}),
-        ...(resolved ? { geometry: resolved.geometry, drawing: resolved.drawing } : {}) }, issues: [...new Set(issues)] });
+        ...(resolved ? { geometry: resolved.geometry, drawing: resolved.drawing, ...(resolved.restrictionType ? { restrictionType: resolved.restrictionType } : {}) } : {}) }, issues: [...new Set(issues)] });
   }
   return proposals;
 }
@@ -108,14 +110,26 @@ export function currentProposalResult(notice: SourceNotice | undefined, result: 
 }
 
 /** Called inside each adapter's transaction; approval and decision history commit together. */
-export function decideAgentProposal(input: AgentProposalReview, notice: SourceNotice | undefined, stored: AgentResult | undefined, previous: Closure | undefined): AgentProposalDecision {
+export function decideAgentProposal(input: AgentProposalReview, notice: SourceNotice | undefined, stored: AgentResult | undefined, previous: Closure | undefined, transitState: TransitDisruptionState = { revision: 0, records: [] }): AgentProposalDecision {
   if (input.reviewer.role !== 'admin') throw new HttpError(403, 'Administrator access is required.');
   const result = currentProposalResult(notice, stored, input.noticeRevision);
   const original = result.proposals?.find(proposal => proposal.index === input.index);
   if (!original || original.version !== input.version || original.state !== 'pending') throw new HttpError(409, 'This proposal changed or has already been decided. Refresh the Pipeline.');
   const now = new Date().toISOString();
-  let closure: Closure | undefined;
-  if (input.decision === 'approve') {
+  let closure: Closure | undefined, transit: TransitDisruption | undefined, nextTransit: TransitDisruptionState | undefined;
+  if (input.decision === 'approve' && original.kind === 'transit') {
+    const prior = transitState.records.find(record => record.id === original.targetId);
+    if ((prior?.revision ?? null) !== original.targetRevision) throw new HttpError(409, 'Service notice changed; refresh before reviewing.');
+    if (!input.transitDraft) throw new HttpError(400, 'Complete the service and time window before approving.');
+    if (!prior && transitState.records.length >= 100) throw new HttpError(409, 'Service notice store is full.');
+    if (original.action === 'reopening' && (!prior?.agent || prior.status !== 'published' || prior.agent.overridden || !original.transitDraft?.startsAt || Date.parse(original.transitDraft.startsAt) > Date.now())) throw new HttpError(409, 'A current unchanged service notice is required for restoration.');
+    const draft = original.action === 'reopening' ? { ...prior!, status: 'cancelled' as const } : input.transitDraft;
+    if (original.action !== 'reopening' && draft.status !== 'published') throw new HttpError(400, 'Approval must explicitly publish the suspension.');
+    transit = { ...draft, id: original.targetId, revision: (prior?.revision ?? 0)+1, author: prior?.author ?? { uid: 'system:gemini', displayName: 'Gemini ? reviewed service notice', role: 'verified' }, createdAt: prior?.createdAt ?? now, updatedAt: now,
+      agent: { noticeId: notice!.id, sourceId: notice!.sourceId, sourceRevision: notice!.revision, evidenceAt: notice!.sourceTimestamp?.at ?? notice!.publishedAt ?? now, locationKey: original.locationKey, overridden: true } };
+    nextTransit = { revision: transitState.revision+1, records: [...transitState.records.filter(record=>record.id!==transit!.id), transit] };
+  }
+  if (input.decision === 'approve' && original.kind !== 'transit') {
     if ((previous?.revision ?? null) !== original.targetRevision) throw new HttpError(409, 'The map incident changed after this proposal was prepared. Review the current incident in Blockades.');
     if (original.action === 'reopening') {
       if (original.draft.startsAt && Date.parse(original.draft.startsAt) > Date.now()) throw new HttpError(400, 'This reopening is in the future. Keep the existing restriction until it is confirmed open.');
@@ -143,8 +157,9 @@ export function decideAgentProposal(input: AgentProposalReview, notice: SourceNo
   }
   const proposal: AgentProposal = { ...original, state: input.decision === 'approve' ? 'approved' : 'rejected',
     ...(input.draft && closure ? { draft: { ...input.draft, status: closure.status } } : {}),
-    reviewedBy: input.reviewer, reviewedAt: now, ...(closure ? { closureId: closure.id } : {}) };
+    decisionMode: 'admin', reviewedBy: input.reviewer, reviewedAt: now, ...(closure || transit ? { closureId: closure?.id ?? transit!.id } : {}) };
   const proposals = result.proposals!.map(item => item.index === proposal.index ? proposal : item);
   const closureIds = [...new Set([...result.closureIds, ...(closure ? [closure.id] : [])])];
-  return { result: { ...result, proposals, closureIds, state: proposals.some(item => item.state === 'pending') ? 'review' : closureIds.length ? 'applied' : 'review' }, proposal, ...(closure ? { closure } : {}) };
+  const transitIds = [...new Set([...(result.transitIds ?? []), ...(transit ? [transit.id] : [])])];
+  return { result: { ...result, proposals, closureIds, transitIds, state: proposals.some(item => item.state === 'pending') ? 'review' : closureIds.length || transitIds.length ? 'applied' : 'review' }, proposal, ...(closure ? { closure } : {}), ...(transit ? { transit, transitState: nextTransit } : {}) };
 }

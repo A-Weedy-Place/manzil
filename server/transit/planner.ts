@@ -1,3 +1,4 @@
+import { disruptionCoversRoute } from '../../shared/transit.js';
 import { createHash } from 'node:crypto';
 import type { Closure, Place } from '../../shared/types.js';
 import type { TransitCalendar, TransitDataset, TransitDisruption, TransitJourney, TransitLeg, TransitPattern, TransitPlanRequest, TransitPlanResponse, TransitRideLeg, TransitStop, TransitTrip, TransitWalkLeg } from '../../shared/transit.js';
@@ -12,7 +13,7 @@ export function calendarRuns(calendar:TransitCalendar,date:string):boolean {
 }
 function serviceDays(at:number):{date:string;start:number}[]{const start=Math.floor((at+PKT)/DAY)*DAY-PKT;return[-2,-1,0,1].map(offset=>({date:new Date(start+offset*DAY+PKT).toISOString().slice(0,10),start:start+offset*DAY}));}
 function disruptionHits(disruption:TransitDisruption,pattern:TransitPattern,from:number,to:number,start:number,end:number):boolean{
-  if(disruption.status!=='published'||disruption.routeId!==pattern.routeId||disruption.directionId!==undefined&&disruption.directionId!==pattern.directionId||!overlap(disruption.startsAt,disruption.endsAt,start,end))return false;
+  if(disruption.status!=='published'||!disruptionCoversRoute(disruption,pattern.routeId)||disruption.directionId!==undefined&&disruption.directionId!==pattern.directionId||!overlap(disruption.startsAt,disruption.endsAt,start,end))return false;
   if(!disruption.fromStopId)return true;
   const first=pattern.stopIds.indexOf(disruption.fromStopId),last=pattern.stopIds.indexOf(disruption.toStopId!);
   return first>=0&&last>first&&from<last&&to>first;

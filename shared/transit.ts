@@ -1,5 +1,5 @@
 import type { LineString } from 'geojson';
-import type { ClosureAuthor, Coordinate, Place } from './types.js';
+import type { Closure, ClosureAuthor, Coordinate, Place } from './types.js';
 
 export interface TransitSource { id: string; name: string; url: string; license: string; retrievedAt: string; limitations: string[] }
 export interface TransitOfficialReview { checkedAt: string; status: 'consistent' | 'differences' | 'reference-only' | 'not-established'; summary: string; references: { label: string; url: string }[] }
@@ -11,8 +11,8 @@ export interface TransitCalendar { id: string; startDate: string; endDate: strin
 export interface TransitTrip { id: string; patternId: string; serviceId: string; times: [number, number][]; pickupAllowed?: boolean[]; dropOffAllowed?: boolean[]; timepoint?: boolean[] }
 export interface TransitDataset { version: string; importedAt: string; sources: TransitSource[]; routes: TransitRoute[]; stops: TransitStop[]; patterns: TransitPattern[]; calendars: TransitCalendar[]; trips: TransitTrip[]; limitations: string[] }
 
-export interface TransitDisruptionDraft { routeId: string; directionId?: string; fromStopId?: string; toStopId?: string; title: string; description: string; startsAt: string; endsAt: string; status: 'published' | 'cancelled'; sourceUrl?: string }
-export interface TransitDisruption extends TransitDisruptionDraft { id: string; revision: number; author: ClosureAuthor; createdAt: string; updatedAt: string }
+export interface TransitDisruptionDraft { routeId: string; routeIds?: string[]; directionId?: string; fromStopId?: string; toStopId?: string; title: string; description: string; startsAt: string; endsAt: string; status: 'published' | 'cancelled'; sourceUrl?: string }
+export interface TransitDisruption extends TransitDisruptionDraft { id: string; revision: number; author: ClosureAuthor; createdAt: string; updatedAt: string; agent?: Closure['agent'] }
 export interface TransitDisruptionState { revision: number; records: TransitDisruption[] }
 export type TransitAvailability = 'available' | 'uncertain' | 'suspended';
 export interface TransitPatternStatus { patternId: string; availability: TransitAvailability; closureIds: string[]; disruptionIds: string[]; closureAssessment: 'provided-shape' | 'mapped-corridor' | 'road-aligned-estimate' | 'unavailable' }
@@ -23,3 +23,5 @@ export interface TransitRideLeg { kind: 'ride'; routeId: string; patternId: stri
 export type TransitLeg = TransitWalkLeg | TransitRideLeg;
 export interface TransitJourney { id: string; legs: TransitLeg[]; departureAt: string; arrivalAt: string | null; durationSeconds: number | null; walkingDistanceMeters: number; distanceMeters: number; transfers: number; timing: 'scheduled' | 'unknown'; warnings: string[] }
 export interface TransitPlanResponse { options: TransitJourney[]; evaluatedAt: string; departureAt: string; eventRevision: number; disruptionRevision: number; datasetVersion: string; warnings: string[]; unavailableReason?: string }
+
+export const disruptionCoversRoute = (notice: TransitDisruptionDraft, routeId: string) => notice.routeId === routeId || notice.routeIds?.includes(routeId) === true;

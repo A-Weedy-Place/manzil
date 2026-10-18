@@ -24,8 +24,8 @@ describe('agent mapping beyond the bundled road area', () => {
     expect(result.key).toBe('lahore:parkroad:firstroad:secondroad');
   });
 
-  it('resolves a named blockade point in another city without accepting model coordinates', async () => {
-    const value = event(); value.location.from = value.location.to = null; value.location.point = 'Town Hall';
+  it('retains legacy untyped named review pins in another city without accepting model coordinates', async () => {
+    const value = event(); value.restrictionType = undefined; value.location.from = value.location.to = null; value.location.point = 'Town Hall';
     const lookup = vi.fn(async () => [place('Town Hall', [74.301,31.5001])]), graphFor = vi.fn(async () => cityGraph());
     const result = await resolveAgentLocation(value, undefined, lookup, graphFor);
     expect(result.drawing).toEqual({ kind: 'point', coordinates: [[74.301,31.5]], widthMeters: 14 });

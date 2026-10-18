@@ -1,3 +1,4 @@
+import { loadTransitDataset } from '../server/transit/dataset.js';
 import { config } from 'dotenv';
 import { agentConfig, GeminiClient, type AgentImage } from '../server/gemini.js';
 import { collectPublicPosts } from '../server/source.js';
@@ -16,6 +17,6 @@ for (const url of post.mediaUrls.slice(0, 1)) {
     kind: new URL(url).pathname.startsWith('/media/') ? 'photo' : 'video_thumbnail' });
 }
 const result = await new GeminiClient(settings).extract({ notice: { ...post, id: `probe-${post.sourceId}`, source: 'x',
-  revision: 1, receivedAt: new Date().toISOString(), status: 'pending_agent', contentHash: 'read-only-probe' }, images, incidents: [] });
+  revision: 1, receivedAt: new Date().toISOString(), status: 'pending_agent', contentHash: 'read-only-probe' }, images, incidents: [], transitRoutes: loadTransitDataset()?.routes, transitIncidents: [] });
 console.log(JSON.stringify({ model: settings.model, sourceId: post.sourceId, imagesSent: images.length,
   ...result, applicationDataWritten: false, modelCalled: true }, null, 2));

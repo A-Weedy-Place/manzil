@@ -1,3 +1,4 @@
+import { applyTransitChanges } from './agent-transit.js';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -240,10 +241,12 @@ export class Store {
     return this.transaction(() => {
       if (!canFinishAgent(input, this.getNotice(input.noticeId), this.meta<AgentResult>(agentResultKey(input.noticeId)))) return false;
       const old = input.changes.map(change => this.get<Closure>('closure', change.id));
-      const checked = checkedCompletion(input, old, this.eventRevision), now = new Date().toISOString();
+      const transit = this.meta<TransitDisruptionState>('transit:disruptions') ?? { revision: 0, records: [] };
+      const checked = checkedCompletion(input, old, this.eventRevision, transit), now = new Date().toISOString();
       checked.changes.forEach((change, index) => this.put('closure', { ...change.draft, id: change.id,
         revision: (old[index]?.revision ?? 0) + 1, createdAt: old[index]?.createdAt ?? now, updatedAt: now }, now));
       if (checked.changes.length) this.setMeta('eventRevision', this.eventRevision + 1);
+      if (checked.transitChanges?.length) this.setMeta('transit:disruptions', applyTransitChanges(transit, checked.transitChanges, now));
       this.setMeta(agentResultKey(input.noticeId), checked.result);
       this.setMeta(`sourceAgentVersion:${input.noticeId}:${input.revision}`, checked.result);
       if (checked.result.state !== 'failed') {
@@ -271,8 +274,9 @@ export class Store {
     return this.transaction(() => {
       const old = this.meta<AgentResult>(agentResultKey(input.noticeId));
       const proposal = old?.proposals?.find(item => item.index === input.index);
-      const decision = decideAgentProposal(input, this.getNotice(input.noticeId), old, proposal ? this.get<Closure>('closure', proposal.targetId) : undefined);
+      const decision = decideAgentProposal(input, this.getNotice(input.noticeId), old, proposal ? this.get<Closure>('closure', proposal.targetId) : undefined, this.meta<TransitDisruptionState>('transit:disruptions') ?? { revision: 0, records: [] });
       if (decision.closure) { this.put('closure', decision.closure); this.setMeta('eventRevision', this.eventRevision + 1); }
+      if (decision.transitState) this.setMeta('transit:disruptions', decision.transitState);
       this.setMeta(agentResultKey(input.noticeId), decision.result);
       this.setMeta(`sourceAgentVersion:${input.noticeId}:${input.noticeRevision}`, decision.result); return decision;
     });

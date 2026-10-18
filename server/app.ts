@@ -30,7 +30,7 @@ import { RoadCoverageProvider } from './routing/road-coverage.js';
 import { FuelService, travelStatistics, pktDay } from './fuel.js';
 import { estimateTraceFuel } from '../shared/fuel.js';
 import { WeatherService } from './weather.js';
-import { TransitService, transitDisruptionSchema, transitDisruptionUpdateSchema, transitPlanSchema } from './transit/service.js';
+import { TransitService, validateTransitDraft, transitDisruptionSchema, transitDisruptionUpdateSchema, transitPlanSchema } from './transit/service.js';
 import { sendTransitNetwork } from './transit/network-response.js';
 
 interface AppOptions {
@@ -443,9 +443,10 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
   });
   routes.post('/agent/notices/:id/review', async (request, response) => {
     const body = z.object({ noticeRevision: z.number().int().positive(), index: z.number().int().min(0).max(2),
-      version: z.string().uuid(), decision: z.enum(['approve', 'reject']), draft: closureDraftSchema.optional(),
+      version: z.string().uuid(), decision: z.enum(['approve', 'reject']), draft: closureDraftSchema.optional(), transitDraft: transitDisruptionSchema.optional(),
       confirmRestriction: z.boolean().optional(), confirmUnknownEnd: z.boolean().optional() }).strict().parse(request.body);
     if (body.decision === 'approve' && body.draft) await assertRoadClosureScope(body.draft);
+    if (body.decision === 'approve' && body.transitDraft) validateTransitDraft(body.transitDraft);
     const reviewer = await actorFor(store, response.locals.membership!, response.locals.user);
     const decision = await rootStore.reviewAgentProposal({ ...body, noticeId: id(request), reviewer });
     if (decision.closure && config.mode === 'local') await recheck(); response.json(decision);
@@ -464,7 +465,6 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
   });
   routes.patch('/agent/settings', async (request, response) => {
     const settings = z.object({ enabled: z.boolean(), autoPublish: z.boolean() }).strict().parse(request.body);
-    if (settings.autoPublish) throw new HttpError(409, 'Administrator approval is required for agent map changes.');
     await rootStore.setMeta('sourceAgentSettings', settings); response.json(await agent.status());
   });
   routes.get('/source/media/:id', async (request, response) => {

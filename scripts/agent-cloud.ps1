@@ -1,5 +1,5 @@
 param(
-  [ValidateSet('Status', 'EnableReview', 'Disable')][string]$Action = 'Status',
+  [ValidateSet('Status', 'EnableReview', 'EnableValidated', 'Disable')][string]$Action = 'Status',
   [ValidatePattern('^[a-z][a-z0-9-]{4,28}[a-z0-9]$')][string]$ProjectId = 'manzil-app-v1',
   [switch]$IncludeResults
 )
@@ -19,7 +19,7 @@ function Read-AgentMeta([string]$Key) {
 try {
   $settings = Read-AgentMeta 'sourceAgentSettings'
   if ($Action -ne 'Status') {
-    $value = @{ enabled = $Action -ne 'Disable'; autoPublish = $false }
+    $value = @{ enabled = $Action -ne 'Disable'; autoPublish = $Action -eq 'EnableValidated' }
     $body = @{ fields = @{ json = @{ stringValue = ($value | ConvertTo-Json -Compress) } } } | ConvertTo-Json -Depth 8 -Compress
     $precondition = $(if ($settings.doc) { 'currentDocument.updateTime=' + [Uri]::EscapeDataString($settings.doc.updateTime) } else { 'currentDocument.exists=false' })
     $null = Invoke-RestMethod -Uri "$root/$($settings.id)?$precondition" -Headers $headers -Method Patch -ContentType 'application/json' -Body $body

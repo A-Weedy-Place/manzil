@@ -1,5 +1,7 @@
 # On-demand road coverage for closure editing
 
+**18 October approved integration (implementation/validation in progress, deployment pending):** merged GitHub main `f07778c` while retaining the deployed fuel scheduler and cloud voices. Selective >=95%-confidence road blockade/section and timed Metro publication replaces mandatory review only when independent source, geometry/service and time checks pass; uncertain events stay in review and counts are per decision. Admin corrections and shared demo provenance are retained. The owner explicitly excluded the bundled/offline Urdu voice pack. Earlier review-only, local-only and basic-Urdu notes below are historical. [Current behavior and operations](SELECTIVE_AGENT_PUBLICATION.md).
+
 Local feature-branch follow-up, 18 October 2026. Closure editing has no Islamabad city boundary. The same Road closure and Blockade tools operate against actual mapped public car roads, using the bundled graph where it covers the selected coordinates and a small public OpenStreetMap extract elsewhere. This does not modify base tiles or OpenStreetMap itself, and is separate from driving-route providers, bus catalogue coverage and the fixed Islamabad weather feed.
 
 ## Contributor and agent behavior

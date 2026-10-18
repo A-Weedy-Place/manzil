@@ -89,7 +89,7 @@ export default function TransitPanel({ transit, mode, setMode, onFocus, canRevie
   async function cancelNotice(notice: TransitDisruption) {
     setCancelling(notice.id); setNoticeError('');
     try {
-      const draft: TransitDisruptionDraft & { revision: number } = { routeId: notice.routeId, title: notice.title, description: notice.description, startsAt: notice.startsAt, endsAt: notice.endsAt, status: 'cancelled', revision: notice.revision, ...(notice.directionId ? { directionId: notice.directionId } : {}), ...(notice.fromStopId ? { fromStopId: notice.fromStopId } : {}), ...(notice.toStopId ? { toStopId: notice.toStopId } : {}), ...(notice.sourceUrl ? { sourceUrl: notice.sourceUrl } : {}) };
+      const draft: TransitDisruptionDraft & { revision: number } = { routeId: notice.routeId, ...(notice.routeIds ? { routeIds: notice.routeIds } : {}), title: notice.title, description: notice.description, startsAt: notice.startsAt, endsAt: notice.endsAt, status: 'cancelled', revision: notice.revision, ...(notice.directionId ? { directionId: notice.directionId } : {}), ...(notice.fromStopId ? { fromStopId: notice.fromStopId } : {}), ...(notice.toStopId ? { toStopId: notice.toStopId } : {}), ...(notice.sourceUrl ? { sourceUrl: notice.sourceUrl } : {}) };
       await send(`/transit/disruptions/${encodeURIComponent(notice.id)}`, draft, 'PUT'); transit.retry();
     } catch (error) { setNoticeError(error instanceof Error ? error.message : 'Could not end the suspension.'); }
     finally { setCancelling(null); }

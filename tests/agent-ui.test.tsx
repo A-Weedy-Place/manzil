@@ -93,7 +93,7 @@ it('starts a private-worker batch explicitly and then reloads saved results', as
   calls.send.mockResolvedValue({ processed: 1 }); const reload = vi.fn(async () => {});
   render(<AgentPanel notices={[notice()]} onManualClosure={vi.fn()} onRefresh={reload} />);
   const run = await screen.findByRole('button',{ name: 'Run Gemini now' }); fireEvent.click(run);
-  await screen.findByText('Analysis batch finished. Review the prepared drafts below.');
+  await screen.findByText('Analysis batch finished. Check published updates and items needing review below.');
   expect(calls.send).toHaveBeenCalledExactlyOnceWith('/agent/run',{}); expect(reload).toHaveBeenCalledOnce();
 });
 it('keeps completed posts reviewable when there is nothing left to analyse', async () => {
@@ -103,4 +103,27 @@ it('keeps completed posts reviewable when there is nothing left to analyse', asy
   expect((screen.getByRole('button',{ name: 'Run Gemini now' }) as HTMLButtonElement).disabled).toBe(true);
   fireEvent.click(screen.getByRole('button',{ name: 'Open awaiting review (1)' }));
   expect(screen.getByText('Review on map')).toBeTruthy(); expect(calls.send).not.toHaveBeenCalled();
+});
+
+it('reviews a service window inside Pipeline without opening the road editor', async () => {
+  const post=notice({status:'reviewed'}),draft={routeId:'bus',title:'Synthetic service notice',description:'UI fixture only',startsAt:'2026-10-18T14:00:00Z',endsAt:'2026-10-18T15:00:00Z',status:'published'};
+  const proposal={index:0,version:'service-version',kind:'transit',state:'pending',action:'closure',impact:'closed',draft:{title:draft.title},transitDraft:draft,mapping:'existing',issues:['Confirm service period.']};
+  const value={...result(),proposals:[proposal]};
+  const network={routes:[{id:'bus',shortName:'Blue',name:'Synthetic Blue Line'}],patterns:[],stops:[]};
+  calls.api.mockImplementation(async path=>path==='/agent/status'?status:path.startsWith('/transit/network')?network:[value]);
+  calls.send.mockResolvedValue({result:{...value,state:'applied',transitIds:['service'],proposals:[{...proposal,state:'approved',decisionMode:'admin'}]}});
+  const map=vi.fn();render(<AgentPanel notices={[post]} onManualClosure={map}/>);
+  fireEvent.click(await screen.findByRole('button',{name:'Review service notice'}));
+  await waitFor(()=>expect((screen.getByRole('button',{name:'Approve service suspension'}) as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.submit(screen.getByRole('button',{name:'Approve service suspension'}).closest('form')!);
+  await waitFor(()=>expect(calls.send).toHaveBeenCalledWith('/agent/notices/fixture-notice/review',expect.objectContaining({noticeRevision:1,index:0,decision:'approve',transitDraft:expect.objectContaining({routeId:'bus',startsAt:'2026-10-18T14:00:00.000Z',endsAt:'2026-10-18T15:00:00.000Z'})})));
+  expect(map).not.toHaveBeenCalled();expect(await screen.findByText('Metro / bus availability updated in Local journeys.')).toBeTruthy();
+});
+
+it('distinguishes automatic road publication and provides a view-only map action', async () => {
+  const proposal={index:0,version:'published',state:'approved',decisionMode:'automatic',draft:{title:'Synthetic mapped restriction'},closureId:'mapped-id',issues:[]};
+  calls.api.mockImplementation(async path=>path==='/agent/status'?{...status,autoPublish:true}:[{...result(),state:'applied',closureIds:['mapped-id'],proposals:[proposal]}]);
+  const map=vi.fn(),editor=vi.fn();render(<AgentPanel notices={[notice({status:'reviewed'})]} onManualClosure={editor} onViewClosure={map}/>);
+  expect(await screen.findByText('Auto-published after validation')).toBeTruthy();fireEvent.click(screen.getByRole('button',{name:'View on map'}));expect(map).toHaveBeenCalledWith('mapped-id');expect(editor).not.toHaveBeenCalled();
+  expect(screen.queryByRole('button',{name:'Review on map'})).toBeNull();
 });

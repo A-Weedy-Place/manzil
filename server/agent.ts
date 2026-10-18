@@ -1,3 +1,7 @@
+import type { TransitDisruptionState } from '../shared/transit.js';
+import { planAgentActions } from './agent-policy.js';
+import { planTransitNotices } from './agent-transit.js';
+import { loadTransitDataset } from './transit/dataset.js';
 import { randomUUID } from 'node:crypto';
 import { agentResultKey, agentUsageKey, proposalFingerprint, type AgentResult, type AgentUsage } from '../shared/agent.js';
 import type { Repository } from './repository.js';
@@ -15,7 +19,7 @@ export class AgentService {
     const notice = await this.store.getNotice(noticeId);
     const result = currentProposalResult(notice, await this.store.meta<AgentResult>(agentResultKey(noticeId)), revision);
     if (result.proposals) return result;
-    const proposals = await this.prepare(notice!, result.extraction!, (await this.store.routingSnapshot(true)).closures);
+    const proposals = [...await this.prepare(notice!, result.extraction!, (await this.store.routingSnapshot(true)).closures), ...planTransitNotices(notice!,result.extraction!,await this.store.meta<TransitDisruptionState>('transit:disruptions') ?? {revision:0,records:[]},{autoPublish:false}).proposals].sort((a,b)=>a.index-b.index);
     return this.store.saveAgentProposals(noticeId, revision, result.claimId, proposals);
   }
   async refineNotice(noticeId: string, revision: number) {
@@ -60,7 +64,7 @@ export class AgentService {
     const budgetMicros = Number(runtime?.budgetMicros ?? this.config.budgetMicros);
     return { enabled: settings?.enabled !== false && (runtime?.enabled === true || this.config.enabled),
       configured: runtime?.configured === true || !!this.config.apiKey, model: this.config.model,
-      autoPublish: false, dailyLimit,
+      autoPublish: settings?.autoPublish ?? (runtime?.autoPublish === true || this.config.autoPublish), dailyLimit,
       dailyLimitReached: usage.requests >= dailyLimit || usage.reservedMicros + 20_000 > budgetMicros,
       attemptedToday: usage.requests, reservedAllowanceUsd: usage.reservedMicros / 1_000_000,
       pending: await this.store.pendingAgentCount(),
@@ -80,7 +84,7 @@ export class AgentService {
     if (!this.config.enabled || settings?.enabled === false) return { processed: 0, status: await this.status() };
     const previousRuntime = await this.store.meta<Record<string, unknown>>('sourceAgentRuntime');
     const runtime = { ...previousRuntime, enabled: true, configured: !!this.config.apiKey, model: this.config.model, errorCode: undefined,
-      autoPublish: false, dailyLimit: this.config.dailyLimit, budgetMicros: this.config.budgetMicros, lastAttemptAt: new Date().toISOString() };
+      autoPublish: settings?.autoPublish ?? this.config.autoPublish, dailyLimit: this.config.dailyLimit, budgetMicros: this.config.budgetMicros, lastAttemptAt: new Date().toISOString() };
     if (!this.config.apiKey) { await this.store.setMeta('sourceAgentRuntime', { ...runtime, state: 'error', errorCode: 'authentication' }); return { processed: 0 }; }
     const pausedUntil = await this.store.meta<number>('sourceAgentBackoffUntil') ?? 0;
     if (pausedUntil > Date.now()) return { processed: 0, backoffUntil: new Date(pausedUntil).toISOString() };
@@ -91,22 +95,40 @@ export class AgentService {
       const claim = await this.store.claimAgentWork({ noticeId: notice.id, revision: notice.revision, claimId: randomUUID(), now: Date.now(),
         dailyLimit: this.config.dailyLimit, budgetMicros: this.config.budgetMicros, reservationMicros: 20_000, model: this.config.model });
       if (!claim) continue;
-      let result: AgentResult, expectedEventRevision: number | undefined, changes: Parameters<Repository['completeAgentWork']>[0]['changes'] = [];
+      let result: AgentResult, expectedEventRevision: number | undefined, expectedTransitRevision: number | undefined, transitChanges: NonNullable<Parameters<Repository['completeAgentWork']>[0]['transitChanges']> = [], changes: Parameters<Repository['completeAgentWork']>[0]['changes'] = [];
       let stop = false;
       try {
         await this.store.setMeta('sourceAgentRuntime', { ...runtime, state: 'working', stage: 'reading_evidence', progressAt: new Date().toISOString(), lastNoticeId: notice.id });
         const snapshot = await this.store.routingSnapshot(true), incidents = snapshot.closures;
         expectedEventRevision = snapshot.revision;
+        const transit = await this.store.meta<TransitDisruptionState>('transit:disruptions') ?? {revision:0,records:[]};
+        expectedTransitRevision = transit.revision;
         const images = await this.images(notice);
         await this.store.setMeta('sourceAgentRuntime', { ...runtime, state: 'working', stage: 'interpreting', progressAt: new Date().toISOString(), lastNoticeId: notice.id });
-        const output = await this.model({ notice, images, incidents });
+        const output = await this.model({ notice, images, incidents, transitRoutes: loadTransitDataset()?.routes, transitIncidents: transit.records });
         await this.store.setMeta('sourceAgentRuntime', { ...runtime, state: 'working', stage: 'mapping', progressAt: new Date().toISOString(), lastNoticeId: notice.id });
-        const proposals = await this.prepare(notice, output.extraction, incidents);
-        const issues = output.extraction.fuel.length ? ['Fuel announcements await the authoritative dated PSO check; announcement prices were not applied.'] :
-          proposals.length ? ['Map proposals await administrator approval.'] : ['No road proposal was prepared from this interpretation.'];
-        result = { ...claim, state: output.extraction.category === 'irrelevant' ? 'dismissed' : 'review',
+        const roadProposals = await this.prepare(notice, output.extraction, incidents);
+        const plan = await planAgentActions(notice, output.extraction, incidents, { autoPublish: runtime.autoPublish, imageCount: images.length,
+          resolve: async event => {
+            const proposal = roadProposals.find(item => item.index === output.extraction.events.indexOf(event));
+            if (!proposal || !['road','existing'].includes(proposal.mapping) || !proposal.draft.geometry || !proposal.draft.drawing) throw new Error('A unique validated road geometry is required.');
+            return { key: proposal.locationKey, geometry: proposal.draft.geometry, drawing: proposal.draft.drawing, restrictionType: proposal.draft.restrictionType };
+          } });
+        changes = plan.changes;
+        const transitPlan = planTransitNotices(notice,output.extraction,transit,{autoPublish:runtime.autoPublish});
+        transitChanges = transitPlan.changes;
+        const proposals = [...roadProposals.map(proposal => {
+          const event = output.extraction.events[proposal.index];
+          const change = changes.find(item => item.proposalIndex === proposal.index);
+          const issues = plan.issues.filter(issue => issue.startsWith(event.title+':'));
+          return change ? { ...proposal, state: 'approved' as const, decisionMode: 'automatic' as const, targetId: change.id, targetRevision: change.expectedRevision, closureId: change.id, issues: [],
+            steps: [...(proposal.steps ?? []),{tool:'publication_policy' as const,state:'done' as const,detail:'Source, road and time checks passed; automatic publication.'}] } : { ...proposal, issues: [...new Set([...proposal.issues,...issues])],
+            steps: [...(proposal.steps ?? []),{tool:'publication_policy' as const,state:'needs_review' as const,detail:'Review the listed uncertainties before publishing.'}] };
+        }),...transitPlan.proposals].sort((a,b)=>a.index-b.index);
+        const issues = [...plan.issues,...transitPlan.proposals.filter(proposal=>proposal.state==='pending').flatMap(proposal=>proposal.issues)];
+        result = { ...claim, state: plan.dismissed ? 'dismissed' : proposals.some(proposal=>proposal.state==='pending') || !changes.length && !transitChanges.length ? 'review' : 'applied',
           finishedAt: new Date().toISOString(), leaseUntil: 0, extraction: output.extraction, usage: output.usage,
-          imageCount: images.length, proposals, issues, closureIds: [] };
+          imageCount: images.length, proposals, issues, closureIds: changes.map(change=>change.id), transitIds: transitChanges.map(change=>change.id) };
       } catch (error) {
         const code = error instanceof GeminiError ? error.code : 'processing_failed';
         result = { ...claim, state: 'failed', leaseUntil: 0, finishedAt: new Date().toISOString(), errorCode: code,
@@ -115,7 +137,7 @@ export class AgentService {
           await this.store.setMeta('sourceAgentBackoffUntil', Date.now() + 15 * 60_000); stop = true;
         }
       }
-      const committed = await this.store.completeAgentWork({ noticeId: notice.id, revision: notice.revision, claimId: claim.claimId, result, changes, expectedEventRevision });
+      const committed = await this.store.completeAgentWork({ noticeId: notice.id, revision: notice.revision, claimId: claim.claimId, result, changes, expectedEventRevision, transitChanges, expectedTransitRevision });
       if (!committed) superseded++;
       const saved = committed ? await this.store.meta<AgentResult>(agentResultKey(notice.id)) : undefined;
       processed++;

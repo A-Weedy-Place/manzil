@@ -23,8 +23,8 @@ export function pipelineCounts(notices: SourceNotice[], results: AgentResult[]) 
   const rows = pipelineRows(notices, results), current = rows.filter(row => row.result?.noticeRevision === row.notice.revision && row.notice.status !== 'dismissed');
   const proposals = current.flatMap(row => row.result!.proposals ?? []).filter(proposal => proposal.state === 'pending');
   return { collected: notices.length, waiting: rows.filter(row => row.state === 'waiting').length,
-    processing: rows.filter(row => row.state === 'processing').length, review: rows.filter(row => row.state === 'review').length,
+    processing: rows.filter(row => row.state === 'processing').length, review: rows.filter(row => row.state === 'review').reduce((count,row)=>count+(row.result?.proposals?.length ? row.result.proposals.filter(proposal=>proposal.state==='pending').length : 1),0),
     failed: rows.filter(row => row.state === 'failed').length, drafts: proposals.length,
     mapped: proposals.filter(proposal => proposal.mapping !== 'unresolved').length,
-    changed: current.filter(row => !!row.result!.closureIds?.length).length };
+    changed: current.filter(row => !!(row.result!.closureIds?.length || row.result!.transitIds?.length)).length };
 }

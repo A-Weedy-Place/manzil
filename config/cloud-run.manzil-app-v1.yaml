@@ -24,3 +24,6 @@ PHOTON_BASE_URL: "https://photon.komoot.io"
 SOURCE_MEDIA_READ_BUCKET: "manzil-app-v1-source-media"
 # Admin-triggered analysis uses this API's workload identity; no model secret here.
 AGENT_WORKER_URL: "https://manzil-source-worker-ld6lwscfya-as.a.run.app"
+
+# Runtime policy is also shared with the private worker via sourceAgentSettings.
+GEMINI_AUTO_PUBLISH: "true"

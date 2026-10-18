@@ -1,5 +1,4 @@
 import { speechText, type Language, type SpeechPrompt } from '../../shared/speech';
-import { urduAudioClips, urduAudioPath } from '../../shared/offlineSpeech';
 import { t } from './language';
 import { authorizationHeaders, getAuthSession } from './auth';
 
@@ -12,32 +11,12 @@ export function selectNavigationVoice(voices: readonly SpeechSynthesisVoice[], l
   return eligible.map((voice, index) => ({ voice, index })).sort((a, b) => score(b.voice) - score(a.voice) || a.index - b.index)[0]?.voice;
 }
 
-/** Join our small PCM pack into one playback to avoid a pause between a distance and its turn. */
-export async function combineNavigationWav(blobs: readonly Blob[]): Promise<Blob> {
-  const buffers = await Promise.all(blobs.map(blob => blob.arrayBuffer()));
-  const chunks = buffers.map(buffer => {
-    const view = new DataView(buffer);
-    if (buffer.byteLength < 44 || new TextDecoder().decode(buffer.slice(0, 4)) !== 'RIFF' || new TextDecoder().decode(buffer.slice(8, 16)) !== 'WAVEfmt ' || new TextDecoder().decode(buffer.slice(36, 40)) !== 'data'
-      || view.getUint16(20, true) !== 1 || view.getUint16(22, true) !== 1 || view.getUint32(24, true) !== 16000 || view.getUint16(34, true) !== 16
-      || view.getUint32(28, true) !== 32000 || view.getUint16(32, true) !== 2 || view.getUint32(4, true) !== buffer.byteLength - 8
-      || view.getUint32(40, true) !== buffer.byteLength - 44 || (buffer.byteLength - 44) % 2 !== 0 || buffer.byteLength > 500_000) throw new Error('Invalid basic voice audio.');
-    return new Uint8Array(buffer, 44);
-  });
-  if (!buffers.length) throw new Error('Missing basic voice audio.');
-  const bytes = chunks.reduce((total, chunk) => total + chunk.length, 0);
-  const result = new Uint8Array(44 + bytes); result.set(new Uint8Array(buffers[0], 0, 44));
-  const header = new DataView(result.buffer); header.setUint32(4, 36 + bytes, true); header.setUint32(40, bytes, true);
-  let offset = 44; for (const chunk of chunks) { result.set(chunk, offset); offset += chunk.length; }
-  return new Blob([result.buffer], { type: 'audio/wav' });
-}
-
 /** A cancelled route/session/account can never play late audio. Cache audio, never route positions. */
 export class NavigationSpeaker {
   private generation = 0;
   private audio: HTMLAudioElement | null = null;
   private url: string | null = null;
   private cache = new Map<string, Promise<Blob>>();
-  private pack = new Map<string, Promise<Blob>>();
   private cloudUnavailableUntil = 0;
   private cloudStatus: { expires: number; request: Promise<boolean> } | null = null;
   private missingDeviceUntil = new Map<Language, number>();
@@ -82,21 +61,10 @@ export class NavigationSpeaker {
       .catch(error => { if (this.cache.get(key) === request) this.cache.delete(key); if (owner === this.account()) this.cloudUnavailableUntil = Date.now() + 60000; throw error; });
     this.cache.set(key, request); if (this.cache.size > 32) this.cache.delete(this.cache.keys().next().value!); return request;
   }
-  private async basicUrdu(prompt: SpeechPrompt): Promise<Blob> {
-    const blobs = urduAudioClips(prompt).map(clip => {
-      const cached = this.pack.get(clip); if (cached) return cached;
-      const request = fetch(urduAudioPath(clip), { signal: AbortSignal.timeout(10000) }).then(response => {
-        if (!response.ok) throw new Error('Basic Urdu voice unavailable.'); return response.blob();
-      }).catch(error => { this.pack.delete(clip); throw error; });
-      this.pack.set(clip, request); return request;
-    });
-    return combineNavigationWav(await Promise.all(blobs));
-  }
   prepare(prompt: SpeechPrompt, language: Language) {
     const owner = this.account(), generation = this.generation;
     // A user must explicitly enable/test voice before the panel preloads any audio.
-    if (language === 'ur') void this.basicUrdu(prompt).catch(() => {});
-    else void this.cloud(prompt, language, owner, generation).catch(() => {});
+    void this.cloud(prompt, language, owner, generation).catch(() => {});
   }
   private async deviceVoice(language: Language): Promise<SpeechSynthesisVoice | undefined> {
     if (!('speechSynthesis' in window)) return;
@@ -121,30 +89,24 @@ export class NavigationSpeaker {
     try { await audio.play(); if (this.current(generation, owner)) report(t(label)); }
     catch (error) { if (this.audio === audio) this.releaseAudio(); throw error; }
   }
-  private async offline(prompt: SpeechPrompt, generation: number, owner: string, report: (message: string) => void) {
-    try { await this.play(await this.basicUrdu(prompt), generation, owner, report, 'Basic Urdu voice'); }
-    catch { if (this.current(generation, owner)) report(t('Voice could not play. Tap Test voice and check audio permissions.')); }
-  }
   async speak(prompt: SpeechPrompt, language: Language, report: (message: string) => void = () => {}) {
     this.cancel(); const generation = this.generation, owner = this.account();
     try { await this.play(await this.cloud(prompt, language, owner, generation), generation, owner, report, 'Google Cloud voice'); return; }
-    catch { /* A configured cloud provider remains optional; device/basic audio needs no paid service. */ }
+    catch { /* A configured cloud provider remains optional; device speech remains available. */ }
     if (!this.current(generation, owner)) return;
     let voice: SpeechSynthesisVoice | undefined;
-    try { voice = await this.deviceVoice(language); } catch { /* A failed device catalogue must not disable the basic Urdu pack. */ }
+    try { voice = await this.deviceVoice(language); } catch { /* Report unavailable when the device catalogue cannot be read. */ }
     if (!this.current(generation, owner)) return;
     if (voice && typeof SpeechSynthesisUtterance !== 'undefined') {
       const utterance = new SpeechSynthesisUtterance(speechText(prompt, language)); utterance.voice = voice; utterance.lang = voice.lang; utterance.rate = 0.95;
       utterance.onerror = () => {
         if (!this.current(generation, owner)) return;
         utterance.onerror = null;
-        if (language === 'ur') void this.offline(prompt, generation, owner, report);
-        else report(t('Voice could not play. Tap Test voice and check audio permissions.'));
+        report(t('Voice could not play. Tap Test voice and check audio permissions.'));
       };
       try { window.speechSynthesis.speak(utterance); report(t('Device voice')); return; }
-      catch { if (language !== 'ur') { report(t('Voice could not play. Tap Test voice and check audio permissions.')); return; } }
+      catch { report(t('Voice could not play. Tap Test voice and check audio permissions.')); return; }
     }
-    if (language === 'ur') await this.offline(prompt, generation, owner, report);
-    else report(t('Voice unavailable for this language on this device.'));
+    report(t('Voice unavailable for this language on this device.'));
   }
 }

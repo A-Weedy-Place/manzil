@@ -27,7 +27,7 @@ export interface ClosureDraft {
   geometry: Polygon; drawing?: Drawing; sourceUrl?: string; photos?: string[];
   agent?: { noticeId: string; sourceId: string; sourceRevision: number; evidenceAt: string; evidenceBasis?: 'source' | 'admin_review'; locationKey: string; overridden?: boolean };
 }
-export interface Closure extends ClosureDraft, ClosureModeration { id: string; revision: number; createdAt: string; updatedAt: string }
+export interface Closure extends ClosureDraft, ClosureModeration { demoData?: boolean; id: string; revision: number; createdAt: string; updatedAt: string }
 export type ClosureInput = ClosureDraft & ClosureModeration;
 export interface RouteStep { instruction: string; roadName: string; distanceMeters: number; durationSeconds: number }
 export interface RoutePath {

@@ -1,5 +1,15 @@
 # Local implementation status
 
+## Selective road / Metro integration validated; deployment pending - 18 October
+
+Preserved the deployed fuel/voice work as `c61881e`, merged GitHub main `f07778c` in `d211b05`, and retained the incoming UI/transit/road coverage changes. The owner approved selective automatic publication and shared demo closures, excluded the basic Urdu pack, and added automatic clear Metro suspensions with uncertain service/time details kept in review. [Current policy and operations](SELECTIVE_AGENT_PUBLICATION.md).
+
+Validation: **1,097 standard tests + 27 real Firebase Auth/Firestore emulator tests (1,124 total)** pass, as does the cloud TypeScript/Vite/server build. New coverage includes mixed automatic/pending events, individual decision counts, transverse barrier geometry, PKT/date parsing, timed service exclusions/expiry, service groups, partial ordered stops, duplicate/correction guards, stale transaction deferral, admin-only service approval, in-Pipeline service review and view-only published map actions. Temporary emulator ports were allocated dynamically without stopping other development emulators; temporary config files are removed. Existing bundle-size advisories remain.
+
+One actual Gemini Free tier text/image probe on public source ID `2111680937662758940` accepted the updated schema (2,330 input / 419 output tokens). It extracted a road accident with unknown road access and retained image/closure uncertainty; it was not a confirmed closure. Probe application writes: **zero**. Do not present this as evidence of a real automatically published closure or Metro suspension.
+
+All ten proposed shared demo geometries passed the read-only mapped-road preview, including the re-resolved 26 Number fixture. No personal User 123 account/history, GPS or sample fuel data is part of this import. Production data import, worker policy activation and deployment have not happened at this checkpoint.
+
 ## Daily fuel automation and guest bilingual cloud voices deployed — 18 October
 
 API **`manzil-api-00013-sqx`**, private worker **`manzil-source-worker-00010-86j`**, Firebase Hosting pin **`fh-968013a274e235e9`**. Image **`sha256:eca4cefe2a090c8cbdd680fd05142ec414f1fbbd1f3fafa1afbccec442189867`**, Cloud Build **`21349d8f-8f37-4e63-b557-493d51e084f7`**. The frontend bundle remains `index-C-EDpOv0.js`; Hosting was republished to update its backend pin. [Configuration, costs and operations](FUEL_AND_VOICE.md).

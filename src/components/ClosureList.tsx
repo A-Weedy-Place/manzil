@@ -32,7 +32,7 @@ function ClosureCard({ closure, at, selectedId, reviewer, canEdit, onSelect, onE
   const loaded = detail?.id === closure.id && detail.revision >= closure.revision;
   const current = loaded ? detail : closure;
   const state = current.status === 'cancelled' ? 'cancelled' : current.moderation === 'pending' ? 'Pending review' : current.moderation === 'rejected' ? 'Rejected' : closureState(current, at);
-  const isDemo = /^Demo\s*[·:]/i.test(closure.title);
+  const isDemo = closure.demoData === true || /^Demo\s*[·:]/i.test(closure.title);
   const notes = current.description.replace(/\[manzil[^\]]*\]\s*/gi, '').trim();
   async function review(decision: 'approve' | 'reject') {
     if (!loaded || busy || current.status !== 'draft' || current.moderation !== 'pending') return;

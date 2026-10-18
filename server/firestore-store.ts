@@ -1,3 +1,4 @@
+import { applyTransitChanges } from './agent-transit.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { SOURCE_LEASE_MS } from '../shared/source.js';
 import { agentResultKey, agentUsageKey, type AgentClaim, type AgentCompletion, type AgentResult, type AgentUsage } from '../shared/agent.js';
@@ -195,18 +196,20 @@ export class FirestoreStore implements Repository {
   async completeAgentWork(input: AgentCompletion): Promise<boolean> {
     const noticeRef = this.noticeRef(input.noticeId), resultRef = this.metaRef(agentResultKey(input.noticeId));
     const committed = await this.db.runTransaction(async tx => {
-      const revisionRef = this.metaRef('eventRevision');
-      const [noticeDoc, claimDoc, revisionDoc] = await tx.getAll(noticeRef, resultRef, revisionRef);
+      const revisionRef = this.metaRef('eventRevision'), transitRef = this.metaRef('transit:disruptions');
+      const [noticeDoc, claimDoc, revisionDoc, transitDoc] = await tx.getAll(noticeRef, resultRef, revisionRef, transitRef);
+      const transit = decode<TransitDisruptionState>(transitDoc.data()) ?? { revision: 0, records: [] };
       const notice = decode<SourceNotice>(noticeDoc.data());
       if (!canFinishAgent(input, notice, decode<AgentResult>(claimDoc.data()))) return false;
       const refs = input.changes.map(change => this.record('closure', change.id));
       const previous = refs.length ? (await tx.getAll(...refs)).map(doc => decode<Closure>(doc.data())) : [];
-      const checked = checkedCompletion(input, previous, decode<number>(revisionDoc.data()) ?? 0), now = new Date().toISOString();
+      const checked = checkedCompletion(input, previous, decode<number>(revisionDoc.data()) ?? 0, transit), now = new Date().toISOString();
       checked.changes.forEach((change, index) => {
         const next = { ...change.draft, id: change.id, revision: (previous[index]?.revision ?? 0) + 1, createdAt: previous[index]?.createdAt ?? now, updatedAt: now };
         tx.set(refs[index], { ...pack(next), status: next.status, updatedAt: now });
       });
       if (checked.changes.length) tx.set(revisionRef, pack((decode<number>(revisionDoc.data()) ?? 0) + 1));
+      if (checked.transitChanges?.length) tx.set(transitRef, pack(applyTransitChanges(transit, checked.transitChanges, now)));
       tx.set(resultRef, pack(checked.result));
       tx.set(this.metaRef(`sourceAgentVersion:${input.noticeId}:${input.revision}`), pack(checked.result));
       if (checked.result.state !== 'failed') {
@@ -235,15 +238,17 @@ export class FirestoreStore implements Repository {
   async reviewAgentProposal(input: AgentProposalReview) {
     const ref = this.metaRef(agentResultKey(input.noticeId)), revisionRef = this.metaRef('eventRevision');
     const decision = await this.db.runTransaction(async tx => {
-      const [notice, result, revision] = await tx.getAll(this.noticeRef(input.noticeId), ref, revisionRef);
+      const transitRef = this.metaRef('transit:disruptions');
+      const [notice, result, revision, transit] = await tx.getAll(this.noticeRef(input.noticeId), ref, revisionRef, transitRef);
       const old = decode<AgentResult>(result.data()), proposal = old?.proposals?.find(item => item.index === input.index);
       const targetRef = proposal ? this.record('closure', proposal.targetId) : undefined;
       const previous = targetRef ? decode<Closure>((await tx.get(targetRef)).data()) : undefined;
-      const next = decideAgentProposal(input, decode<SourceNotice>(notice.data()), old, previous);
+      const next = decideAgentProposal(input, decode<SourceNotice>(notice.data()), old, previous, decode<TransitDisruptionState>(transit.data()) ?? { revision: 0, records: [] });
       if (next.closure) {
         tx.set(targetRef!, { ...pack(next.closure), status: next.closure.status, updatedAt: next.closure.updatedAt });
         tx.set(revisionRef, pack((decode<number>(revision.data()) ?? 0) + 1));
       }
+      if (next.transitState) tx.set(transitRef, pack(next.transitState));
       tx.set(ref, pack(next.result)); tx.set(this.metaRef(`sourceAgentVersion:${input.noticeId}:${input.noticeRevision}`), pack(next.result)); return next;
     });
     if (decision.closure) this.cache.snapshot = undefined; return decision;

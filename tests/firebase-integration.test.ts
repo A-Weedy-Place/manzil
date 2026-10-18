@@ -548,7 +548,7 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
       expect((await request(path + '/refine', token, { revision: 1 })).status).toBe(token ? 403 : 401);
       expect((await request(path + '/review', token, body)).status).toBe(token ? 403 : 401);
     }
-    expect((await request('/agent/settings', admin, { enabled: true, autoPublish: true }, 'PATCH')).status).toBe(409);
+    expect((await request('/agent/settings', admin, { enabled: true, autoPublish: true }, 'PATCH')).status).toBe(200);
     expect((await request(path + '/prepare', admin, { revision: 1 })).status).toBe(200);
     const attempts = await Promise.all([request(path + '/review', admin, body), request(path + '/review', admin, body)]);
     expect(attempts.map(item => item.status).sort()).toEqual([200,409]);
@@ -589,6 +589,37 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
     await personal.retainTrips(now + 91 * 86400_000);
     expect(await personal.list('trip',500)).toEqual([]);
   }, 60000);
+  it('commits agent service notices atomically and withholds stale concurrent service updates', async () => {
+    const prior = await store.meta<TransitDisruptionState>('transit:disruptions') ?? {revision:0,records:[]};
+    const text='Synthetic emulator Metro notice only', post=await store.upsertNotice({source:'manual',sourceId:'emulator-selective-service',url:'',text,contentHash:'selective-v1',publishedAt:new Date().toISOString(),mediaUrls:[]});
+    const claim=await store.claimAgentWork(claimInput(post.notice));expect(claim).toBeTruthy();
+    const id='emulator-agent-service', stamp=new Date().toISOString(),draft={routeId:'r1',title:'Emulator service suspension',description:text,startsAt:'2026-10-18T03:00:00Z',endsAt:'2026-10-18T04:00:00Z',status:'published' as const};
+    const result={...finished(claim!,'applied'),transitIds:[id]};
+    const completion={noticeId:post.notice.id,revision:post.notice.revision,claimId:claim!.claimId,result,changes:[],expectedTransitRevision:prior.revision,transitChanges:[{id,expectedRevision:null,draft,agent:{noticeId:post.notice.id,sourceId:post.notice.sourceId,sourceRevision:post.notice.revision,evidenceAt:stamp,locationKey:'transit:r1:*:*:*'}}]};
+    try {
+      expect(await store.completeAgentWork(completion)).toBe(true);
+      const saved=await store.meta<TransitDisruptionState>('transit:disruptions');expect(saved?.revision).toBe(prior.revision+1);expect(saved?.records.find(item=>item.id===id)).toMatchObject({revision:1,agent:{noticeId:post.notice.id}});
+      const transit=new TransitService(store,transitFixture);expect((await transit.network('2026-10-18T03:30:00Z')).statuses[0].availability).toBe('suspended');expect((await transit.network('2026-10-18T04:00:00Z')).statuses[0].availability).toBe('available');
+      const second=await store.upsertNotice({source:'manual',sourceId:'emulator-selective-service-conflict',url:'',text,contentHash:'selective-v2',publishedAt:stamp,mediaUrls:[]}),secondClaim=await store.claimAgentWork(claimInput(second.notice));
+      expect(await store.completeAgentWork({...completion,noticeId:second.notice.id,revision:second.notice.revision,claimId:secondClaim!.claimId,result:{...finished(secondClaim!,'applied'),transitIds:[id]}})).toBe(true);
+      expect(await store.meta(agentResultKey(second.notice.id))).toMatchObject({state:'review',transitIds:[]});expect((await store.meta<TransitDisruptionState>('transit:disruptions'))?.revision).toBe(prior.revision+1);
+    } finally {await store.setMeta('transit:disruptions',prior);}
+  });
+  it('reviews an uncertain service proposal through the admin API and retains correction history', async () => {
+    const prior=await store.meta<TransitDisruptionState>('transit:disruptions')??{revision:0,records:[]},stamp=new Date().toISOString();
+    const post=(await store.upsertNotice({source:'manual',sourceId:'emulator-service-review',url:'',text:'Synthetic service notice for emulator review only.',contentHash:'review-service-v1',publishedAt:stamp,mediaUrls:[]})).notice;
+    const claim=(await store.claimAgentWork(claimInput(post)))!,version=crypto.randomUUID(),targetId='emulator-reviewed-service';
+    const transitDraft={routeId:'ammha',title:'Synthetic reviewed Blue Line',description:'Emulator test only.',startsAt:stamp,endsAt:new Date(Date.now()+3600_000).toISOString(),status:'published' as const};
+    const proposal={index:0,version,kind:'transit' as const,state:'pending' as const,action:'closure' as const,impact:'closed' as const,draft:{title:transitDraft.title},transitDraft,mapping:'existing' as const,locationKey:'transit:ammha:*:*:*',targetId,targetRevision:null,issues:['Confirm expiry.']};
+    await store.completeAgentWork({noticeId:post.id,revision:post.revision,claimId:claim.claimId,changes:[],result:{...finished(claim),extraction:agentExtraction(),proposals:[proposal]}});
+    const body={noticeRevision:post.revision,index:0,version,decision:'approve',transitDraft};
+    try{
+      expect((await request(`/agent/notices/${post.id}/review`,bob,body)).status).toBe(403);
+      const response=await request(`/agent/notices/${post.id}/review`,admin,body);expect(response.status).toBe(200);
+      const decision=await response.json();expect(decision.result).toMatchObject({state:'applied',transitIds:[targetId]});expect(decision.transit.agent.overridden).toBe(true);
+      expect((await request(`/agent/notices/${post.id}/review`,admin,body)).status).toBe(409);
+    }finally{await store.setMeta('transit:disruptions',prior);}
+  });
   it('denies direct browser Firestore access and boots the compiled API/worker with the real bundled graph', async () => {
     const direct = await fetch(`http://${process.env.FIRESTORE_EMULATOR_HOST}/v1/projects/${projectId}/databases/(default)/documents/users/alice`, { headers: { Authorization: `Bearer ${alice}` } });
     expect(direct.status).toBe(403);

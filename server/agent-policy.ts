@@ -15,15 +15,20 @@ export async function planAgentActions(notice: SourceNotice, extraction: AgentEx
   if (extraction.category === 'irrelevant') return { changes, issues, dismissed: true };
   if (extraction.fuel.length) issues.push('Fuel announcements await the authoritative dated PSO check; announcement prices were not applied.');
   for (const [index, event] of extraction.events.entries()) {
+    if (event.kind === 'transit' || event.transit) continue;
     try {
       if (!options.autoPublish) throw new Error('Automatic publication is disabled; review this interpretation.');
       if (extraction.category !== 'traffic' || extraction.warnings.length || notice.contentState === 'possibly_truncated') throw new Error('Source/category warnings require review before changing routes.');
       if (event.action === 'disruption' || event.impact !== 'closed' && event.action !== 'reopening') throw new Error('Disruption/congestion is not a confirmed road closure.');
-      if (event.confidence < .9 || event.uncertainties.length) throw new Error('Extraction is uncertain; review before changing routes.');
+      if (/\b(?:may|might|possibly|expected|not closed|not blocked|not suspended)\b|متوقع|امکان/i.test(event.quote)) throw new Error('Tentative or negated restrictions need review.');
+      if (event.confidence < .95 || event.uncertainties.length) throw new Error('Extraction is uncertain; review before changing routes.');
       if (event.imageIndex !== null) throw new Error('Image evidence needs review before changing routes.');
       if (!notice.text.includes(event.quote) || !(event.action === 'reopening' ? reopening : blockage).test(event.quote) ||
         /metro|bus service|train service|میٹرو/i.test(event.quote)) throw new Error('The source quote does not clearly establish the proposed road action.');
       if (!notice.publishedAt || !evidenceTime || event.timeBasis === 'unknown') throw new Error('Original publication/event timing is unknown.');
+      if (!event.restrictionType && event.action !== 'reopening') throw new Error('The restriction type needs review.');
+      const supported = (value: string | null) => !value || event.quote.toLowerCase().includes(value.toLowerCase());
+      if (!(event.action === 'reopening' ? [event.location.road] : [event.location.city, event.location.road, event.location.from, event.location.to, event.location.point]).every(supported)) throw new Error('Location names must be supported by the exact source quote.');
       const location = await (options.resolve ?? resolveAgentLocation)(event);
       const target = event.targetIncidentId ? incidents.find(closure => closure.id === event.targetIncidentId) : undefined;
       if (event.targetIncidentId && (!target?.agent || target.agent.locationKey !== location.key)) throw new Error('The proposed update does not match an existing agent incident at this location.');
@@ -38,7 +43,7 @@ export async function planAgentActions(notice: SourceNotice, extraction: AgentEx
         if (!sourceSupportsInstant(event.quote, event.startsAt, notice.publishedAt) &&
           !(/\bnow\b|اب|بحال|کھول/i.test(event.quote) && Math.abs(Date.parse(event.startsAt) - Date.parse(notice.publishedAt)) < 300_000))
           throw new Error('Reopening time could not be tied to the original source evidence.');
-        changes.push({ id: target.id, expectedRevision: target.revision, draft: { ...target, status: 'cancelled',
+        changes.push({ proposalIndex: index, id: target.id, expectedRevision: target.revision, draft: { ...target, status: 'cancelled',
           agent: { ...target.agent!, noticeId: notice.id, sourceId: notice.sourceId, sourceRevision: notice.revision, evidenceAt: evidenceTime },
           description: `${target.description}\nReopening evidence: ${notice.url}`.slice(0, 4000) } }); continue;
       }
@@ -50,18 +55,20 @@ export async function planAgentActions(notice: SourceNotice, extraction: AgentEx
       if (incidents.some(closure => closure.agent?.overridden && (closure.agent.sourceId === notice.sourceId || closure.agent.locationKey === location.key &&
         Date.parse(closure.startsAt) < Date.parse(endsAt!) && (!closure.endsAt || Date.parse(closure.endsAt) > Date.parse(startsAt!)))))
         throw new Error('An administrator corrected this source/location and time window; automatic republication was withheld.');
-      const existing = target ?? incidents.find(closure => closure.agent?.locationKey === location.key && closure.status !== 'cancelled' && !closure.agent.overridden &&
+      const matches = incidents.filter(closure => closure.agent?.locationKey === location.key && closure.status !== 'cancelled' && !closure.agent.overridden &&
         Date.parse(closure.startsAt) < Date.parse(endsAt!) && (!closure.endsAt || Date.parse(closure.endsAt) > Date.parse(startsAt!)));
+      if (matches.length > 1) throw new Error('Multiple incidents match; review the update.');
+      const existing = target ?? matches[0];
       if (existing?.agent && Date.parse(evidenceTime) <= Date.parse(existing.agent.evidenceAt)) throw new Error('An existing incident already has this or newer evidence.');
       const draft = closureDraftSchema.parse({ title: event.title, description: `${extraction.summary}\nAI interpretation of ${notice.url}; original evidence retained.`,
-        reason: event.reason, startsAt, endsAt, status: 'published', geometry: location.geometry, drawing: location.drawing, sourceUrl: notice.url });
+        reason: event.reason, startsAt, endsAt, restrictionType: event.restrictionType ?? undefined, status: 'published', geometry: location.geometry, drawing: location.drawing, sourceUrl: notice.url });
       const id = existing?.id ?? `agent-${createHash('sha256').update(`${notice.id}:${index}`).digest('hex').slice(0, 32)}`;
-      changes.push({ id, expectedRevision: existing?.revision ?? null, draft: { ...draft, moderation: 'approved',
+      changes.push({ proposalIndex: index, id, expectedRevision: existing?.revision ?? null, draft: { ...draft, moderation: 'approved',
         author: { uid: 'system:gemini', displayName: notice.source === 'x' ? 'Gemini · Champ Alerts' : 'Gemini · Manual notice', role: 'verified' },
         agent: { noticeId: notice.id, sourceId: notice.sourceId, sourceRevision: notice.revision, evidenceAt: evidenceTime, locationKey: location.key } } });
     } catch (error) { issues.push(`${event.title}: ${error instanceof Error ? error.message : 'Review required.'}`.slice(0, 500)); }
   }
-  if (new Set(changes.map(change => change.id)).size !== changes.length) return { changes: [], issues: [...issues, 'Conflicting proposed actions target the same incident.'], dismissed: false };
+  if (new Set(changes.map(change => change.id)).size !== changes.length || new Set(changes.map(change => change.draft.agent?.locationKey)).size !== changes.length) return { changes: [], issues: [...issues, 'Conflicting proposed actions target the same incident.'], dismissed: false };
   if (!extraction.events.length && !extraction.fuel.length) issues.push('No actionable road/fuel evidence was extracted.');
   return { changes, issues, dismissed: false };
 }

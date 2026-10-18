@@ -7,9 +7,9 @@ const proposal = (index = 0): AgentProposal => ({ index, version: `v${index}`, s
   mapping: 'road', locationKey: 'fixture', targetId: `target${index}`, targetRevision: null, draft: {}, issues: [] });
 const result = (patch: Partial<AgentResult> = {}): AgentResult => ({ noticeId: notice().id, noticeRevision: 1, state: 'review',
   claimId: 'fixture', model: 'fixture', attempts: 1, startedAt: '', leaseUntil: 0, retryAt: 0, issues: [], closureIds: [], proposals: [proposal(),proposal(1)], ...patch });
-it('counts posts awaiting review separately from event drafts and excludes stale or archived evidence', () => {
+it('counts individual pending decisions and excludes stale or archived evidence', () => {
   const post = notice({ status: 'reviewed' }), value = result();
-  expect(pipelineCounts([post],[value])).toMatchObject({ review: 1, drafts: 2, mapped: 2, waiting: 0 });
+  expect(pipelineCounts([post],[value])).toMatchObject({ review: 2, drafts: 2, mapped: 2, waiting: 0 });
   expect(pipelineCounts([notice({ revision: 2 })],[value])).toMatchObject({ review: 0, drafts: 0, waiting: 1 });
   expect(pipelineCounts([notice({ status: 'dismissed' })],[value])).toMatchObject({ review: 0, drafts: 0 });
 });

@@ -1,5 +1,7 @@
 # Closures and blockades
 
+**18 October approved integration (implementation/validation in progress, deployment pending):** merged GitHub main `f07778c` while retaining the deployed fuel scheduler and cloud voices. Selective >=95%-confidence road blockade/section and timed Metro publication replaces mandatory review only when independent source, geometry/service and time checks pass; uncertain events stay in review and counts are per decision. Admin corrections and shared demo provenance are retained. The owner explicitly excluded the bundled/offline Urdu voice pack. Earlier review-only, local-only and basic-Urdu notes below are historical. [Current behavior and operations](SELECTIVE_AGENT_PUBLICATION.md).
+
 ## What a contributor does
 
 1. Open **Closures → Add closure** and choose **Road closure** or **Blockade**.

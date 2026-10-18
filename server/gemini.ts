@@ -1,3 +1,4 @@
+import type { TransitRoute, TransitDisruption } from '../shared/transit.js';
 import { z } from 'zod';
 import { extractionSchema, type AgentExtraction } from '../shared/agent.js';
 import type { Closure, SourceNotice } from '../shared/types.js';
@@ -11,7 +12,7 @@ export function agentConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig {
     autoPublish: env.GEMINI_AUTO_PUBLISH === 'true' };
 }
 export interface AgentImage { mimeType: string; bytes: Buffer; kind: 'photo' | 'video_thumbnail' }
-export interface GeminiInput { notice: SourceNotice; images: AgentImage[]; incidents: Closure[] }
+export interface GeminiInput { notice: SourceNotice; images: AgentImage[]; incidents: Closure[]; transitRoutes?: TransitRoute[]; transitIncidents?: TransitDisruption[] }
 export interface GeminiOutput { extraction: AgentExtraction; usage: { inputTokens: number; outputTokens: number } }
 export class GeminiError extends Error {
   constructor(readonly code: 'quota' | 'authentication' | 'billing' | 'unavailable' | 'invalid_response' | 'input_limit' | 'timeout', readonly status?: number, readonly detail?: string) { super(`Gemini ${code}${status ? ` (HTTP ${status})` : ''}.`); }
@@ -20,6 +21,8 @@ const rules = `You extract evidence for Manzil, a Pakistan road-closure planner.
 Read English, Urdu and Roman Urdu. Return only the supplied JSON schema. Translate a short summary into English and Urdu. Extract at most three traffic events and two fuel announcements.
 Discard missing-person, promotional and unrelated notices: category irrelevant, irrelevantReason missing_person or other, events=[] and fuel=[]. A report about missing people is not a road closure.
 VIP movement, congestion, a checkpoint, a barricade photo or suspension of Metro/public transport does NOT alone mean the road is closed to private cars. Use action disruption with impact slow/unknown unless the source explicitly says roads closed/blocked or traffic diverted. Images are supporting evidence; never infer their location or capture date from appearance. A video thumbnail is one frame, not the full video. imageIndex refers to the supplied images (zero based).
+For every event set kind road or transit. For roads set restrictionType blockade (one specific barrier point) or road_closure (a road section between two named endpoints); null if unclear. Do not convert metro suspension into a private-car road closure.
+For service suspensions/restorations set kind transit, restrictionType null and transit {service,city,direction,fromStop,toStop,scope}. Service is the literal stated service name, never an invented route ID. Use supplied transitRoutes as a catalogue, not evidence of a suspension. Generic Metro does not identify Red/Blue/Green/Orange; do not guess. scope whole_service requires explicit service-wide suspension, segment requires both stated stops, otherwise unknown. Missing direction means both directions only if the source describes the whole service without directional qualifiers; record ambiguous qualifiers in uncertainties. A suspension uses action closure and impact closed; restoration uses reopening. Leave transit null for road events.
 Use literal source quotes. For text evidence quote an exact substring; for image text transcribe it and set imageIndex. Do not guess roads, endpoints, coordinates, start/end dates, fuel prices or reopening. Missing/ambiguous fields must be null and explained in uncertainties. Use city/road/from/to or a precise named point only when stated. No coordinates are requested.
 Times must be ISO8601 with +05:00 (Asia/Karachi). Interpret today/tomorrow only relative to KNOWN ORIGINAL publication time, not collection or edit time. If publication is unknown and no absolute date is stated, timeBasis unknown and startsAt/endsAt null. Do not turn an old announcement into a current incident. A quoted future/effective date is not the collection date. Unknown reopening/end must remain null. Summary and uncertainties must disclose ambiguity.
 Reopening needs explicit reopening evidence. targetIncidentId may only be an ID in existingIncidents, and only when the source clearly refers to that SAME location/incident. Otherwise null. Never cancel unrelated closures or reverse admin corrections. For a later update of an existing event, select its matching target ID rather than invent a duplicate. Distinguish event time from source publication/edit time.
@@ -55,6 +58,8 @@ export class GeminiClient {
     const signal = AbortSignal.timeout(40_000);
     const post = { ...input.notice, text: input.notice.text.slice(0, 12_000), mediaUrls: undefined, contentHash: undefined };
     const context = { notice: post, images: input.images.map((image, index) => ({ index, kind: image.kind })),
+      transitRoutes: input.transitRoutes?.map(({id,name,shortName})=>({id,name,shortName})),
+      existingTransitIncidents: input.transitIncidents?.filter(item=>item.agent && item.status==='published').slice(0,12).map(item=>({id:item.id,routeId:item.routeId,locationKey:item.agent!.locationKey,startsAt:item.startsAt,endsAt:item.endsAt,adminCorrected:item.agent!.overridden===true})),
       existingIncidents: input.incidents.filter(closure => closure.agent && closure.status !== 'cancelled').slice(0, 12).map(closure => ({ id: closure.id,
         title: closure.title, startsAt: closure.startsAt, endsAt: closure.endsAt, locationKey: closure.agent!.locationKey, adminCorrected: closure.agent!.overridden === true })) };
     const images = input.images.slice(0, 2);
