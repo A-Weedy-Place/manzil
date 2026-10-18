@@ -1,7 +1,7 @@
 """Derive the curated profile picker from public GeoNames PK.zip; no network or GPS data.
 
 Usage: python scripts/import-pakistan-cities.py .local-tools/pakistan-geonames.zip
-GeoNames data is CC BY 4.0. See docs/PAKISTAN_CITIES.md for attribution and scope.
+GeoNames data is CC BY 4.0. See docs/data-sources/PAKISTAN_CITIES.md for attribution and scope.
 """
 import hashlib
 import json

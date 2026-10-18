@@ -12,6 +12,7 @@
     "dev:web": "vite --host 127.0.0.1",
     "dev:firebase": "firebase emulators:exec --project demo-manzil --only auth,firestore \"tsx scripts/emulator-dev.ts\"",
     "dev:local": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/with-local-runtime.ps1 run dev:firebase",
+    "docs:check": "node scripts/check-docs.mjs",
     "test:firebase": "npm run build:server && firebase emulators:exec --config firebase.test.json --project demo-manzil-test --only auth,firestore \"vitest run tests/firebase-integration.test.ts\"",
     "build:cloud": "tsc --noEmit && vite build --mode cloud && node scripts/build-server.mjs",
     "build:server": "node scripts/build-server.mjs",

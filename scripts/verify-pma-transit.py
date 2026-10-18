@@ -2,7 +2,7 @@
 
 Python standard library only. Exact public requests and reviewed response hashes
 are pinned below; changed authority data requires another deliberate review.
-Raw responses remain ignored. See docs/PMA_TRANSIT_VERIFICATION.md.
+Raw responses remain ignored. See docs/data-sources/PMA_TRANSIT_VERIFICATION.md.
 """
 import argparse
 from datetime import datetime, timezone
