@@ -4,6 +4,8 @@ import type { Repository } from './repository.js';
 import { agentConfig, GeminiClient, GeminiError, type AgentConfig, type GeminiInput, type GeminiOutput } from './gemini.js';
 import type { AgentImageReader } from './agent-images.js';
 import { currentProposalResult, prepareAgentProposals } from './agent-proposals.js';
+import type { TransitDisruptionState } from '../shared/transit.js';
+import { isTransitEvent } from './agent-transit.js';
 
 export class AgentService {
   private running?: Promise<unknown>;
@@ -14,9 +16,14 @@ export class AgentService {
   async prepareNotice(noticeId: string, revision: number) {
     const notice = await this.store.getNotice(noticeId);
     const result = currentProposalResult(notice, await this.store.meta<AgentResult>(agentResultKey(noticeId)), revision);
-    if (result.proposals) return result;
-    const proposals = await this.prepare(notice!, result.extraction!, (await this.store.routingSnapshot(true)).closures);
-    return this.store.saveAgentProposals(noticeId, revision, result.claimId, proposals);
+    const legacyTransit = result.proposals?.filter(proposal => proposal.state === 'pending' && proposal.kind !== 'transit' &&
+      result.extraction!.events[proposal.index] && isTransitEvent(result.extraction!.events[proposal.index]));
+    if (result.proposals && !legacyTransit?.length) return result;
+    const proposals = await this.prepare(notice!, result.extraction!, (await this.store.routingSnapshot(true)).closures,
+      { transitState: await this.store.meta<TransitDisruptionState>('transit:disruptions') });
+    return this.store.saveAgentProposals(noticeId, revision, result.claimId,
+      result.proposals ? result.proposals.map(old => legacyTransit?.some(item => item.index === old.index) ? proposals.find(item => item.index === old.index)! : old) : proposals,
+      result.proposals ? proposalFingerprint(result.proposals) : undefined);
   }
   async refineNotice(noticeId: string, revision: number) {
     const notice = await this.store.getNotice(noticeId);
@@ -28,7 +35,8 @@ export class AgentService {
         (proposal.mappingRetryAt ?? 0) <= Date.now() && location && (location.point || location.road && location.from && location.to);
     });
     if (!eligible.length) return result;
-    const next = await this.prepare(notice!, result.extraction!, (await this.store.routingSnapshot(true)).closures);
+    const next = await this.prepare(notice!, result.extraction!, (await this.store.routingSnapshot(true)).closures,
+      { transitState: await this.store.meta<TransitDisruptionState>('transit:disruptions') });
     const proposals = result.proposals.map(old => {
       if (!eligible.some(item => item.index === old.index)) return old;
       const found = next.find(item => item.index === old.index);
@@ -101,7 +109,8 @@ export class AgentService {
         await this.store.setMeta('sourceAgentRuntime', { ...runtime, state: 'working', stage: 'interpreting', progressAt: new Date().toISOString(), lastNoticeId: notice.id });
         const output = await this.model({ notice, images, incidents });
         await this.store.setMeta('sourceAgentRuntime', { ...runtime, state: 'working', stage: 'mapping', progressAt: new Date().toISOString(), lastNoticeId: notice.id });
-        const proposals = await this.prepare(notice, output.extraction, incidents);
+        const proposals = await this.prepare(notice, output.extraction, incidents,
+          { transitState: await this.store.meta<TransitDisruptionState>('transit:disruptions') });
         const issues = output.extraction.fuel.length ? ['Fuel announcements await the authoritative dated PSO check; announcement prices were not applied.'] :
           proposals.length ? ['Map proposals await administrator approval.'] : ['No road proposal was prepared from this interpretation.'];
         result = { ...claim, state: output.extraction.category === 'irrelevant' ? 'dismissed' : 'review',

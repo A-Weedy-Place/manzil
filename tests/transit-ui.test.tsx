@@ -452,8 +452,9 @@ it('publishes the native date-picker suspension window rather than an older cont
   expect(vi.mocked(send).mock.calls[0][1]).toMatchObject({ startsAt: '2026-10-19T02:30:00.000Z', endsAt: '2026-10-19T03:30:00.000Z' });
 });
 
-it('lets an admin end a published service suspension using its revision, without echoing server-owned author fields', async () => {
-  signInDevelopment('admin@manzil.test', 'ManzilAdmin123!');
+it.each(['admin', 'verified'] as const)('lets a current %s reviewer end another contributor’s published suspension using its revision', async role => {
+  // Verified membership is represented by the server-derived canReview capability; its Auth role remains user.
+  signInDevelopment(role === 'admin' ? 'admin@manzil.test' : 'user@manzil.test', role === 'admin' ? 'ManzilAdmin123!' : 'ManzilUser123!');
   const suspended = structuredClone(network); suspended.disruptions = [{ id: 'notice', revision: 4, routeId: 'ev1', title: 'Bus suspended', description: 'Announced stoppage', startsAt: at, endsAt: '2026-10-18T10:00:00.000Z', status: 'published', author: { uid: 'another-reviewer', displayName: 'Reviewer', role: 'verified' }, createdAt: at, updatedAt: at }];
   vi.mocked(api).mockResolvedValue(suspended);
   const { result } = renderHook(() => useTransit(true, at, 0, [], vi.fn())); await act(async () => { await Promise.resolve(); });
@@ -462,6 +463,30 @@ it('lets an admin end a published service suspension using its revision, without
   await waitFor(() => expect(vi.mocked(send)).toHaveBeenCalledOnce());
   expect(vi.mocked(send).mock.calls[0]).toEqual(['/transit/disruptions/notice', expect.objectContaining({ status: 'cancelled', revision: 4 }), 'PUT']);
   expect(vi.mocked(send).mock.calls[0][1]).not.toHaveProperty('author'); expect(vi.mocked(send).mock.calls[0][1]).not.toHaveProperty('id');
+});
+
+it('does not expose service editing or cancellation to an ordinary non-reviewer', async () => {
+  signInDevelopment('user@manzil.test', 'ManzilUser123!');
+  const suspended = structuredClone(network); suspended.disruptions = [{ id: 'other-notice', revision: 7, routeId: 'ev1', directionId: '0', fromStopId: 'a', toStopId: 'c', title: 'Bus suspended', description: 'Announced stoppage', startsAt: at, endsAt: '2026-10-18T10:00:00.000Z', status: 'published', author: { uid: 'another-reviewer', displayName: 'Reviewer', role: 'verified' }, createdAt: at, updatedAt: at }];
+  vi.mocked(api).mockResolvedValue(suspended);
+  const { result } = renderHook(() => useTransit(true, at, 0, [], vi.fn())); await act(async () => { await Promise.resolve(); });
+  render(<TransitPanel transit={{ ...result.current, selectedPatternId: 'ev1-0' }} mode="browse" setMode={vi.fn()} onFocus={vi.fn()} canReview={false} at={at} />);
+  expect(screen.getByText('Bus suspended')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'End suspension' })).toBeNull(); expect(screen.queryByRole('button', { name: 'Add service suspension' })).toBeNull();
+  expect(vi.mocked(send)).not.toHaveBeenCalled();
+});
+it('preserves another reviewer’s scoped service notice when current server authority rejects cancellation', async () => {
+  signInDevelopment('user@manzil.test', 'ManzilUser123!');
+  const suspended = structuredClone(network); suspended.disruptions = [{ id: 'other-notice', revision: 7, routeId: 'ev1', directionId: '0', fromStopId: 'a', toStopId: 'c', title: 'Bus suspended', description: 'Announced stoppage', startsAt: at, endsAt: '2026-10-18T10:00:00.000Z', sourceUrl: 'https://example.test/operator', status: 'published', author: { uid: 'another-reviewer', displayName: 'Reviewer', role: 'verified' }, createdAt: at, updatedAt: at }];
+  vi.mocked(api).mockResolvedValue(suspended); vi.mocked(send).mockRejectedValue(new Error('Service notice changed. Refresh before editing.'));
+  const { result } = renderHook(() => useTransit(true, at, 0, [], vi.fn())); await act(async () => { await Promise.resolve(); });
+  render(<TransitPanel transit={{ ...result.current, selectedPatternId: 'ev1-0' }} mode="browse" setMode={vi.fn()} onFocus={vi.fn()} canReview at={at} />);
+  fireEvent.click(screen.getByRole('button', { name: 'End suspension' }));
+  expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Service notice changed. Refresh before editing.');
+  expect(vi.mocked(send)).toHaveBeenCalledWith('/transit/disruptions/other-notice', expect.objectContaining({ revision: 7, status: 'cancelled', directionId: '0', fromStopId: 'a', toStopId: 'c', sourceUrl: 'https://example.test/operator' }), 'PUT');
+  expect(vi.mocked(send).mock.calls[0][1]).not.toHaveProperty('author');
+  expect(screen.getByText('Bus suspended')).toBeTruthy(); expect((screen.getByRole('button', { name: 'End suspension' }) as HTMLButtonElement).disabled).toBe(false);
+  expect(suspended.disruptions[0].status).toBe('published');
 });
 
 it.each([false, true])('labels section-only service notices accurately in route details and cards (whole-direction notice also active: %s)', async full => {

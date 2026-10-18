@@ -3,6 +3,7 @@ import type { Closure, Place } from '../../shared/types.js';
 import type { TransitCalendar, TransitDataset, TransitDisruption, TransitJourney, TransitLeg, TransitPattern, TransitPlanRequest, TransitPlanResponse, TransitRideLeg, TransitStop, TransitTrip, TransitWalkLeg } from '../../shared/transit.js';
 import { distanceMeters } from '../geometry.js';
 import { hasGap, lineDistance, lineHitsClosure, overlap, publishedClosures, sliceShape, stopDistances } from './geometry.js';
+import { priceTransitJourney } from './fares.js';
 
 const DAY=86400_000, PKT=5*3600_000, MAX_ACCESS=1000, MAX_TRANSFER=250, WALK_SPEED=1.25, MAX_WAIT=90*60_000, MAX_JOURNEY=4*3600_000;
 export const transitPlanningLimits={maxAccessWalkMeters:MAX_ACCESS,maxTransferWalkMeters:MAX_TRANSFER,maxTransfers:2,maxWaitMinutes:90,maxJourneyHours:4,walkingSpeedMetersPerSecond:WALK_SPEED};
@@ -102,7 +103,7 @@ export function planTransit(data:TransitDataset|null,request:TransitPlanRequest,
       }
     }
   }
-  response.options=finished.sort((a,b)=>(a.timing==='unknown'?1:0)-(b.timing==='unknown'?1:0)||(a.durationSeconds??a.transfers*1800+a.walkingDistanceMeters)-(b.durationSeconds??b.transfers*1800+b.walkingDistanceMeters)).slice(0,3);
+  response.options=finished.sort((a,b)=>(a.timing==='unknown'?1:0)-(b.timing==='unknown'?1:0)||(a.durationSeconds??a.transfers*1800+a.walkingDistanceMeters)-(b.durationSeconds??b.transfers*1800+b.walkingDistanceMeters)).slice(0,3).map(journey=>priceTransitJourney(journey,data.routes));
   if(expansions>=1800||performance.now()>=deadline)response.warnings.push('Planning reached its bounded search limit; additional connections may exist.');
   if(!response.options.length)response.unavailableReason='No eligible connection was found within the mapped service, timetable, closure and walking limits. A closed bus line is not rerouted onto another road.';
   return response;

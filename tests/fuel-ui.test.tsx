@@ -256,7 +256,7 @@ it('provides Urdu labels for the new vehicle and price controls', () => {
 it('allows an explicit admin fuel check without starting the notice collector or polling from the browser', async () => {
   const reload = vi.fn(async () => {});
   render(<AdminPanel state={state()} at={at} selectedId={null} reload={reload} notify={vi.fn()} onSelect={vi.fn()} onEdit={vi.fn()} onCancel={vi.fn()} onReview={vi.fn(async () => {})} onManualClosure={vi.fn()} />);
-  fireEvent.click(screen.getByRole('tab', { name: 'Pipeline' }));
+  fireEvent.click(screen.getAllByText('Daily fuel prices')[0].closest('summary')!);
   expect(calls.send).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Check fuel prices' }));
   await waitFor(() => expect(calls.send).toHaveBeenCalledWith('/fuel/check', {}));

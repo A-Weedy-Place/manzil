@@ -1,3 +1,5 @@
+**18 October reviewer follow-up:** verified contributors and administrators may correct/cancel pending community submissions and approved public road reports, preserving the reporter. Editing a pending submission keeps it draft/pending, even for an administrator; approval remains separate. Private rejected reports retain their read boundaries. [Admin workspace](ADMIN_WORKSPACE.md).
+
 # Closures and blockades
 
 ## What a contributor does

@@ -233,17 +233,20 @@ export class FirestoreStore implements Repository {
     });
   }
   async reviewAgentProposal(input: AgentProposalReview) {
-    const ref = this.metaRef(agentResultKey(input.noticeId)), revisionRef = this.metaRef('eventRevision');
+    const ref = this.metaRef(agentResultKey(input.noticeId)), revisionRef = this.metaRef('eventRevision'), transitRef = this.metaRef('transit:disruptions');
     const decision = await this.db.runTransaction(async tx => {
-      const [notice, result, revision] = await tx.getAll(this.noticeRef(input.noticeId), ref, revisionRef);
+      const [notice, result, revision, transitRecord] = await tx.getAll(this.noticeRef(input.noticeId), ref, revisionRef, transitRef);
+      const transit = decode<import('../shared/transit.js').TransitDisruptionState>(transitRecord.data()) ?? { revision: 0, records: [] };
       const old = decode<AgentResult>(result.data()), proposal = old?.proposals?.find(item => item.index === input.index);
       const targetRef = proposal ? this.record('closure', proposal.targetId) : undefined;
       const previous = targetRef ? decode<Closure>((await tx.get(targetRef)).data()) : undefined;
-      const next = decideAgentProposal(input, decode<SourceNotice>(notice.data()), old, previous);
+      const next = decideAgentProposal(input, decode<SourceNotice>(notice.data()), old, previous, transit);
       if (next.closure) {
         tx.set(targetRef!, { ...pack(next.closure), status: next.closure.status, updatedAt: next.closure.updatedAt });
         tx.set(revisionRef, pack((decode<number>(revision.data()) ?? 0) + 1));
       }
+      if (next.transitDisruption) tx.set(transitRef, pack({ revision: transit.revision + 1,
+        records: [...transit.records.filter(record => record.id !== next.transitDisruption!.id), next.transitDisruption] }));
       tx.set(ref, pack(next.result)); tx.set(this.metaRef(`sourceAgentVersion:${input.noticeId}:${input.noticeRevision}`), pack(next.result)); return next;
     });
     if (decision.closure) this.cache.snapshot = undefined; return decision;

@@ -2,14 +2,14 @@
 import { afterEach, expect, it, vi } from 'vitest';
 const fixture = vi.hoisted(() => {
   const auth = { currentUser: null as null | { uid: string; email: string; displayName: string; getIdToken: () => Promise<string>; getIdTokenResult: () => Promise<{ claims: { admin: boolean } }> } };
-  return { auth, tokenChanged: null as null | ((user: typeof auth.currentUser) => Promise<void>), emulator: vi.fn(), signIn: vi.fn(), signOut: vi.fn(), createAccount: vi.fn(), resetPassword: vi.fn() };
+  return { auth, tokenChanged: null as null | ((user: typeof auth.currentUser) => Promise<void>), emulator: vi.fn(), signIn: vi.fn(), signOut: vi.fn(), createAccount: vi.fn(), resetPassword: vi.fn(), verifyReset: vi.fn(), confirmReset: vi.fn() };
 });
 vi.mock('firebase/app', () => ({ getApps: () => [], initializeApp: () => ({ name: 'test-app' }) }));
 vi.mock('firebase/auth', () => ({
   getAuth: () => fixture.auth, browserSessionPersistence: {}, setPersistence: async () => {}, connectAuthEmulator: fixture.emulator,
   onIdTokenChanged: (_auth: unknown, callback: typeof fixture.tokenChanged) => { fixture.tokenChanged = callback; },
   signInWithEmailAndPassword: fixture.signIn, signOut: fixture.signOut, createUserWithEmailAndPassword: fixture.createAccount,
-  sendPasswordResetEmail: fixture.resetPassword,
+  sendPasswordResetEmail: fixture.resetPassword, verifyPasswordResetCode: fixture.verifyReset, confirmPasswordReset: fixture.confirmReset,
 }));
 async function client(mode: 'firebase' | 'emulator') {
   vi.stubEnv('VITE_AUTH_MODE', mode); vi.stubEnv('VITE_FIREBASE_PROJECT_ID', mode === 'emulator' ? 'demo-manzil' : 'manzil-example');
@@ -107,6 +107,18 @@ it('uses the Firebase reset action with a trimmed email and propagates failure w
   fixture.resetPassword.mockRejectedValueOnce(new Error('Synthetic offline reset failure'));
   await expect(auth.resetPassword('person@example.test')).rejects.toThrow('Synthetic offline reset failure');
   expect(sessionStorage.length).toBe(0);
+});
+it('keeps reset action verification and confirmation on the configured Firebase client without implicit sign-in or app storage', async () => {
+  const auth = await client('emulator'); fixture.signIn.mockClear();
+  fixture.verifyReset.mockResolvedValueOnce('disposable@manzil.test');
+  expect(await auth.verifyAccountPasswordReset('synthetic-action')).toBe('disposable@manzil.test');
+  expect(fixture.verifyReset).toHaveBeenCalledWith(fixture.auth, 'synthetic-action');
+  await auth.completeAccountPasswordReset('synthetic-action', 'DisposableChanged123!');
+  expect(fixture.confirmReset).toHaveBeenCalledWith(fixture.auth, 'synthetic-action', 'DisposableChanged123!');
+  expect(fixture.signIn).not.toHaveBeenCalled(); expect(fixture.createAccount).not.toHaveBeenCalled();
+  expect(sessionStorage.length).toBe(0); expect(auth.getAuthSession().user).toBeNull();
+  fixture.verifyReset.mockRejectedValueOnce({ code: 'auth/expired-action-code' });
+  await expect(auth.verifyAccountPasswordReset('used-action')).rejects.toMatchObject({ code: 'auth/expired-action-code' });
 });
 it('refuses to send requests to a mismatched standalone backend instead of falling back to shared local records', async () => {
   await client('firebase');

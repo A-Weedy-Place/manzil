@@ -271,8 +271,11 @@ export class Store {
     return this.transaction(() => {
       const old = this.meta<AgentResult>(agentResultKey(input.noticeId));
       const proposal = old?.proposals?.find(item => item.index === input.index);
-      const decision = decideAgentProposal(input, this.getNotice(input.noticeId), old, proposal ? this.get<Closure>('closure', proposal.targetId) : undefined);
+      const transit = this.meta<import('../shared/transit.js').TransitDisruptionState>('transit:disruptions') ?? { revision: 0, records: [] };
+      const decision = decideAgentProposal(input, this.getNotice(input.noticeId), old, proposal ? this.get<Closure>('closure', proposal.targetId) : undefined, transit);
       if (decision.closure) { this.put('closure', decision.closure); this.setMeta('eventRevision', this.eventRevision + 1); }
+      if (decision.transitDisruption) this.setMeta('transit:disruptions', { revision: transit.revision + 1,
+        records: [...transit.records.filter(record => record.id !== decision.transitDisruption!.id), decision.transitDisruption] });
       this.setMeta(agentResultKey(input.noticeId), decision.result);
       this.setMeta(`sourceAgentVersion:${input.noticeId}:${input.noticeRevision}`, decision.result); return decision;
     });

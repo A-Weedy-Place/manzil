@@ -8,6 +8,8 @@ import { isInPakistan } from './routing/pakistan.js';
 import { sourceSupportsInstant } from './agent-time.js';
 import { HttpError } from './errors.js';
 import { closureDraftSchema } from './validation.js';
+import type { TransitDataset, TransitDisruptionState } from '../shared/transit.js';
+import { decideTransitProposal, isTransitEvent, prepareTransitProposal } from './agent-transit.js';
 
 type Event = AgentExtraction['events'][number];
 const words = (value: string) => value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
@@ -28,10 +30,12 @@ export async function resolveProposalPlace(event: Event, places: (query: string)
 /** Preparation runs independently of publication policy, including saved interpretations. */
 export async function prepareAgentProposals(notice: SourceNotice, extraction: AgentExtraction, incidents: Closure[], options: {
   resolve?: (event: Event) => Promise<ResolvedAgentLocation>; place?: (event: Event) => Promise<ResolvedAgentLocation>; now?: number;
+  data?: TransitDataset | null; transitState?: TransitDisruptionState;
 } = {}): Promise<AgentProposal[]> {
   if (extraction.category !== 'traffic') return [];
   const proposals: AgentProposal[] = [];
   for (const [index, event] of extraction.events.entries()) {
+    if (isTransitEvent(event)) { proposals.push(prepareTransitProposal(notice, extraction, event, index, options)); continue; }
     const steps: NonNullable<AgentProposal['steps']> = [{ tool: 'interpret_source', state: 'done', detail: 'Gemini interpretation is available.' }];
     const issues = [...extraction.warnings, ...event.uncertainties];
     if (event.action === 'disruption' || event.impact !== 'closed') issues.push('This reports disruption or uncertain road access. Confirm an actual road restriction before approving.');
@@ -108,11 +112,16 @@ export function currentProposalResult(notice: SourceNotice | undefined, result: 
 }
 
 /** Called inside each adapter's transaction; approval and decision history commit together. */
-export function decideAgentProposal(input: AgentProposalReview, notice: SourceNotice | undefined, stored: AgentResult | undefined, previous: Closure | undefined): AgentProposalDecision {
+export function decideAgentProposal(input: AgentProposalReview, notice: SourceNotice | undefined, stored: AgentResult | undefined, previous: Closure | undefined,
+  transitState: TransitDisruptionState = { revision: 0, records: [] }): AgentProposalDecision {
   if (input.reviewer.role !== 'admin') throw new HttpError(403, 'Administrator access is required.');
   const result = currentProposalResult(notice, stored, input.noticeRevision);
   const original = result.proposals?.find(proposal => proposal.index === input.index);
   if (!original || original.version !== input.version || original.state !== 'pending') throw new HttpError(409, 'This proposal changed or has already been decided. Refresh the Pipeline.');
+  if (original.kind === 'transit') return decideTransitProposal(input, notice!, result, original, transitState);
+  if (input.decision === 'approve' && result.extraction!.events[original.index] && isTransitEvent(result.extraction!.events[original.index]))
+    throw new HttpError(409, 'Prepare this saved interpretation again to review it as a bus service notice.');
+  if (input.transitDraft) throw new HttpError(400, 'A road proposal cannot publish a bus service notice.');
   const now = new Date().toISOString();
   let closure: Closure | undefined;
   if (input.decision === 'approve') {
@@ -146,5 +155,5 @@ export function decideAgentProposal(input: AgentProposalReview, notice: SourceNo
     reviewedBy: input.reviewer, reviewedAt: now, ...(closure ? { closureId: closure.id } : {}) };
   const proposals = result.proposals!.map(item => item.index === proposal.index ? proposal : item);
   const closureIds = [...new Set([...result.closureIds, ...(closure ? [closure.id] : [])])];
-  return { result: { ...result, proposals, closureIds, state: proposals.some(item => item.state === 'pending') ? 'review' : closureIds.length ? 'applied' : 'review' }, proposal, ...(closure ? { closure } : {}) };
+  return { result: { ...result, proposals, closureIds, state: proposals.some(item => item.state === 'pending') ? 'review' : closureIds.length || result.transitDisruptionIds?.length ? 'applied' : 'review' }, proposal, ...(closure ? { closure } : {}) };
 }

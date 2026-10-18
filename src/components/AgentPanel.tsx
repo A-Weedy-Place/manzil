@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
-import { RefreshCw, Sparkles } from 'lucide-react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { ChevronRight, RefreshCw, Sparkles, X } from 'lucide-react';
+import Modal from './Modal';
 import type { AgentProposal, AgentResult } from '../../shared/agent';
 import type { SourceNotice } from '../../shared/types';
 import { api, send } from '../lib/api';
 import { getLanguage, t } from '../lib/language';
+import { getAuthSession } from '../lib/auth';
 import { dateTime, relative } from '../lib/format';
 import { pipelineCounts, pipelineRows, type PipelineStage as Stage } from '../lib/pipeline';
 import { useAgentPipeline, type AgentPipelineState } from '../lib/useAgentPipeline';
@@ -11,15 +13,16 @@ import { useAgentPipeline, type AgentPipelineState } from '../lib/useAgentPipeli
 interface Props {
   notices: SourceNotice[]; onManualClosure: (notice: SourceNotice, proposal?: AgentProposal) => void;
   onRefresh?: () => Promise<void>; onMark?: (notice: SourceNotice, status: SourceNotice['status']) => Promise<void>;
-  pipeline?: AgentPipelineState; reviewOnly?: boolean; onOpenReview?: () => void;
+  pipeline?: AgentPipelineState; reviewOnly?: boolean; onOpenReview?: () => void; engineOnly?: boolean; postsOnly?: boolean;
 }
 const labels: Record<Stage, string> = { waiting: 'Waiting for AI', processing: 'Analysing', failed: 'Analysis failed', review: 'Needs review', applied: 'Map updated', dismissed: 'Archived', handled: 'Handled', rejected: 'Proposals rejected' };
-export default function AgentPanel({ notices, onManualClosure, onRefresh, onMark, pipeline: shared, reviewOnly = false, onOpenReview }: Props) {
+export default function AgentPanel({ notices, onManualClosure, onRefresh, onMark, pipeline: shared, reviewOnly = false, onOpenReview, engineOnly = false, postsOnly = false }: Props) {
   const own = useAgentPipeline(notices, !shared), pipeline = shared ?? own;
   const { status, results } = pipeline;
   const [error,setError] = useState(''), [busy,setBusy] = useState(false), [message,setMessage] = useState('');
   const [running,setRunning] = useState(false);
-  const [filter,setFilter] = useState<'all' | 'waiting' | 'review' | 'map' | 'archived'>('all');
+  const [selectedPost,setSelectedPost] = useState<string | null>(null);
+  const detailTitle = useId();
   useEffect(() => { if (!running) return; const timer = setInterval(() => { if (!document.hidden) void pipeline.refresh(); },4000); return () => clearInterval(timer); },[running,pipeline.refresh]);
   async function refresh() { setBusy(true); setError(''); try { await onRefresh?.(); await pipeline.refresh(); } catch (reason) { setError(String(reason)); } finally { setBusy(false); } }
   async function toggle() {
@@ -36,11 +39,10 @@ export default function AgentPanel({ notices, onManualClosure, onRefresh, onMark
     } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } finally { setBusy(false); setRunning(false); }
   }
   const rows = pipelineRows(notices,results), counts = pipelineCounts(notices,results);
-  const matches = (row: typeof rows[number], key: typeof filter) => key === 'all' || key === 'waiting' && ['waiting','processing'].includes(row.state) ||
-    key === 'review' && ['review','failed'].includes(row.state) || key === 'map' && row.result?.noticeRevision === row.notice.revision && !!row.result.closureIds?.length || key === 'archived' && ['dismissed','handled','rejected'].includes(row.state);
-  const visible = rows.filter(row => reviewOnly ? row.state === 'review' : matches(row,filter));
+  const visible = rows.filter(row => !reviewOnly || row.state === 'review');
+  const selected = rows.find(row => row.notice.id === selectedPost);
   return <>
-    {!reviewOnly && <section className="pipeline-engine" aria-label={t('AI processing')}>
+    {!reviewOnly && !postsOnly && <section className="pipeline-engine" aria-label={t('AI processing')}>
       <div className="section-heading compact"><h2><Sparkles size={17} /> {t('2. Gemini analysis')}</h2><span className="tag neutral">{t(!status ? error || pipeline.error ? 'Unavailable' : 'Loading…' : !status.configured ? 'Not configured' : !status.enabled ? 'Paused' : status.processing || running ? 'Analysing' : status.runtime?.errorCode ? 'Needs attention' : status.dailyLimitReached ? 'Daily limit reached' : 'Scheduled')}</span></div>
       <p className="small">{t('Gemini prepares map drafts. An administrator approves or rejects each change.')}</p>
       {status && <>
@@ -58,40 +60,61 @@ export default function AgentPanel({ notices, onManualClosure, onRefresh, onMark
         {status?.configured && <button className="text-button" disabled={busy} onClick={toggle}>{t(status.enabled ? 'Pause Gemini' : 'Resume Gemini')}</button>}
       </div>
       <p className="small">{t(status?.pending ? 'Run now analyses up to two waiting posts using the same daily allowance as the scheduled worker.' : 'No posts are waiting for analysis. Finished posts can still be awaiting your review.')}</p>
-      {counts.review > 0 && <button className="secondary-button full" onClick={() => onOpenReview ? onOpenReview() : setFilter('review')}>{t('Open awaiting review')} ({counts.review})</button>}
+      {counts.review > 0 && <button className="secondary-button full" onClick={() => onOpenReview ? onOpenReview() : setSelectedPost(rows.find(row => row.state === 'review')?.notice.id ?? null)}>{t('Open awaiting review')} ({counts.review})</button>}
       {message && <p className="pipeline-live" role="status">{t(message)}</p>}
       <p className="small muted">{t('Refresh results only reloads saved results. It does not call Gemini.')}</p>
     </section>}
     {(error || pipeline.error) && <p className="error-box" role="alert">{error || pipeline.error}</p>}
-    <div className="section-heading compact"><h2>{t(reviewOnly ? 'Agent post reviews' : 'Posts & outcomes')}</h2><span className="small muted">{reviewOnly ? counts.review : notices.length} {t('loaded')}</span></div>
-    {!reviewOnly && <div className="pipeline-filters" role="group" aria-label={t('Filter posts')}>{([['all','All posts'],['waiting','Waiting for AI'],['review','Needs attention'],['map','Map changes'],['archived','Archived']] as const).map(([key,label]) => <button key={key} aria-pressed={filter === key} onClick={() => setFilter(key)}>{t(label)} <span>{rows.filter(row => matches(row,key)).length}</span></button>)}</div>}
-    <p className="small muted">{t('Waiting for AI means saved, not yet analysed. Needs review means AI has finished, but a person must check it.')}</p>
-    {!visible.length && <div className="empty-state compact-empty"><h3>{t(reviewOnly ? 'No agent posts await review' : !notices.length ? 'No posts collected yet' : filter === 'waiting' ? 'Nothing waiting for AI' : 'No posts in this view')}</h3><p>{t(!notices.length ? 'Fetch latest posts or import an original notice.' : reviewOnly ? 'New agent proposals appear here after analysis.' : 'Choose All posts to see processed posts and their outcomes.')}</p></div>}
-    {visible.map(row => <PostCard key={row.notice.id + ':' + row.notice.revision} {...row} onManualClosure={onManualClosure} onMark={onMark} onUpdate={pipeline.update} />)}
+    {!engineOnly && <>
+      <div className="section-heading compact"><h2>{t(reviewOnly ? 'Agent post reviews' : 'All posts')}</h2><span className="small muted">{visible.length}</span></div>
+      {!visible.length && <div className="empty-state compact-empty"><h3>{t(reviewOnly ? 'No agent posts await review' : 'No posts collected yet')}</h3></div>}
+      {visible.map(row => <button type="button" className={`pipeline-post-trigger ${selectedPost === row.notice.id ? 'selected' : ''}`} key={row.notice.id} aria-haspopup="dialog" aria-expanded={selectedPost === row.notice.id} onClick={() => setSelectedPost(row.notice.id)}>
+        <span className="row between"><span className={'tag ' + (row.state === 'applied' ? 'green' : row.state === 'failed' ? 'red' : 'neutral')}>{t(labels[row.state])}</span><span className="small muted">{dateTime(row.notice.publishedAt ?? row.notice.receivedAt)}</span></span>
+        <strong>{row.result?.noticeRevision === row.notice.revision && row.result.extraction ? getLanguage() === 'ur' && row.result.extraction.summaryUrdu || row.result.extraction.summary : row.notice.text.slice(0,170)}</strong>
+        <span className="row between small muted"><span>{t(row.notice.source === 'x' ? 'Champ Alerts' : 'Manual import')} · v{row.notice.revision}</span><ChevronRight size={17} aria-hidden="true" /></span>
+      </button>)}
+      {selected && <Modal titleId={detailTitle} onClose={() => setSelectedPost(null)} dismissOnOutsideClick className="profile-settings-dialog profile-statistics-dialog admin-detail-dialog">
+        <div className="statistics-dialog-heading"><h1 id={detailTitle}>{t('Post review')}</h1><button className="icon-button" aria-label={t('Close post review')} onClick={() => setSelectedPost(null)}><X size={20} /></button></div>
+        <div className="profile-section-content source-pipeline"><PostCard key={selected.notice.id + ':' + selected.notice.revision} {...selected} onManualClosure={(notice, proposal) => { setSelectedPost(null); onManualClosure(notice,proposal); }} onMark={onMark} onUpdate={pipeline.update} /></div>
+      </Modal>}
+    </>}
+
   </>;
 }
 function PostCard({ notice, result, state, onManualClosure, onMark, onUpdate }: { notice: SourceNotice; result?: AgentResult; state: Stage; onUpdate: (result: AgentResult) => void } & Pick<Props, 'onManualClosure' | 'onMark'>) {
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
-  async function prepare() {
-    setBusy(true); setError('');
-    try { const next = await send<AgentResult>(`/agent/notices/${encodeURIComponent(notice.id)}/prepare`, { revision: notice.revision }); onUpdate(next);
-      if (next.proposals?.length === 1 && next.proposals[0].state === 'pending') onManualClosure(notice, next.proposals[0]); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not prepare map draft.'); } finally { setBusy(false); }
+  const live = useRef(false), operation = useRef(0), inFlight = useRef(false), owner = getAuthSession().user?.uid;
+  useEffect(() => { live.current = true; inFlight.current = false; setBusy(false); return () => { live.current = false; operation.current++; }; }, [notice.id, notice.revision, owner]);
+  const active = (id: number) => live.current && operation.current === id && getAuthSession().user?.uid === owner;
+  const begin = () => { if (inFlight.current) return null; inFlight.current = true; const id = ++operation.current; setBusy(true); setError(''); return id; };
+  const belongsToPost = (next: AgentResult) => next.noticeId === notice.id && next.noticeRevision === notice.revision;
+  async function prepare(index?: number) {
+    const id = begin(); if (id === null) return;
+    try { const next = await send<AgentResult>(`/agent/notices/${encodeURIComponent(notice.id)}/prepare`, { revision: notice.revision });
+      if (!active(id) || !belongsToPost(next)) return;
+      onUpdate(next);
+      const selected = index === undefined ? next.proposals?.length === 1 ? next.proposals[0] : undefined : next.proposals?.find(item => item.index === index);
+      if (selected?.state === 'pending') onManualClosure(notice, selected);
+      else if (index !== undefined) setError(t('This proposal has changed. Refresh the review queue.')); }
+    catch (reason) { if (active(id)) setError(reason instanceof Error ? reason.message : 'Could not prepare map draft.'); } finally { if (active(id)) { inFlight.current = false; setBusy(false); } }
   }
   async function reject(proposal: AgentProposal) {
-    setBusy(true); setError('');
+    const id = begin(); if (id === null) return;
     try { const next = await send<{ result: AgentResult }>(`/agent/notices/${encodeURIComponent(notice.id)}/review`,
-      { noticeRevision: notice.revision, index: proposal.index, version: proposal.version, decision: 'reject' }); onUpdate(next.result); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not reject map draft.'); } finally { setBusy(false); }
+      { noticeRevision: notice.revision, index: proposal.index, version: proposal.version, decision: 'reject' });
+      if (active(id) && belongsToPost(next.result)) onUpdate(next.result); }
+    catch (reason) { if (active(id)) setError(reason instanceof Error ? reason.message : 'Could not reject map draft.'); } finally { if (active(id)) { inFlight.current = false; setBusy(false); } }
   }
-  async function refine() { setBusy(true); setError(''); try {
-    onUpdate(await send<AgentResult>('/agent/notices/' + encodeURIComponent(notice.id) + '/refine',{revision:notice.revision}));
-  } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } finally { setBusy(false); } }
+  async function refine() { const id = begin(); if (id === null) return; try {
+    const next = await send<AgentResult>('/agent/notices/' + encodeURIComponent(notice.id) + '/refine',{revision:notice.revision});
+    if (active(id) && belongsToPost(next)) onUpdate(next);
+  } catch (reason) { if (active(id)) setError(reason instanceof Error ? reason.message : String(reason)); } finally { if (active(id)) { inFlight.current = false; setBusy(false); } } }
+  async function mark(status: SourceNotice['status']) { const id = begin(); if (id === null) return; try { await onMark?.(notice,status); } catch(reason) { if (active(id)) setError(reason instanceof Error ? reason.message : 'Could not update the notice.'); } finally { if (active(id)) { inFlight.current = false; setBusy(false); } } }
   const current = result?.noticeRevision === notice.revision, analysis = result?.extraction;
   const summary = analysis ? getLanguage() === 'ur' && analysis.summaryUrdu ? analysis.summaryUrdu : analysis.summary : notice.text;
-  const changed = current && !!result.closureIds?.length;
-  return <details className="pipeline-post">
-    <summary><div className="row between"><span className={'tag ' + (state === 'applied' ? 'green' : state === 'failed' ? 'red' : 'neutral')}>{t(labels[state])}</span><span className="small muted">{t(notice.source === 'x' ? 'Champ Alerts' : 'Manual import')} · v{notice.revision}</span></div><strong className="pipeline-post-title">{current && analysis ? summary : notice.text.slice(0, 170)}</strong><span className="small muted">{t('Open to compare the original post, AI analysis and map outcome.')}</span></summary>
+  const changed = current && (!!result.closureIds?.length || !!result.transitDisruptionIds?.length);
+  return <article className="pipeline-post pipeline-post-detail">
+    <div className="pipeline-post-meta"><span className="tag neutral">{t(labels[state])}</span><span className="small muted">{t(notice.source === 'x' ? 'Champ Alerts' : 'Manual import')} · v{notice.revision}</span></div>
     <section className="pipeline-post-section"><h3>{t('Original post')}</h3><p className="notice-text" dir="auto">{notice.text}</p><div className="small muted">{t('Published')}: {notice.publishedAt ? dateTime(notice.publishedAt) : t('Unknown — not inferred from collection time')}</div><div className="small muted">{t('Collected')}: {dateTime(notice.receivedAt)}</div>{notice.sourceTimestamp?.kind === 'edited' && <div className="small muted">{t('Source edited')}: {dateTime(notice.sourceTimestamp.at)}</div>}
       {notice.url && <a className="text-button" href={notice.url} target="_blank" rel="noreferrer">{t('View original source')}</a>}{notice.mediaUrls.length > 0 && <EvidenceImages key={notice.id + ':' + notice.revision} id={notice.id} />}
     </section>
@@ -103,22 +126,22 @@ function PostCard({ notice, result, state, onManualClosure, onMark, onUpdate }: 
     <section className="pipeline-outcome"><h3>{t('Map outcome')}</h3><strong>{t(!current ? 'Map outcome not available yet' : changed ? 'Map updated' : 'No map change recorded for this post version')}</strong><p className="small">{t(changed ? 'Validated changes were saved. Their location and active time determine the effect on routes.' : state === 'review' ? 'AI found an update, but the evidence needs a person to check it.' : state === 'dismissed' ? 'This post is archived. Archiving a post does not cancel an existing blockade.' : 'Saving or analysing a post does not by itself create a blockade.')}</p>
       {current && state === 'failed' && <p className="small muted">{t((result.attempts ?? 0) >= 3 ? 'This version reached its retry limit. Inspect the source; the agent will not spend more model requests on it automatically.' : 'Next eligible model retry')}{(result.attempts ?? 0) < 3 && result.retryAt ? ': ' + dateTime(new Date(result.retryAt).toISOString()) : ''}</p>}
       {current && result.issues.map((issue, index) => <p className="small muted" key={index}>{issue}</p>)}
-      {changed && <details className="pipeline-technical"><summary>{t('Changed blockade IDs')}</summary>{result!.closureIds.map(id => <code key={id}>{id}</code>)}</details>}
+      {changed && <details className="pipeline-technical"><summary>{t('Changed blockade IDs')}</summary>{[...(result!.closureIds ?? []),...(result!.transitDisruptionIds ?? [])].map(id => <code key={id}>{id}</code>)}</details>}
       {current && analysis && state !== 'dismissed' && <>
-        {result.proposals?.map(proposal => <div className="pipeline-event" key={proposal.index}><strong>{proposal.draft.title}</strong><p className="small">{t(proposal.state === 'approved' ? 'Approved by administrator' : proposal.state === 'rejected' ? 'Rejected by administrator' : proposal.mapping === 'unresolved' ? 'Draft ready; map location needs your help.' : 'Map draft prepared; awaiting approval.')}</p>
-          <p className="small muted">{t(proposal.action === 'reopening' ? 'Proposed action: reopen an existing road' : proposal.targetRevision !== null ? 'Proposed action: update an existing blockade' : 'Proposed action: create a blockade')}</p>
-          {proposal.state === 'pending' && <p className="small muted">{t(!proposal.draft.geometry ? 'Your input needed: select the affected location.' : !proposal.draft.startsAt ? 'Your input needed: confirm the start time.' : !proposal.draft.endsAt && proposal.action !== 'reopening' ? 'Your input needed: set expiry or confirm until cancelled.' : 'Next: check the map preview and approve or reject.')}</p>}
+        {result.proposals?.map(proposal => <div className="pipeline-event" key={proposal.index}><strong>{proposal.draft.title}</strong><p className="small">{t(proposal.state === 'approved' ? 'Approved by administrator' : proposal.state === 'rejected' ? 'Rejected by administrator' : proposal.mapping === 'unresolved' ? proposal.kind === 'transit' ? 'Bus service needs your review.' : 'Draft ready; map location needs your help.' : 'Map draft prepared; awaiting approval.')}</p>
+          <p className="small muted">{t(proposal.kind === 'transit' ? 'Proposed action: update bus service' : proposal.action === 'reopening' ? 'Proposed action: reopen an existing road' : proposal.targetRevision !== null ? 'Proposed action: update an existing blockade' : 'Proposed action: create a blockade')}</p>
+          {proposal.state === 'pending' && <p className="small muted">{t(proposal.kind === 'transit' ? 'Confirm the line, affected stops and schedule.' : !proposal.draft.geometry ? 'Your input needed: select the affected location.' : !proposal.draft.startsAt ? 'Your input needed: confirm the start time.' : !proposal.draft.endsAt && proposal.action !== 'reopening' ? 'Your input needed: set expiry or confirm until cancelled.' : 'Next: check the map preview and approve or reject.')}</p>}
           {proposal.steps?.length ? <details className="pipeline-technical"><summary>{t('Agent work log')}</summary><ol className="agent-work-log">{proposal.steps.map((step,index) => <li key={index} data-state={step.state}><strong>{t(step.tool.replaceAll('_',' '))}</strong><span>{t(step.detail)}</span><small>{t(step.state === 'done' ? 'Done' : step.state === 'blocked' ? 'Needs details' : 'Check required')}</small></li>)}</ol></details> : null}
-          {proposal.state === 'pending' && <div className="row pipeline-controls"><button className="secondary-button" disabled={busy} onClick={() => onManualClosure(notice, proposal)}>{t('Review on map')}</button><button className="text-button" disabled={busy} onClick={() => void reject(proposal)}>{t('Reject proposal')}</button></div>}
-          {proposal.state === 'pending' && proposal.mapping === 'unresolved' && (analysis.events[proposal.index]?.location.point || analysis.events[proposal.index]?.location.road && analysis.events[proposal.index]?.location.from && analysis.events[proposal.index]?.location.to) && <><button className="text-button" disabled={busy || (proposal.mappingAttempts ?? 1) >= 3 || (proposal.mappingRetryAt ?? 0) > Date.now()} onClick={() => void refine()}>{t('Retry map tools')}</button><p className="small muted">{t('Mapping retries reuse the saved interpretation. They do not call Gemini again.')}</p></>}
+          {proposal.state === 'pending' && <div className="row pipeline-controls"><button className="secondary-button" disabled={busy} onClick={() => void prepare(proposal.index)}>{t(proposal.kind === 'transit' ? 'Review bus service' : 'Review on map')}</button><button className="text-button" disabled={busy} onClick={() => void reject(proposal)}>{t('Reject proposal')}</button></div>}
+          {proposal.state === 'pending' && proposal.kind !== 'transit' && proposal.mapping === 'unresolved' && (analysis.events[proposal.index]?.location.point || analysis.events[proposal.index]?.location.road && analysis.events[proposal.index]?.location.from && analysis.events[proposal.index]?.location.to) && <><button className="text-button" disabled={busy || (proposal.mappingAttempts ?? 1) >= 3 || (proposal.mappingRetryAt ?? 0) > Date.now()} onClick={() => void refine()}>{t('Retry map tools')}</button><p className="small muted">{t('Mapping retries reuse the saved interpretation. They do not call Gemini again.')}</p></>}
         </div>)}
         {!result.proposals && analysis.category === 'traffic' && analysis.events.length > 0 && <><p className="small muted">{t('Prepare the map draft from the saved interpretation. This does not call Gemini again.')}</p><button className="secondary-button" disabled={busy} onClick={() => void prepare()}>{t(busy ? 'Preparing map draft…' : 'Review on map')}</button></>}
       </>}
       {(!result || current && !analysis) && state !== 'dismissed' && <button className="secondary-button" onClick={() => onManualClosure(notice)}>{t('Create manual restriction')}</button>}
       {error && <p className="error-box" role="alert">{error}</p>}
     </section>
-    {onMark && <details className="pipeline-technical pipeline-post-section"><summary>{t('Inbox actions')}</summary><p className="small muted">{t('These actions change the inbox only. Edit or cancel published blockades in Blockades.')}</p><div className="row">{notice.status === 'pending_agent' && <button className="text-button" onClick={() => void onMark(notice, 'reviewed')}>{t('Mark handled without AI')}</button>}{notice.status !== 'dismissed' && <button className="text-button" onClick={() => void onMark(notice, 'dismissed')}>{t('Archive post')}</button>}</div></details>}
-  </details>;
+    {onMark && <details className="pipeline-technical pipeline-post-section"><summary>{t('Inbox actions')}</summary><p className="small muted">{t('These actions change the inbox only. Edit or cancel published blockades in Blockades.')}</p><div className="row">{notice.status === 'pending_agent' && <button className="text-button" disabled={busy} onClick={() => void mark('reviewed')}>{t('Mark handled without AI')}</button>}{notice.status !== 'dismissed' && <button className="text-button" disabled={busy} onClick={() => void mark('dismissed')}>{t('Archive post')}</button>}</div></details>}
+  </article>;
 }
 function EvidenceImages({ id }: { id: string }) {
   const [images, setImages] = useState<{ mimeType: string; data: string; kind: string }[] | null>(null), [error, setError] = useState(''), [busy, setBusy] = useState(false);

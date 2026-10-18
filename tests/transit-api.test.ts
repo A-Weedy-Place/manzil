@@ -88,13 +88,14 @@ describe('public local-bus API and durable service notices',()=>{
     for(const patch of [{routeId:'unknown'},{directionId:'wrong'},{fromStopId:'b'},{fromStopId:'c',toStopId:'a'},{endsAt:TRANSIT_AT},{sourceUrl:'javascript:alert(1)'},{author:{uid:'admin'}}])expect((await request('/transit/disruptions','verified',{...draft,...patch})).status).toBe(400);
     expect((await request('/transit/disruptions','verified',{...draft,fromStopId:'b',toStopId:'c'})).status).toBe(201);
   });
-  it('persists, edits and cancels notices atomically; stale revisions and another verified author cannot overwrite',async()=>{
+  it('lets verified reviewers edit service notices while stale revisions still cannot overwrite',async()=>{
     const {request,store}=await setup();store.setMeta('community:member:other',{verified:true});const created=await(await request('/transit/disruptions','verified',draft)).json() as TransitDisruption;
-    const update={...draft,title:'Changed',revision:created.revision};expect((await request(`/transit/disruptions/${created.id}`,'other',update,'PUT')).status).toBe(403);
-    const results=await Promise.all([request(`/transit/disruptions/${created.id}`,'verified',update,'PUT'),request(`/transit/disruptions/${created.id}`,'verified',update,'PUT')]);expect(results.map(result=>result.status).sort()).toEqual([200,409]);
-    const cancelled=await request(`/transit/disruptions/${created.id}`,'admin',{...draft,status:'cancelled',revision:2},'PUT');expect(cancelled.status).toBe(200);
-    expect(await(await request('/transit/revision')).json()).toMatchObject({disruptionRevision:3});expect((await(await request('/transit/disruptions')).json()).records).toEqual([]);
-    expect((await(await request('/transit/disruptions','admin')).json()).records[0]).toMatchObject({status:'cancelled',revision:3,author:{uid:'verified'}});
+    const update={...draft,title:'Changed',revision:created.revision};expect((await request(`/transit/disruptions/${created.id}`,'other',update,'PUT')).status).toBe(200);
+    const current={...update,revision:2};
+    const results=await Promise.all([request(`/transit/disruptions/${created.id}`,'verified',current,'PUT'),request(`/transit/disruptions/${created.id}`,'verified',current,'PUT')]);expect(results.map(result=>result.status).sort()).toEqual([200,409]);
+    const cancelled=await request(`/transit/disruptions/${created.id}`,'admin',{...draft,status:'cancelled',revision:3},'PUT');expect(cancelled.status).toBe(200);
+    expect(await(await request('/transit/revision')).json()).toMatchObject({disruptionRevision:4});expect((await(await request('/transit/disruptions')).json()).records).toEqual([]);
+    expect((await(await request('/transit/disruptions','admin')).json()).records[0]).toMatchObject({status:'cancelled',revision:4,author:{uid:'verified'}});
   });
   it('marks published road overlap uncertain while pending reports remain invisible and do not affect buses',async()=>{
     const {store,request}=await setup(),closure=transitClosure();store.saveClosure({...closure,moderation:'pending'});

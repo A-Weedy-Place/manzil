@@ -18,5 +18,9 @@ import './journey-controls.css';
 import './saved-journeys.css';
 import './weather.css';
 import App from './App';
+import PasswordResetPage from './components/PasswordResetPage';
+import { readEmailAction } from './lib/emailActions';
+import './admin-workspace.css';
+const emailAction = readEmailAction(window.location.search, window.location.pathname);
 
-createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);
+createRoot(document.getElementById('root')!).render(<React.StrictMode>{emailAction ? <PasswordResetPage request={emailAction} /> : <App />}</React.StrictMode>);

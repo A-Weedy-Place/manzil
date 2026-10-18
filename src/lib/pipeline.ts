@@ -26,5 +26,5 @@ export function pipelineCounts(notices: SourceNotice[], results: AgentResult[]) 
     processing: rows.filter(row => row.state === 'processing').length, review: rows.filter(row => row.state === 'review').length,
     failed: rows.filter(row => row.state === 'failed').length, drafts: proposals.length,
     mapped: proposals.filter(proposal => proposal.mapping !== 'unresolved').length,
-    changed: current.filter(row => !!row.result!.closureIds?.length).length };
+    changed: current.filter(row => !!row.result!.closureIds?.length || !!row.result!.transitDisruptionIds?.length).length };
 }

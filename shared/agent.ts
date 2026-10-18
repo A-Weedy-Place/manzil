@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { Closure, ClosureAuthor, ClosureDraft, ClosureInput } from './types.js';
+import type { TransitDisruption, TransitDisruptionDraft } from './transit.js';
 
 const optionalText = z.string().trim().max(160).nullable();
 const instant = z.string().datetime({ offset: true }).nullable();
@@ -12,6 +13,8 @@ export const extractionSchema = z.object({
     reason: z.enum(['vip', 'protest', 'accident', 'construction', 'other']),
     impact: z.enum(['closed', 'slow', 'unknown']),
     location: z.object({ city: optionalText, road: optionalText, from: optionalText, to: optionalText, point: optionalText }).strict(),
+    service: z.object({ route: optionalText, from: optionalText, to: optionalText,
+      scope: z.enum(['route', 'segment', 'unknown']) }).strict().nullable().optional(),
     startsAt: instant, endsAt: instant, timeBasis: z.enum(['explicit', 'publication_relative', 'unknown']),
     targetIncidentId: z.string().max(100).nullable(), confidence: z.number().min(0).max(1),
     quote: z.string().trim().min(1).max(700), imageIndex: z.number().int().min(0).max(1).nullable(),
@@ -29,14 +32,18 @@ export interface AgentResult {
   issues: string[]; closureIds: string[]; errorCode?: string;
   usage?: { inputTokens: number; outputTokens: number }; imageCount?: number;
   proposals?: AgentProposal[];
+  transitDisruptionIds?: string[];
 }
 /** Private review work, deliberately separate from routable closure records. */
 export interface AgentProposal {
   index: number; version: string; state: 'pending' | 'approved' | 'rejected';
   action: AgentExtraction['events'][number]['action']; impact: AgentExtraction['events'][number]['impact'];
-  draft: Partial<ClosureDraft>; mapping: 'road' | 'place' | 'existing' | 'unresolved';
+  draft: Partial<ClosureDraft>; mapping: 'road' | 'place' | 'existing' | 'transit' | 'unresolved';
+  kind?: 'transit'; transitDraft?: Partial<TransitDisruptionDraft>;
+  transitScope?: 'route' | 'segment' | 'unknown';
+  transitCandidates?: { id: string; shortName: string; name: string }[];
   locationKey: string; issues: string[]; targetId: string; targetRevision: number | null;
-  reviewedBy?: ClosureAuthor; reviewedAt?: string; closureId?: string;
+  reviewedBy?: ClosureAuthor; reviewedAt?: string; closureId?: string; transitDisruptionId?: string;
   preparedAt?: string; mappingAttempts?: number; mappingRetryAt?: number;
   steps?: { tool: 'interpret_source' | 'resolve_road' | 'search_landmark' | 'match_incident' | 'validate_times' | 'prepare_draft';
     state: 'done' | 'blocked' | 'needs_review'; detail: string }[];
@@ -46,8 +53,9 @@ export interface AgentProposalReview {
   noticeId: string; noticeRevision: number; index: number; version: string;
   decision: 'approve' | 'reject'; draft?: ClosureDraft; reviewer: ClosureAuthor;
   confirmRestriction?: boolean; confirmUnknownEnd?: boolean;
+  transitDraft?: TransitDisruptionDraft; confirmTransitScope?: boolean;
 }
-export interface AgentProposalDecision { result: AgentResult; proposal: AgentProposal; closure?: Closure }
+export interface AgentProposalDecision { result: AgentResult; proposal: AgentProposal; closure?: Closure; transitDisruption?: TransitDisruption }
 export interface AgentUsage { requests: number; reservedMicros: number }
 export interface AgentClaim { noticeId: string; revision: number; claimId: string; now: number; dailyLimit: number; budgetMicros: number; reservationMicros: number; model: string }
 export interface AgentClosureChange { id: string; expectedRevision: number | null; draft: ClosureInput }

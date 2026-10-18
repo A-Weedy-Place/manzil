@@ -5,7 +5,8 @@ import { createApp } from '../server/app';
 import { readConfig } from '../server/config';
 import { Store } from '../server/store';
 import { photoSchema } from '../server/validation';
-import { authenticateToken, type DirectoryUser } from '../server/community';
+import { authenticateToken, directoryEntry, type DirectoryUser } from '../server/community';
+import type { Repository } from '../server/repository';
 
 const cleanup: (() => Promise<void> | void)[] = [];
 afterEach(async () => { for (const run of cleanup.splice(0).reverse()) await run(); });
@@ -75,17 +76,69 @@ describe('community reports and trusted membership', () => {
     expect((await request('/admin/users/alice','admin',{verified:true},'PATCH')).status).toBe(503);
     expect(store.meta('community:member:alice')).toBeUndefined();
   });
-  it('allows owners to correct pending reports and reviewers to reject while blocking cross-owner corrections', async () => {
-    const { request } = await setup();
+  it('allows reviewer/admin corrections without publishing pending reports and rejects stale review decisions', async () => {
+    const { request, store } = await setup();
     const report = await (await request('/closures','alice',draft)).json();
     expect((await request(`/closures/${report.id}`,'bob',{...draft,revision:1},'PUT')).status).toBe(403);
-    expect((await request(`/closures/${report.id}`,'reviewer',{...draft,revision:1},'PUT')).status).toBe(403);
-    const own = await (await request(`/closures/${report.id}`,'alice',{...draft,title:'Corrected',revision:1},'PUT')).json();
-    expect(own).toMatchObject({status:'draft',moderation:'pending',revision:2});
-    const rejected = await request(`/closures/${report.id}/review`,'reviewer',{revision:2,decision:'reject'}); expect(rejected.status).toBe(200);
+    const reviewer = await request(`/closures/${report.id}`,'reviewer',{...draft,title:'Reviewer correction',revision:1,author:{uid:'reviewer'},moderation:'approved'},'PUT');
+    expect(reviewer.status).toBe(200); expect(await reviewer.json()).toMatchObject({status:'draft',moderation:'pending',revision:2,title:'Reviewer correction',author:report.author});
+    expect((await store.routingSnapshot()).closures).toEqual([]);
+    expect((await request(`/closures/${report.id}/review`,'reviewer',{revision:1,decision:'approve'})).status).toBe(409);
+    const administrator = await request(`/closures/${report.id}`,'admin',{...draft,title:'Administrator correction',revision:2},'PUT');
+    expect(administrator.status).toBe(200); expect(await administrator.json()).toMatchObject({status:'draft',moderation:'pending',revision:3,author:report.author});
     expect((await (await request('/state')).json()).closures).toEqual([]);
-    expect((await request(`/closures/${report.id}`,'alice',{...draft,revision:3},'PUT')).status).toBe(403);
-    expect((await request(`/closures/${report.id}`,'admin',{...draft,revision:3},'PUT')).status).toBe(200);
+    expect((await request(`/closures/${report.id}`,'alice',{...draft,revision:2},'PUT')).status).toBe(409);
+    const own = await (await request(`/closures/${report.id}`,'alice',{...draft,title:'Owner correction',revision:3},'PUT')).json();
+    expect(own).toMatchObject({status:'draft',moderation:'pending',revision:4,author:report.author});
+    const rejected = await request(`/closures/${report.id}/review`,'reviewer',{revision:4,decision:'reject'}); expect(rejected.status).toBe(200);
+    expect((await (await request('/state')).json()).closures).toEqual([]);
+    expect((await request(`/closures/${report.id}`,'alice',{...draft,revision:5},'PUT')).status).toBe(403);
+    expect((await request(`/closures/${report.id}`,'reviewer',{...draft,revision:5},'PUT')).status).toBe(403);
+    expect((await request(`/closures/${report.id}`,'admin',{...draft,status:'draft',revision:5},'PUT')).status).toBe(200);
+  });
+  it('lets verified contributors move or cancel another author’s public restriction while keeping attribution and current authority', async () => {
+    const { request, store } = await setup();
+    const report = await (await request('/closures','admin',{...draft,photos:[photo]})).json() as Closure;
+    const moved = {type:'Polygon',coordinates:[[[73.043,33.7],[73.044,33.7],[73.044,33.701],[73.043,33.7]]]} as const;
+    expect((await request(`/closures/${report.id}`,'alice',{...draft,geometry:moved,revision:1},'PUT')).status).toBe(403);
+    const update = await request(`/closures/${report.id}`,'reviewer',{...draft,title:'Moved restriction',geometry:moved,revision:1},'PUT');
+    expect(update.status).toBe(200); expect(await update.json()).toMatchObject({status:'published',moderation:'approved',revision:2,author:report.author,photos:[photo],geometry:moved});
+    expect((await store.routingSnapshot()).closures.find(item=>item.id===report.id)).toMatchObject({revision:2,title:'Moved restriction',geometry:moved});
+    expect((await request(`/closures/${report.id}`,'reviewer',{...draft,revision:1},'PUT')).status).toBe(409);
+    expect((await request('/admin/users/reviewer','admin',{verified:false},'PATCH')).status).toBe(200);
+    expect((await request(`/closures/${report.id}`,'reviewer',undefined,'DELETE')).status).toBe(403);
+    expect((await request('/admin/users/reviewer','admin',{verified:true},'PATCH')).status).toBe(200);
+    const cancelled = await request(`/closures/${report.id}`,'reviewer',undefined,'DELETE');
+    expect(cancelled.status).toBe(200); expect(await cancelled.json()).toMatchObject({status:'cancelled',revision:3,author:report.author});
+    expect((await store.routingSnapshot()).closures).toEqual([]);
+  });
+  it('lets reviewers cancel a private pending report without making it public or granting ordinary cross-owner access', async () => {
+    const {request,store}=await setup();
+    const report=await(await request('/closures','alice',draft)).json() as Closure;
+    expect((await request(`/closures/${report.id}`,'bob',undefined,'DELETE')).status).toBe(403);
+    const cancelled=await request(`/closures/${report.id}`,'reviewer',undefined,'DELETE');
+    expect(cancelled.status).toBe(200); expect(await cancelled.json()).toMatchObject({status:'cancelled',moderation:'pending',revision:2,author:report.author});
+    expect((await store.routingSnapshot()).closures).toEqual([]);
+    expect((await request(`/closures/${report.id}/review`,'admin',{revision:2,decision:'approve'})).status).toBe(409);
+  });
+  it('keeps single-user SQLite profile contents out of every other account’s admin directory projection', async () => {
+    const {request,store}=await setup();
+    store.updateProfile({displayName:'Private local name',city:'Islamabad',location:'Private neighbourhood',collectTravelData:true,
+      photoDataUrl:photo,vehicle:{kind:'car',fuelType:'petrol',label:'Private car',kmPerLitre:12}});
+    const directory=await(await request('/admin/users','admin')).json();
+    expect(directory.users).toHaveLength(4);
+    for(const user of directory.users){
+      expect(user.travelDataSharing).toBeNull(); expect(user).not.toHaveProperty('city');
+      expect(JSON.stringify(user)).not.toMatch(/Private local name|Private neighbourhood|Private car|photoDataUrl|collectTravelData|kmPerLitre/);
+    }
+  });
+  it('keeps consent unknown if the scoped profile projection fails instead of creating or reading a full personal profile', async () => {
+    const scoped = {meta:vi.fn(async()=>{throw new Error('Temporary profile read failure');}),profile:vi.fn()};
+    const root = {backend:'firestore',meta:vi.fn(async()=>undefined),forUser:vi.fn(()=>scoped)};
+    const entry=await directoryEntry(root as unknown as Repository,{uid:'directory-only',displayName:'Auth fallback',email:'directory@example.test',disabled:false});
+    expect(entry).toMatchObject({uid:'directory-only',displayName:'Auth fallback',travelDataSharing:null});
+    expect(entry).not.toHaveProperty('city'); expect(root.forUser).toHaveBeenCalledExactlyOnceWith('directory-only');
+    expect(scoped.meta).toHaveBeenCalledExactlyOnceWith('profile'); expect(scoped.profile).not.toHaveBeenCalled();
   });
   it('rejects forged or oversized image data and never accepts role fields in profile', async () => {
     const { request } = await setup();

@@ -16,6 +16,7 @@ export interface ClosureModeration {
 export interface Membership { uid: string; role: CommunityRole; verified: boolean }
 export interface CommunityUser extends Membership {
   email?: string; displayName?: string; photoURL?: string; disabled: boolean;
+  city?: string; travelDataSharing?: boolean | null;
   createdAt?: string; lastSignInAt?: string;
 }
 export interface ClosureDraft {

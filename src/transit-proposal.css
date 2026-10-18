@@ -1,0 +1,17 @@
+.transit-proposal-editor { min-width: 0; display: grid; gap: 16px; }
+.transit-proposal-editor h2 { display: flex; align-items: center; gap: 9px; font-size: 20px; }
+.transit-proposal-editor .section-heading { margin: 0; }
+.transit-proposal-editor form, .transit-proposal-editor fieldset { display: grid; gap: 14px; min-width: 0; }
+.transit-proposal-editor fieldset { margin: 0; padding: 0; border: 0; }
+.transit-proposal-editor .field-label { margin: 0; min-width: 0; }
+.transit-proposal-editor select, .transit-proposal-editor input, .transit-proposal-editor textarea { min-width: 0; max-width: 100%; }
+.transit-proposal-stops { display: grid; gap: 12px; }
+.transit-proposal-checks { padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); font-size: 12px; line-height: 1.6; }
+.transit-proposal-checks summary { cursor: pointer; font-weight: 650; }
+.transit-proposal-checks ul { margin: 9px 0 0; padding-inline-start: 18px; }
+.transit-proposal-evidence, .transit-proposal-checks blockquote { white-space: pre-wrap; overflow-wrap: anywhere; margin: 10px 0; }
+.transit-proposal-checks blockquote { padding-inline-start: 12px; border-inline-start: 2px solid var(--border); }
+.transit-proposal-actions { display: grid; gap: 9px; }
+.transit-proposal-actions button { min-height: 44px; white-space: normal; }
+.transit-proposal-editor .check-row { align-items: flex-start; font-size: 12px; line-height: 1.6; }
+.transit-proposal-editor .check-row input { flex-shrink: 0; margin-top: 3px; }
