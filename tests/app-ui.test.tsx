@@ -406,6 +406,36 @@ it('starts the tour on explicit guest entry, gates guest reports and resumes wit
   expect(screen.queryByRole('dialog', { name: 'Welcome to Manzil' })).toBeNull();
 });
 
+it.each(['close', 'escape', 'guest'] as const)('dismisses guest closure sign-in with %s while retaining the selected map and routes', async action => {
+  const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === '/api/plan') {
+      const request = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify({ options: [{ ...option, departureAt: request.departureAt }], baseline: null, conflicts: [], warnings: [], evaluatedAt: date, graphVersion: 'test', eventRevision: 0, source: 'local-osm' }));
+    }
+    return responseFor(url);
+  });
+  vi.stubGlobal('fetch', fetcher); render(<App />);
+  await screen.findByRole('button', { name: 'Find routes' }); await chooseEndpoints();
+  fireEvent.click(screen.getByRole('button', { name: 'Find routes' }));
+  await waitFor(() => expect(capture.props?.routeOptions).toHaveLength(1));
+  const before = capture.props!, mounts = capture.mounts;
+  fireEvent.click(screen.getByRole('button', { name: 'Closures' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Add closure' }));
+  expect(screen.getByRole('form', { name: 'Sign in' })).toBeTruthy();
+  if (action === 'close') fireEvent.click(screen.getByRole('button', { name: 'Close sign in' }));
+  else if (action === 'escape') fireEvent.keyDown(document, { key: 'Escape' });
+  else fireEvent.click(screen.getByRole('button', { name: 'Continue as guest' }));
+  expect(screen.queryByRole('form', { name: 'Sign in' })).toBeNull();
+  expect(screen.queryByRole('dialog', { name: 'Welcome to Manzil' })).toBeNull();
+  expect(screen.getByRole('heading', { name: 'Road closures' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Closures' }).getAttribute('aria-current')).toBe('page');
+  expect(capture.props!.origin).toEqual(before.origin); expect(capture.props!.destination).toEqual(before.destination);
+  expect(capture.props!.selectedRoute).toEqual(before.selectedRoute); expect(capture.props!.routeOptions).toEqual(before.routeOptions);
+  expect(capture.mounts).toBe(mounts); expect(getAuthSession().user).toBeNull();
+  expect(sessionStorage.getItem('manzil-entry-guest')).toBe('yes');
+  expect(fetcher.mock.calls.filter(([url]) => url === '/api/plan')).toHaveLength(1);
+});
+
 it('loads demo endpoints into ordinary planning, clears existing stops and requests the usual plan API', async () => {
   signInDevelopment('admin@manzil.test', 'ManzilAdmin123!');
   const journey = { origin: { name: 'Demo start', coordinate: [73.0294, 33.7038] }, destination: { name: 'Demo end', coordinate: [73.0302, 33.7079] } };

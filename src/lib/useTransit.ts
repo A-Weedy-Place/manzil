@@ -86,7 +86,12 @@ export function useTransit(enabled: boolean, at: string, eventRevision: number, 
     try {
       const data = await api<TransitPlanResponse>('/transit/plan', { method: 'POST', body: JSON.stringify({ origin: snapshot.origin, destination: snapshot.destination, departureAt: snapshot.at }), signal: controller.signal });
       if (sequence !== planSequence.current || snapshot.key !== current.current.key || snapshot.at.slice(0, 16) !== current.current.at.slice(0, 16) || !current.current.enabled) return;
-      setResult(data); setResultContextKey(snapshot.key); setSelectedJourneyId(data.options[0]?.id ?? null); if (fit) setShowJourney(true);
+      setResult(data); setResultContextKey(snapshot.key);
+      // Background timetable refreshes must not jump away from the option the
+      // traveller chose. IDs identify stable pattern sequences; if it is no
+      // longer eligible, fall back to an actually returned current alternative.
+      setSelectedJourneyId(previous => !fit && data.options.some(option => option.id === previous) ? previous : data.options[0]?.id ?? null);
+      if (fit) setShowJourney(true);
       if (fit && data.options.length) onFocus(data.options[0].legs.flatMap(leg => leg.geometry.coordinates as Coordinate[]));
     } catch (error) { if (sequence === planSequence.current && snapshot.key === current.current.key) setPlanError(error instanceof Error ? error.message : 'Could not find a local journey.'); }
     finally { if (sequence === planSequence.current) setPlanning(false); }
@@ -96,6 +101,6 @@ export function useTransit(enabled: boolean, at: string, eventRevision: number, 
   function selectPattern(id: string) { setShowJourney(false); setSelectedPatternId(id); const pattern = network?.patterns.find(item => item.id === id); if (pattern && pattern.geometryQuality !== 'stops-only') onFocus(transitPatternCoordinates(pattern)); else if (pattern) onFocus(pattern.stopIds.flatMap(id => network?.stops.find(stop => stop.id === id)?.coordinate ? [network.stops.find(stop => stop.id === id)!.coordinate] : [])); }
   function selectJourney(option: TransitJourney) { setShowJourney(true); setSelectedJourneyId(option.id); onFocus(option.legs.flatMap(leg => leg.geometry.coordinates as Coordinate[])); }
   function reset() { invalidate(); setOrigin(null); setDestination(null); setSelectedPatternId(null); }
-  return { network, networkLoading, networkError, stale, origin, destination, changeEndpoint, result: freshResult, journey, planning, planError, calculate, selectedPatternId, selectPattern, selectJourney, retry: () => setRetry(value => value + 1), reset };
+  return { network, networkLoading, networkError, stale, origin, destination, changeEndpoint, result: freshResult, journey, journeyVisible: showJourney, planning, planError, calculate, selectedPatternId, selectPattern, selectJourney, setJourneyVisible: setShowJourney, retry: () => setRetry(value => value + 1), reset };
 }
 export type TransitController = ReturnType<typeof useTransit>;

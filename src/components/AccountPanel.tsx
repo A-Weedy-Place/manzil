@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { ArrowRight, ChevronDown, KeyRound, LoaderCircle, LogIn, MapPin, Pause, Play, ShieldCheck, UserPlus } from 'lucide-react';
+import { useId, useState } from 'react';
+import { ArrowRight, ChevronDown, Eye, EyeOff, KeyRound, LoaderCircle, LogIn, MapPin, Pause, Play, ShieldCheck, UserPlus, X } from 'lucide-react';
 import { t } from '../lib/language';
 import Modal from './Modal';
 import { accountError } from '../lib/accountErrors';
@@ -17,13 +17,15 @@ export default function AccountPanel({ onClose, entry = false, onAuthenticated, 
   const [screen, setScreen] = useState<AccountScreen>('login');
   const [email, setEmail] = useState(''), [password, setPassword] = useState(''), [error, setError] = useState<{ message: string; code?: string } | null>(null);
   const [busy, setBusy] = useState(false), [message, setMessage] = useState('');
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const passwordId = useId();
   const [backgroundPaused, setBackgroundPaused] = useState(false);
   const action = screen === 'signup' ? 'Create account' : screen === 'reset' ? 'Reset password' : 'Sign in';
   const ActionIcon = screen === 'signup' ? UserPlus : screen === 'reset' ? KeyRound : LogIn;
   const unavailable = !(DEV_AUTH_ENABLED || FIREBASE_AUTH_ENABLED) || DEV_AUTH_ENABLED && screen !== 'login';
 
   function changeScreen(next: AccountScreen) {
-    setScreen(next); setPassword(''); setError(null); setMessage('');
+    setScreen(next); setPassword(''); setPasswordVisible(false); setError(null); setMessage('');
   }
 
   async function submit(event: React.FormEvent) {
@@ -40,13 +42,14 @@ export default function AccountPanel({ onClose, entry = false, onAuthenticated, 
           onAccountCreated?.(uid);
         }
         else await signInAccount(email, password);
-        setPassword(''); (onAuthenticated ?? onClose)();
+        setPassword(''); setPasswordVisible(false); (onAuthenticated ?? onClose)();
       }
     } catch (reason) { setError(accountError(reason,screen)); }
     finally { setBusy(false); }
   }
 
   return <Modal titleId="account-title" onClose={onClose} className={`account-modal${entry ? ' account-entry' : ''}`} overlay={entry ? <EntryDoodles paused={backgroundPaused} /> : undefined}>
+    {!entry && <button type="button" className="icon-button account-close" onClick={onClose} aria-label={t('Close sign in')} title={t('Close sign in')}><X size={21} aria-hidden="true" /></button>}
     <div className="account-layout">
       <section className="account-form-column">
         <div className="account-form-inner">
@@ -60,7 +63,7 @@ export default function AccountPanel({ onClose, entry = false, onAuthenticated, 
           <form onSubmit={submit} aria-label={t(action)} aria-busy={busy}>
             <fieldset disabled={busy || unavailable} className="account-fields">
               <label className="field-label">{t('Email')}<input type="email" value={email} onChange={event => setEmail(event.target.value)} required autoComplete="email" placeholder="name@example.com" dir="ltr" /></label>
-              {screen !== 'reset' && <label className="field-label">{t('Password')}<input type="password" value={password} onChange={event => setPassword(event.target.value)} required minLength={screen === 'signup' ? 6 : undefined} autoComplete={screen === 'signup' ? 'new-password' : 'current-password'} placeholder="••••••••" dir="ltr" /></label>}
+              {screen !== 'reset' && <div className="field-label"><label htmlFor={passwordId}>{t('Password')}</label><div className="account-password-field"><input id={passwordId} type={passwordVisible ? 'text' : 'password'} value={password} onChange={event => setPassword(event.target.value)} required minLength={screen === 'signup' ? 6 : undefined} autoComplete={screen === 'signup' ? 'new-password' : 'current-password'} placeholder="••••••••" dir="ltr" /><button type="button" className="icon-button account-password-toggle" aria-label={t(passwordVisible ? 'Hide password' : 'Show password')} title={t(passwordVisible ? 'Hide password' : 'Show password')} aria-pressed={passwordVisible} aria-controls={passwordId} onClick={() => setPasswordVisible(visible => !visible)}>{passwordVisible ? <EyeOff size={20} aria-hidden="true" /> : <Eye size={20} aria-hidden="true" />}</button></div></div>}
               <button className="secondary-button full account-submit" type="submit">{busy ? <LoaderCircle size={18} className="account-spinner" aria-hidden="true" /> : <ActionIcon size={18} aria-hidden="true" />}{t(action)}</button>
             </fieldset>
           </form>
@@ -73,7 +76,7 @@ export default function AccountPanel({ onClose, entry = false, onAuthenticated, 
           </div>
           {(DEV_AUTH_ENABLED || EMULATOR_AUTH_ENABLED) && screen === 'login' && <details className="account-development">
             <summary tabIndex={0}><span>{t('Choose a development account')}</span><ChevronDown size={16} aria-hidden="true" /></summary>
-            <div className="dev-accounts">{DEV_ACCOUNTS.map(account => <button className="dev-account" key={account.uid} type="button" disabled={busy} onClick={() => { setEmail(account.email); setPassword(account.password); setError(null); }}><strong>{account.uid === 'dev-user-123' ? account.displayName : t(account.role === 'admin' ? 'Admin user' : 'Normal user')}</strong><code>{account.email}</code><small>{t('Password')}: <bdi>{account.password}</bdi></small></button>)}</div>
+            <div className="dev-accounts">{DEV_ACCOUNTS.map(account => <button className="dev-account" key={account.uid} type="button" disabled={busy} onClick={() => { setEmail(account.email); setPassword(account.password); setPasswordVisible(false); setError(null); }}><strong>{account.uid === 'dev-user-123' ? account.displayName : t(account.role === 'admin' ? 'Admin user' : 'Normal user')}</strong><code>{account.email}</code><small>{t('Password')}: <bdi>{account.password}</bdi></small></button>)}</div>
           </details>}
         </div>
       </section>

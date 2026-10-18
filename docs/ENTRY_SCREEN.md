@@ -4,7 +4,8 @@ Feature-branch localhost work, updated 18 October 2026. The deployment developer
 
 ## Controls
 
-- The account panel has one explicit **Continue as guest** action. The redundant corner X is removed; Escape retains the existing guest/close behavior.
+- Initial entry has one explicit **Continue as guest** action and no corner X. Sign-in opened from inside guest mode has a labelled **Close sign in** X. X, Escape and Continue as guest dismiss this in-app dialog, preserving the previous workspace, route/endpoints and guest session without replaying onboarding.
+- Login and registration password fields have a labelled eye button to reveal/hide the entered value. Passwords start hidden; switching forms, choosing a development account and successful authentication reset visibility. Reset-password forms have no password field. The controls support keyboard use, 44 px targets and Urdu labels; no password is logged or separately persisted by the toggle.
 - Sign in uses the ordinary door/arrow icon, Create account a person/plus, and Reset password a key. Decorative icons are hidden from assistive technology; visible text names each action.
 - Registration, password reset, Back to sign in and guest access remain available. Loading disables the form, failures retain a retryable form, and changing screen clears old feedback/password text.
 - The backdrop stays flat matte green (`#15362d`), with a small card shadow (`0 8px 20px`, 15% dark ink). There is no backdrop gradient, glow or blur. Desktop layout reserves side gutters and a top band for the scenery; narrow screens prioritize the form.

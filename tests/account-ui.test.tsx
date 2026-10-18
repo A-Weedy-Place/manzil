@@ -14,6 +14,48 @@ beforeEach(() => { vi.resetAllMocks(); setLanguage('en'); auth.create.mockResolv
 afterEach(() => { cleanup(); setLanguage('en'); });
 
 describe('simplified account entry', () => {
+  it('shows and hides the entered password without submitting or changing it', () => {
+    render(<AccountPanel entry onClose={vi.fn()} />);
+    const password = screen.getByLabelText('Password') as HTMLInputElement;
+    fireEvent.change(password, { target: { value: 'SyntheticVisibility123!' } });
+    const reveal = screen.getByRole('button', { name: 'Show password' });
+    expect(password.type).toBe('password'); expect(reveal.getAttribute('aria-pressed')).toBe('false');
+    expect(reveal.getAttribute('aria-controls')).toBe(password.id);
+    fireEvent.click(reveal);
+    expect(password.type).toBe('text'); expect(password.value).toBe('SyntheticVisibility123!');
+    expect(screen.getByRole('button', { name: 'Hide password' }).getAttribute('aria-pressed')).toBe('true');
+    expect(auth.signIn).not.toHaveBeenCalled(); expect(auth.create).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Hide password' }));
+    expect(password.type).toBe('password'); expect(password.value).toBe('SyntheticVisibility123!');
+  });
+
+  it('starts registration hidden and clears password visibility on every account screen change', () => {
+    render(<AccountPanel entry onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'SyntheticVisibility123!' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Show password' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
+    expect(screen.getByLabelText('Password')).toHaveProperty('type', 'password');
+    expect(screen.getByLabelText('Password')).toHaveProperty('value', '');
+    fireEvent.click(screen.getByRole('button', { name: 'Show password' }));
+    expect(screen.getByLabelText('Password')).toHaveProperty('type', 'text');
+    fireEvent.click(screen.getByRole('button', { name: 'Back to sign in' }));
+    expect(screen.getByLabelText('Password')).toHaveProperty('type', 'password');
+    fireEvent.click(screen.getByRole('button', { name: 'Forgot password?' }));
+    expect(screen.queryByRole('button', { name: 'Show password' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Hide password' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Close sign in' })).toBeNull();
+  });
+
+  it('translates password controls and exposes an explicit close action only in the in-app account dialog', () => {
+    setLanguage('ur'); const close = vi.fn(); render(<AccountPanel onClose={close} />);
+    fireEvent.click(screen.getByRole('button', { name: 'پاس ورڈ دکھائیں' }));
+    expect(screen.getByLabelText('پاس ورڈ')).toHaveProperty('type', 'text');
+    fireEvent.click(screen.getByRole('button', { name: 'پاس ورڈ چھپائیں' }));
+    expect(screen.getByLabelText('پاس ورڈ')).toHaveProperty('type', 'password');
+    fireEvent.click(screen.getByRole('button', { name: 'سائن ان بند کریں' }));
+    expect(close).toHaveBeenCalledOnce(); expect(auth.signIn).not.toHaveBeenCalled();
+  });
+
   it('lets people pause the decorative entry scene without changing the form or entering the app', () => {
     const close = vi.fn(); render(<AccountPanel entry onClose={close} />);
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'person@manzil.test' } });

@@ -9,6 +9,7 @@ import { signInDevelopment, signOut } from '../src/lib/auth';
 import { setLanguage } from '../src/lib/language';
 import { api, send } from '../src/lib/api';
 import { useTransit } from '../src/lib/useTransit';
+import { transitOverlayFeatures, TRANSIT_CONTEXT_COLOR } from '../src/lib/transitMap';
 import App from '../src/App';
 import TransitPanel, { ServiceNoticeForm } from '../src/components/TransitPanel';
 
@@ -79,6 +80,97 @@ it('keeps Local endpoints and transit lines independent of the driving planner w
   expect(capture.props?.transit).toBeNull(); expect(capture.props?.origin?.coordinate).toEqual([73.03, 33.71]); expect(capture.mounts).toBe(1);
   fireEvent.click(screen.getByRole('button', { name: 'Local' }));
   expect(capture.props?.origin?.name).toBe('Station A');
+});
+
+it('focuses the chosen Local option, restores the catalogue and preserves the chosen option on return', async () => {
+  const localNetwork = structuredClone(network);
+  const detourStop = { id: 'd', name: 'Station D', coordinate: [73.01, 33.71] as [number, number] };
+  const unusedStop = { id: 'e', name: 'Station E', coordinate: [73.03, 33.7] as [number, number] };
+  localNetwork.stops.push(detourStop, unusedStop);
+  localNetwork.patterns[0].stopIds.push(unusedStop.id);
+  localNetwork.patterns[0].geometry.coordinates.push(unusedStop.coordinate);
+  localNetwork.routes.push({ ...localNetwork.routes[0], id: 'ev2', shortName: 'EV05102', name: 'Station A via Station D', color: '#168c70' });
+  const alternativeStops = [localNetwork.stops[0], detourStop, localNetwork.stops[2]];
+  localNetwork.patterns.push({ ...localNetwork.patterns[0], id: 'ev2-0', routeId: 'ev2', stopIds: alternativeStops.map(stop => stop.id), geometry: { type: 'LineString', coordinates: alternativeStops.map(stop => stop.coordinate) } });
+  localNetwork.statuses.push({ ...localNetwork.statuses[0], patternId: 'ev2-0' });
+  const response = transitPlan();
+  response.options.push({ ...response.options[0], id: 'alternative-journey', distanceMeters: 2600, legs: [{ ...response.options[0].legs[0], kind: 'ride', routeId: 'ev2', patternId: 'ev2-0', from: alternativeStops[0], to: alternativeStops[2], stops: alternativeStops, geometry: localNetwork.patterns[1].geometry, geometryQuality: 'provided-shape', availability: 'available' }] });
+  vi.mocked(api).mockImplementation(async path => path.startsWith('/transit/network') ? localNetwork : path === '/transit/plan' ? response : path === '/transit/revision' ? { version: localNetwork.version, eventRevision: 0, disruptionRevision: 0 } : state as never);
+  render(<App />);
+  await screen.findByRole('button', { name: 'Find routes' });
+  fireEvent.click(screen.getByRole('button', { name: 'Local' }));
+  fireEvent.click(await screen.findByRole('button', { name: /EV-1 Station A to Station C/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Start at Station A' }));
+  fireEvent.click(screen.getByRole('button', { name: 'End at Station C' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Find local routes' }));
+  await screen.findByRole('button', { name: /Option 1/ });
+  const overlay = () => transitOverlayFeatures(capture.props!.transit);
+  const line = (id: string) => overlay().lines.features.find(feature => feature.properties?.patternId === id)!.properties!;
+  const stop = (id: string) => overlay().stops.features.find(feature => feature.properties?.stopId === id)!.properties!;
+  expect(capture.props!.transit!.journey?.id).toBe('bus-journey');
+  expect(line('ev1-0')).toMatchObject({ focused: true, muted: false, selected: false, availability: 'available' });
+  expect(line('ev2-0')).toMatchObject({ muted: true, color: TRANSIT_CONTEXT_COLOR, availability: 'available' });
+  expect(stop('b')).toMatchObject({ selected: true, muted: false });
+  expect(stop('d')).toMatchObject({ selected: false, muted: true });
+  expect(stop('e')).toMatchObject({ selected: false, muted: true });
+  expect(overlay().journey.features[0].geometry).toEqual(response.options[0].legs[0].geometry);
+
+  fireEvent.click(screen.getByRole('button', { name: /Option 2/ }));
+  expect(capture.props!.transit!.journey?.id).toBe('alternative-journey');
+  expect(line('ev1-0')).toMatchObject({ muted: true, color: TRANSIT_CONTEXT_COLOR, availability: 'available' });
+  expect(line('ev2-0')).toMatchObject({ focused: true, muted: false });
+  expect(stop('b')).toMatchObject({ selected: false, muted: true });
+  expect(stop('d')).toMatchObject({ selected: true, muted: false });
+  expect(overlay().journey.features[0].geometry).toEqual(response.options[1].legs[0].geometry);
+
+  fireEvent.click(screen.getByRole('button', { name: /Bus routes/ }));
+  expect(capture.props!.transit!.journey).toBeNull();
+  expect(overlay().journey.features).toHaveLength(0);
+  expect(line('ev1-0')).toMatchObject({ selected: true, muted: false, focused: false });
+  expect(line('ev2-0')).toMatchObject({ muted: false, focused: false });
+  expect(line('ev1-0').color).not.toBe(TRANSIT_CONTEXT_COLOR);
+  expect(line('ev2-0').color).not.toBe(TRANSIT_CONTEXT_COLOR);
+  expect(stop('e')).toMatchObject({ selected: true, muted: false });
+
+  fireEvent.click(screen.getByRole('button', { name: /Your journey/ }));
+  expect(capture.props!.transit!.journey?.id).toBe('alternative-journey');
+  expect(screen.getByRole('button', { name: /Option 2/ }).getAttribute('aria-pressed')).toBe('true');
+  expect(line('ev1-0').muted).toBe(true);
+  expect(line('ev2-0').focused).toBe(true);
+  expect(vi.mocked(api).mock.calls.filter(([path]) => path === '/transit/plan')).toHaveLength(1);
+  for (const section of ['Map', 'Profile']) {
+    fireEvent.click(screen.getByRole('button', { name: section }));
+    expect(capture.props!.transit).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Local' }));
+    await waitFor(() => expect(capture.props!.transit!.journey?.id).toBe('alternative-journey'));
+    expect(screen.getByRole('button', { name: /Your journey/ }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: /Bus routes/ }).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('button', { name: /Option 2/ }).getAttribute('aria-pressed')).toBe('true');
+    expect(line('ev1-0')).toMatchObject({ muted: true, color: TRANSIT_CONTEXT_COLOR });
+    expect(line('ev2-0')).toMatchObject({ focused: true, muted: false });
+  }
+  expect(vi.mocked(api).mock.calls.filter(([path]) => path === '/transit/revision')).toHaveLength(2);
+  expect(vi.mocked(api).mock.calls.filter(([path]) => path.startsWith('/transit/network'))).toHaveLength(1);
+  expect(capture.mounts).toBe(1);
+});
+
+it('leaves journey focus when a catalogue line is selected directly on the Local map', async () => {
+  render(<App />);
+  await screen.findByRole('button', { name: 'Find routes' });
+  fireEvent.click(screen.getByRole('button', { name: 'Local' }));
+  fireEvent.click(await screen.findByRole('button', { name: /EV-1 Station A to Station C/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Start at Station A' }));
+  fireEvent.click(screen.getByRole('button', { name: 'End at Station C' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Find local routes' }));
+  await screen.findByRole('button', { name: /Option 1/ });
+  expect(capture.props!.transit!.journey?.id).toBe('bus-journey');
+  act(() => capture.props!.onTransitPatternSelect!('ev1-0'));
+  expect(capture.props!.transit!.journey).toBeNull();
+  expect(transitOverlayFeatures(capture.props!.transit).journey.features).toHaveLength(0);
+  expect(screen.getByRole('button', { name: /Bus routes/ }).getAttribute('aria-pressed')).toBe('true');
+  expect(screen.getByRole('region', { name: 'Selected bus route' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: /Your journey/ }));
+  expect(capture.props!.transit!.journey?.id).toBe('bus-journey');
 });
 
 it('supports stop-name and friendly code search and hides publication controls from a guest', async () => {
@@ -288,6 +380,50 @@ it('refreshes a wanted journey on the minute without hiding its previous route o
   const next = transitPlan(); next.options[0] = { ...next.options[0], id: 'new-departure', departureAt: later }; next.departureAt = later;
   await act(async () => { resolve(next); await Promise.resolve(); });
   expect(result.current.planning).toBe(false); expect(result.current.journey?.id).toBe('new-departure');
+});
+
+it('preserves the chosen alternative through background refresh and reordering, falling back only if it disappears', async () => {
+  const initial = transitPlan();
+  initial.options.push({ ...initial.options[0], id: 'chosen-alternative', distanceMeters: 2800 });
+  let resolve!: (value: TransitPlanResponse) => void, requests = 0;
+  const focus = vi.fn();
+  vi.mocked(api).mockImplementation(async path => path.startsWith('/transit/network') ? network : path === '/transit/plan' ? ++requests === 1 ? initial : new Promise<TransitPlanResponse>(done => { resolve = done; }) : state as never);
+  const { result, rerender } = renderHook(({ time }) => useTransit(true, time, 0, [], focus), { initialProps: { time: at } });
+  await act(async () => { await Promise.resolve(); });
+  act(() => { result.current.changeEndpoint('A', { name: 'A', coordinate: [73, 33.7] }); result.current.changeEndpoint('B', { name: 'C', coordinate: [73.02, 33.7] }); });
+  await act(async () => result.current.calculate());
+  act(() => result.current.selectJourney(initial.options[1]));
+  expect(result.current.journey).toBe(initial.options[1]);
+  focus.mockClear();
+
+  const nextMinute = '2026-10-18T08:01:00.000Z';
+  rerender({ time: nextMinute });
+  await act(async () => { await Promise.resolve(); });
+  expect(requests).toBe(2);
+  expect(result.current.planning).toBe(true);
+  expect(result.current.journey).toBe(initial.options[1]);
+  const updatedChoice = { ...initial.options[1], departureAt: nextMinute, distanceMeters: 2850 };
+  const reordered = { ...initial, departureAt: nextMinute, options: [updatedChoice, initial.options[0]] };
+  await act(async () => { resolve(reordered); await Promise.resolve(); });
+  expect(result.current.planning).toBe(false);
+  expect(result.current.journey).toBe(updatedChoice);
+  expect(result.current.journey?.id).toBe('chosen-alternative');
+  expect(result.current.journey?.distanceMeters).toBe(2850);
+
+  const laterMinute = '2026-10-18T08:02:00.000Z';
+  rerender({ time: laterMinute });
+  await act(async () => { await Promise.resolve(); });
+  expect(requests).toBe(3);
+  expect(result.current.planning).toBe(true);
+  expect(result.current.journey).toBe(updatedChoice);
+  const remainingChoice = { ...initial.options[0], departureAt: laterMinute };
+  await act(async () => { resolve({ ...initial, departureAt: laterMinute, options: [remainingChoice] }); await Promise.resolve(); });
+  expect(result.current.planning).toBe(false);
+  expect(result.current.journey).toBe(remainingChoice);
+  expect(result.current.journey?.id).toBe('bus-journey');
+  expect(result.current.journeyVisible).toBe(true);
+  expect(focus).not.toHaveBeenCalled();
+  expect(vi.mocked(api).mock.calls.filter(([path]) => path.startsWith('/transit/network'))).toHaveLength(1);
 });
 
 it('publishes a strict whole-line notice for both directions by default, and scopes a partial section to one direction', async () => {

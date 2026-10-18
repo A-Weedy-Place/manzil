@@ -672,7 +672,7 @@ export const urdu: Record<string, string> = {
   'Retry connection': 'دوبارہ رابطہ کریں', 'Restart map': 'نقشہ دوبارہ شروع کریں', 'Choose a route first': 'پہلے راستہ منتخب کریں', 'Open the planner': 'راستہ تلاش کریں',
   'Language': 'زبان', 'Voice language': 'صوتی زبان', 'Test voice': 'آواز آزمائیں', 'Repeat instruction': 'ہدایت دوبارہ سنیں', 'Help & demos': 'مدد اور نمونے',
   'Sign in': 'سائن ان', 'Continue as guest': 'مہمان کے طور پر جاری رکھیں', 'Create account': 'اکاؤنٹ بنائیں', 'Forgot password?': 'پاس ورڈ بھول گئے؟',
-  'Email': 'ای میل', 'Password': 'پاس ورڈ', 'Continue with Google': 'گوگل سے جاری رکھیں', 'Reset password': 'پاس ورڈ تبدیل کریں', 'Back to sign in': 'سائن ان پر واپس',
+  'Email': 'ای میل', 'Password': 'پاس ورڈ', 'Show password': 'پاس ورڈ دکھائیں', 'Hide password': 'پاس ورڈ چھپائیں', 'Close sign in': 'سائن ان بند کریں', 'Continue with Google': 'گوگل سے جاری رکھیں', 'Reset password': 'پاس ورڈ تبدیل کریں', 'Back to sign in': 'سائن ان پر واپس',
   'Your journeys, together.': 'آپ کے سفر، ایک جگہ۔', 'Plan a route without an account. Sign in later for personal features.': 'اکاؤنٹ کے بغیر راستہ تلاش کریں۔ ذاتی سہولتوں کے لیے بعد میں سائن ان کریں۔',
   'Account connection coming soon': 'اکاؤنٹ کا رابطہ جلد دستیاب ہو گا', 'Firebase sign-in will be connected later. No password is collected or saved here.': 'فائر بیس سائن ان بعد میں منسلک ہو گا۔ یہاں کوئی پاس ورڈ لیا یا محفوظ نہیں کیا جاتا۔',
   'Sign in for personal features': 'ذاتی سہولتوں کے لیے سائن ان کریں', 'Saved journeys, trip history and personal alerts will belong to your account when Firebase is connected.': 'فائر بیس منسلک ہونے پر محفوظ سفر، سفر کی تاریخ اور ذاتی اطلاعات آپ کے اکاؤنٹ میں ہوں گی۔',

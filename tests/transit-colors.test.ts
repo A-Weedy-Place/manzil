@@ -98,7 +98,7 @@ describe('spatial transit route colours', () => {
     const data = network([{ id: 'a', points: [[73, 33.7], [73.02, 33.7]] }, { id: 'b', points: [[73, 33.7003], [73.02, 33.7003]] }]);
     const ride: TransitRideLeg = { kind: 'ride', routeId: 'a', patternId: 'a-out', from: data.stops[0], to: data.stops[1], stops: data.stops.slice(0, 2), geometry: data.patterns[0].geometry, geometryQuality: 'provided-shape', distanceMeters: 2000, durationSeconds: null, departureAt: null, arrivalAt: null, availability: 'available' };
     const journey = { id: 'journey', legs: [ride], departureAt: at, arrivalAt: null, durationSeconds: null, distanceMeters: 2000, walkingDistanceMeters: 0, transfers: 0, timing: 'unknown' as const, warnings: [] };
-    const transit = { network: data, stale: false, selectedPatternId: null, result: null, journey, networkLoading: false, networkError: '', planError: '', planning: false, origin: null, destination: null, retry: vi.fn(), selectPattern: vi.fn(), selectJourney: vi.fn(), changeEndpoint: vi.fn(), calculate: vi.fn(), reset: vi.fn() } as TransitController;
+    const transit = { network: data, stale: false, selectedPatternId: null, result: null, journey, journeyVisible: true, setJourneyVisible: vi.fn(), networkLoading: false, networkError: '', planError: '', planning: false, origin: null, destination: null, retry: vi.fn(), selectPattern: vi.fn(), selectJourney: vi.fn(), changeEndpoint: vi.fn(), calculate: vi.fn(), reset: vi.fn() } as TransitController;
     const html = renderToStaticMarkup(createElement(TransitPanel, { transit, mode: 'browse', setMode: vi.fn(), onFocus: vi.fn(), canReview: false, at }));
     const color = transitRouteColor(data, 'a');
     expect(html).toContain(`--transit-color:${color}`);

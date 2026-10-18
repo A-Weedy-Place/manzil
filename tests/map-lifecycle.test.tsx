@@ -239,17 +239,20 @@ it('keeps road-aligned bus lines and stops legible, with solid bus strokes and c
   render(<MapView {...props()} mapStyle="minimal" />); await act(async () => {});
   const map = maps.instances[0], layers = [...map.layers.keys()];
   const paint = (id: string) => (map.layers.get(id) as { paint: Record<string, unknown> }).paint;
-  const evaluate = (expression: unknown, zoom: number, selected: boolean): number => {
+  const evaluate = (expression: unknown, zoom: number, selected: boolean, muted = false, focused = false): number => {
     if (typeof expression === 'number') return expression;
     const parsed = createExpression(expression, 'test.paint');
     if (parsed.result !== 'success') throw new Error(JSON.stringify(parsed.value));
-    return parsed.value.evaluate({ zoom }, { type: 'Point', properties: { selected } });
+    return parsed.value.evaluate({ zoom }, { type: 'Point', properties: { selected, muted, focused } });
   };
   for (const name of ['manzil-transit-line']) {
     const style = paint(name);
     expect(evaluate(style['line-width'], 11.5, false)).toBeGreaterThanOrEqual(4);
     expect(evaluate(style['line-width'], 11.5, true)).toBeGreaterThanOrEqual(7);
     expect(evaluate(style['line-opacity'], 11.5, false)).toBeGreaterThanOrEqual(.9);
+    expect(evaluate(style['line-opacity'], 11.5, false, true)).toBeLessThanOrEqual(.2);
+    expect(evaluate(style['line-width'], 11.5, false, true)).toBeLessThan(evaluate(style['line-width'], 11.5, false));
+    expect(evaluate(style['line-opacity'], 11.5, false, false, true)).toBeGreaterThan(evaluate(style['line-opacity'], 11.5, false, true));
     expect(style['line-color']).toEqual(['get', 'color']);
   }
   const casing = paint('manzil-transit-casing');
@@ -261,6 +264,11 @@ it('keeps road-aligned bus lines and stops legible, with solid bus strokes and c
   expect(evaluate(stops['circle-radius'], 9, false)).toBeLessThan(evaluate(stops['circle-radius'], 11.5, false));
   expect(evaluate(stops['circle-opacity'], 9, false)).toBeLessThan(evaluate(stops['circle-opacity'], 11.5, false));
   expect(evaluate(stops['circle-radius'], 9, true)).toBeGreaterThanOrEqual(5); expect(evaluate(stops['circle-opacity'], 9, true)).toBe(1);
+  for (const zoom of [9, 11.5, 16]) {
+    expect(evaluate(stops['circle-opacity'], zoom, false, true)).toBeLessThanOrEqual(.2);
+    expect(evaluate(stops['circle-stroke-opacity'], zoom, false, true)).toBeLessThanOrEqual(.2);
+    expect(evaluate(stops['circle-opacity'], zoom, true)).toBe(1);
+  }
   const busLayers = [...map.layers.values()].filter((layer): layer is LayerSpecification & { paint: Record<string, unknown> } => {
     const value = layer as { id: string; type: string; source?: string };
     return value.type === 'line' && ['manzil-transit', 'manzil-transit-journey'].includes(value.source ?? '') && value.id !== 'manzil-transit-walk-line';
