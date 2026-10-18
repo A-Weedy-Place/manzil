@@ -3,7 +3,7 @@
 Raw XML stays in ignored .local-tools/transit. This creates a normalized public
 derivative, never a timetable. Stop order is derived along connected mapped
 busways, not asserted to be an operator-published direction list. See
-docs/TRANSIT_SOURCES.md. Python standard library only.
+docs/data-sources/TRANSIT_SOURCES.md. Python standard library only.
 """
 
 import argparse

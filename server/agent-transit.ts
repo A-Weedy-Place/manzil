@@ -1,9 +1,11 @@
+export { isTransitEvent } from './agent-transit-review.js';
 import { createHash, randomUUID } from 'node:crypto';
 import type { AgentExtraction, AgentProposal, AgentTransitChange } from '../shared/agent.js';
 import type { SourceNotice } from '../shared/types.js';
 import type { TransitDataset, TransitDisruption, TransitDisruptionDraft, TransitDisruptionState } from '../shared/transit.js';
 import { loadTransitDataset } from './transit/dataset.js';
-import { sourceSupportsInstant } from './agent-time.js';
+import { ExpiredEvent, actionEvidence, eventWindow, materialUncertainties, normalizeTrafficEvent, sourceNames } from './agent-evidence.js';
+import { isTransitEvent } from './agent-transit-review.js';
 
 const normal = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
 const contains = (text: string, name: string) => !!normal(name) && normal(text).includes(normal(name));
@@ -13,10 +15,10 @@ type Event = AgentExtraction['events'][number];
 export const transitLocationKey = (draft: Partial<TransitDisruptionDraft>) => ['transit', ...(draft.routeIds ?? (draft.routeId ? [draft.routeId] : [])).slice().sort(), draft.directionId ?? '*', draft.fromStopId ?? '*', draft.toStopId ?? '*'].join(':');
 
 /** Only documented service aliases. Generic "Metro" cannot identify a service. */
-export function resolveTransitNotice(event: Event, data: TransitDataset | null): Partial<TransitDisruptionDraft> {
+export function resolveTransitNotice(event: Event, data: TransitDataset | null, source = event.quote): Partial<TransitDisruptionDraft> {
   if (!data || !event.transit?.service) throw new Error('Select the Metro/bus service; generic Metro is ambiguous.');
   const input = event.transit, service = normal(input.service!);
-  if (!contains(event.quote, input.service!)) throw new Error('Service name must occur in the original source quote.');
+  if (!contains(source, input.service!)) throw new Error('Service name must occur in the original source quote.');
   if (!input.city || !contains(event.quote, input.city) || !/islamabad|rawalpindi|اسلامآباد|راولپنڈی/.test(normal(input.city))) throw new Error('Confirm the service city against the original source.');
   let routes = data.routes.filter(route => [route.name, route.shortName].some(name => normal(name) === service));
   const red = ['redline', 'redlinemetro', 'rawalpindiislamabadmetro', 'ریڈلائن', 'راولپنڈیاسلامآبادمیٹرو'];
@@ -57,41 +59,42 @@ export function planTransitNotices(notice: SourceNotice, extraction: AgentExtrac
   autoPublish: boolean; now?: number; data?: TransitDataset | null;
 }): { proposals: AgentProposal[]; changes: AgentTransitChange[] } {
   const proposals: AgentProposal[] = [], changes: AgentTransitChange[] = [], now = options.now ?? Date.now();
-  for (const [index, event] of extraction.events.entries()) {
-    if (event.kind !== 'transit' && !event.transit) continue;
-    const issues: string[] = [...extraction.warnings, ...event.uncertainties];
+  for (const [index, saved] of extraction.events.entries()) {
+    const event = normalizeTrafficEvent(saved);
+    if (!isTransitEvent(event)) continue;
+    const issues: string[] = [...extraction.warnings, ...materialUncertainties(event)];
     let mapped: Partial<TransitDisruptionDraft> = {};
-    try { mapped = resolveTransitNotice(event, options.data === undefined ? loadTransitDataset() : options.data); }
+    try { mapped = resolveTransitNotice(event, options.data === undefined ? loadTransitDataset() : options.data,notice.text); }
     catch (error) { issues.push(error instanceof Error ? error.message : 'Service needs review.'); }
+    let expired=false;
+    let window: ReturnType<typeof eventWindow> | undefined;
+    try { window=eventWindow(notice,event,now); } catch(error) { expired=error instanceof ExpiredEvent; issues.push(error instanceof Error ? error.message : 'Time needs review.'); }
     const key = transitLocationKey(mapped), evidenceAt = notice.sourceTimestamp?.kind === 'edited' ? notice.sourceTimestamp.at : notice.publishedAt;
     const candidates = state.records.filter(record => record.agent?.locationKey === key && record.status === 'published' &&
-      (event.action === 'reopening' || event.startsAt && event.endsAt && Date.parse(record.startsAt) < Date.parse(event.endsAt) && Date.parse(record.endsAt) > Date.parse(event.startsAt)));
+      (event.action === 'reopening' || window && Date.parse(record.startsAt) < Date.parse(window.endsAt) && Date.parse(record.endsAt) > Date.parse(window.startsAt)));
     const explicit = event.targetIncidentId ? state.records.find(record => record.id === event.targetIncidentId) : undefined;
     const target = explicit ?? (candidates.length === 1 ? candidates[0] : undefined);
     const targetId = target?.id ?? `agent-transit-${createHash('sha256').update(`${notice.id}:${index}`).digest('hex').slice(0,32)}`;
     const previous = state.records.find(record => record.id === targetId);
-    const draft: Partial<TransitDisruptionDraft> = { ...mapped, title: event.title, description: `${extraction.summary}\n${notice.text}`.slice(0,1000),
-      ...(event.startsAt ? { startsAt: event.startsAt } : {}), ...(event.endsAt ? { endsAt: event.endsAt } : {}), status: 'published', ...(notice.url ? { sourceUrl: notice.url } : {}) };
+    const draft: Partial<TransitDisruptionDraft> = { ...mapped, title: event.title, description: `${window?.provisional ? 'Provisional: two-day application expiry; source reopening time unknown.\n' : ''}${extraction.summary}\n${notice.text}`.slice(0,1000),
+      ...(window ? { startsAt: window.startsAt, endsAt: window.endsAt } : {}), status: 'published', ...(notice.url ? { sourceUrl: notice.url } : {}) };
     if (!options.autoPublish) issues.push('Automatic publication is disabled.');
-    if (extraction.category !== 'traffic' || notice.contentState === 'possibly_truncated' || event.imageIndex !== null || !notice.text.includes(event.quote) || !notice.publishedAt || !evidenceAt) issues.push('Complete text evidence and original publication time are required.');
-    if (/\b(?:may|might|possibly|expected|not closed|not suspended)\b|متوقع|امکان/i.test(event.quote)) issues.push('Tentative or negated suspension needs review.');
-    if (event.confidence < .95 || event.timeBasis === 'unknown' || event.impact !== 'closed' && event.action !== 'reopening') issues.push('A clear, high-confidence service suspension/restoration is required.');
-    if (!(event.action === 'reopening' ? resumed : suspended).test(event.quote)) issues.push('The source must explicitly suspend or restore the service.');
-    if (event.action !== 'reopening' && (!event.startsAt || !event.endsAt || Date.parse(event.endsAt) <= now || Date.parse(event.endsAt) <= Date.parse(event.startsAt) || Date.parse(event.endsAt)-Date.parse(event.startsAt) > 86400_000 || Date.parse(event.startsAt) < now-86400_000 || Date.parse(event.startsAt) > now+7*86400_000 ||
-      !notice.publishedAt || !sourceSupportsInstant(event.quote,event.startsAt,notice.publishedAt) || !sourceSupportsInstant(event.quote,event.endsAt,notice.publishedAt))) issues.push('Both dates and clock times must match a bounded current/upcoming source window.');
+    if (extraction.category !== 'traffic' || notice.contentState === 'possibly_truncated' || !notice.text.includes(event.quote) || !notice.publishedAt || !evidenceAt) issues.push('Complete text evidence and original publication time are required.');
+    if (/\b(?:may|might|possibly|not closed|not suspended)\b|متوقع|امکان/i.test(event.quote)) issues.push('Tentative or negated suspension needs review.');
+    if (event.confidence < .85 || event.impact !== 'closed' && event.action !== 'reopening') issues.push('A clear, high-confidence service suspension/restoration is required.');
+    if (!actionEvidence(notice,event,event.action === 'reopening' ? resumed : suspended)) issues.push('The source must explicitly suspend or restore the service.');
     if (candidates.length > 1 || explicit && explicit.agent?.locationKey !== key) issues.push('Multiple or mismatched service notices require review.');
     if (previous && (!previous.agent || previous.agent.overridden || previous.status === 'cancelled' || !evidenceAt || Date.parse(evidenceAt) <= Date.parse(previous.agent.evidenceAt))) issues.push('An administrator correction or existing/newer evidence takes precedence.');
-    if (state.records.some(record => record.agent?.overridden && (record.agent.sourceId === notice.sourceId || record.agent.locationKey === key && event.startsAt && event.endsAt && Date.parse(record.startsAt) < Date.parse(event.endsAt) && Date.parse(record.endsAt) > Date.parse(event.startsAt)))) issues.push('Administrator suppression prevents automatic recreation.');
-    if (event.action === 'reopening' && (!target?.agent || !event.startsAt || !notice.publishedAt || Date.parse(event.startsAt) > now || Date.parse(event.startsAt) < Date.parse(target.agent.evidenceAt) || Date.parse(event.startsAt) < Date.parse(target.startsAt) || Date.parse(event.startsAt) >= Date.parse(target.endsAt) ||
-      !sourceSupportsInstant(event.quote,event.startsAt,notice.publishedAt) && !(/\bnow\b|بحال/i.test(event.quote) && Math.abs(Date.parse(event.startsAt)-Date.parse(notice.publishedAt))<300_000))) issues.push('Restoration needs a unique unchanged incident and a source-supported reopening time.');
+    if (state.records.some(record => record.agent?.overridden && (record.agent.sourceId === notice.sourceId || record.agent.locationKey === key && window && Date.parse(record.startsAt) < Date.parse(window.endsAt) && Date.parse(record.endsAt) > Date.parse(window.startsAt)))) issues.push('Administrator suppression prevents automatic recreation.');
+    if (event.action === 'reopening' && (!target?.agent || !window || Date.parse(window.startsAt)>now || Date.parse(window.startsAt)<Date.parse(target.agent.evidenceAt) || Date.parse(window.startsAt)<Date.parse(target.startsAt))) issues.push('Restoration needs a unique unchanged incident and a source-supported reopening time.');
     if (state.records.length >= 100 && !previous) issues.push('The service-notice store is full; archive old records first.');
     const uniqueIssues = [...new Set(issues)], automatic = !uniqueIssues.length;
     if (automatic) changes.push({ id: targetId, expectedRevision: previous?.revision ?? null,
       draft: event.action === 'reopening' ? { ...target!, status: 'cancelled' } : draft as TransitDisruptionDraft,
-      agent: { noticeId: notice.id, sourceId: notice.sourceId, sourceRevision: notice.revision, evidenceAt: evidenceAt!, locationKey: key } });
-    proposals.push({ index, version: randomUUID(), kind: 'transit', state: automatic ? 'approved' : 'pending', ...(automatic ? { decisionMode: 'automatic', closureId: targetId } : {}),
-      action: event.action, impact: event.impact, mapping: mapped.routeId ? 'existing' : 'unresolved', locationKey: key, targetId, targetRevision: previous?.revision ?? null,
-      draft: { title: event.title }, transitDraft: event.action === 'reopening' && target ? { ...target, startsAt: event.startsAt ?? undefined, status: 'cancelled' } : draft, issues: uniqueIssues,
+      agent: { noticeId: notice.id, sourceId: notice.sourceId, sourceRevision: notice.revision, evidenceAt: evidenceAt!, locationKey: key, expiryBasis: window?.provisional ? 'provisional' : 'source' } });
+    proposals.push({ index, version: randomUUID(), kind: 'transit', state: expired ? 'expired' : automatic ? 'approved' : 'pending', ...(automatic ? { decisionMode: 'automatic', closureId: targetId } : {}),
+      action: event.action, impact: event.impact, mapping: mapped.routeId ? 'transit' : 'unresolved', locationKey: key, targetId, targetRevision: previous?.revision ?? null,
+      draft: {}, transitScope: event.transit?.scope === 'whole_service' ? 'route' : event.transit?.scope, transitCandidates: (options.data === undefined ? loadTransitDataset() : options.data)?.routes.map(({id,shortName,name})=>({id,shortName,name})), transitDraft: event.action === 'reopening' && target ? { ...target, startsAt: window?.startsAt, status: 'cancelled' } : draft, issues: uniqueIssues,
       steps: [{ tool: 'resolve_service', state: mapped.routeId ? 'done' : 'blocked', detail: mapped.routeId ? 'Matched a service in the local network.' : 'Service needs administrator selection.' },
         { tool: 'publication_policy', state: automatic ? 'done' : 'needs_review', detail: automatic ? 'Source, service and time checks passed; automatic publication.' : 'Review the listed uncertainties before publishing.' }] });
   }

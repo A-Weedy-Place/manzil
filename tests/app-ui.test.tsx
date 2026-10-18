@@ -8,6 +8,7 @@ import { setLanguage } from '../src/lib/language';
 import { getAuthSession, signInDevelopment, signOut } from '../src/lib/auth';
 import App from '../src/App';
 import type { AgentProposal } from '../shared/agent';
+import { transitFixture } from './transit-fixture';
 import { extraction as agentExtraction, location as agentLocation, notice as agentNotice } from './agent-fixtures';
 const capture = vi.hoisted(() => ({ props: null as MapViewProps | null, mounts: 0 }));
 vi.mock('../src/components/MapView', () => ({ default: (props: MapViewProps) => { capture.props = props; useEffect(() => { capture.mounts++; }, []); return <div data-testid="map" />; } }));
@@ -218,8 +219,16 @@ it('takes an administrator from sign-in to the control centre', async () => {
   fireEvent.click(screen.getByText('Choose a development account'));
   fireEvent.click(screen.getByRole('button', { name: /Admin user/ }));
   fireEvent.submit(screen.getByRole('form', { name: 'Sign in' }));
-  expect(await screen.findByRole('heading', { name: 'Control centre' })).toBeTruthy();
-  expect(screen.getByRole('tab', { name: 'Users' })).toBeTruthy();
+  expect(await screen.findByRole('heading', { name: 'Pipelines' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Users' })).toBeTruthy();
+  expect(screen.queryByRole('button', {name:'Plan ahead'})).toBeNull();
+  expect(screen.queryByRole('button', {name:'Activity'})).toBeNull();
+  expect(screen.queryByRole('button', {name:'Saved'})).toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:'Account'}));
+  expect(screen.queryByRole('button',{name:'Your vehicle'})).toBeNull();
+  expect(screen.queryByRole('button',{name:'Personal statistics'})).toBeNull();
+  expect(screen.queryByRole('button',{name:'Trip history'})).toBeNull();
+  expect(screen.getByRole('button',{name:'Appearance & language'})).toBeTruthy();
 });
 it('opens an agent proposal with its map drawing and populated fields, then approves through the protected proposal endpoint', async () => {
   signInDevelopment('admin@manzil.test', 'ManzilAdmin123!');
@@ -233,17 +242,19 @@ it('opens an agent proposal with its map drawing and populated fields, then appr
     if (url === '/api/state') return new Response(JSON.stringify({ ...state, notices: [post] }));
     if (url === '/api/agent/results') return new Response(JSON.stringify([result]));
     if (url === '/api/agent/status') return new Response(JSON.stringify({ enabled: true, configured: true, autoPublish: false, dailyLimit: 20, attemptedToday: 1, pending: 0 }));
+    if (url.endsWith('/prepare')) return new Response(JSON.stringify(result));
     if (url === '/api/geometry') return new Response(JSON.stringify(agentLocation().geometry));
     if (url.endsWith('/review')) return new Response(JSON.stringify({ result, proposal: { ...proposal, state: 'approved' },
       closure: { ...JSON.parse(init!.body as string).draft, id: proposal.targetId, revision: 1, createdAt: date, updatedAt: date } }));
     return responseFor(url);
   });
-  vi.stubGlobal('fetch', fetcher); render(<App />); await screen.findByRole('tab', { name: 'Pipeline' });
-  fireEvent.click(screen.getByRole('tab', { name: 'Pipeline' }));
+  vi.stubGlobal('fetch', fetcher); render(<App />); await screen.findByRole('heading', { name: 'Pipelines' });
   const panel = screen.getByRole('tabpanel', { name: 'Pipeline' });
-  await within(panel).findByText('Map draft prepared; awaiting approval.');
-  fireEvent.click(panel.querySelector('.pipeline-post>summary')!);
-  fireEvent.click(within(panel).getByRole('button', { name: 'Review on map' }));
+  const postButton = await within(panel).findByRole('button', {name:/Needs review.*Champ Alerts/});
+  fireEvent.click(postButton);
+  const detail = screen.getByRole('dialog',{name:'Post review'});
+  expect(within(detail).getByText('Map draft prepared; awaiting approval.')).toBeTruthy();
+  fireEvent.click(within(detail).getByRole('button', { name: 'Review on map' }));
   expect(await screen.findByRole('heading', { name: 'Review agent map proposal' })).toBeTruthy();
   expect((screen.getByLabelText('Reason') as HTMLSelectElement).value).toBe('vip');
   expect((screen.getByLabelText('Road / place') as HTMLInputElement).value).toBe(event.title);
@@ -452,7 +463,7 @@ it('loads demo endpoints into ordinary planning, clears existing stops and reque
     return responseFor(url);
   });
   vi.stubGlobal('fetch', fetcher);
-  render(<App />); await screen.findByRole('heading', { name: 'Control centre' });
+  render(<App />); await screen.findByRole('heading', { name: 'Pipelines' });
   fireEvent.click(screen.getByRole('button', { name: 'Map' }));
   fireEvent.click(screen.getByRole('button', { name: 'Add stop' }));
   expect(capture.props?.waypoints).toEqual([null]);
@@ -485,7 +496,7 @@ it('preserves a stop added while a demo mutation is pending instead of replacing
     return responseFor(url);
   });
   vi.stubGlobal('fetch', fetcher);
-  render(<App />); await screen.findByRole('heading', { name: 'Control centre' });
+  render(<App />); await screen.findByRole('heading', { name: 'Pipelines' });
   fireEvent.click(screen.getByRole('button', { name: 'Map' }));
   const originalOrigin = capture.props?.origin, originalDestination = capture.props?.destination;
   fireEvent.click(screen.getByText('Demo closures'));
@@ -638,7 +649,7 @@ it('never uses a previous account’s acknowledged profile to dismiss a new acco
     }
     return responseFor(url);
   }));
-  render(<App />); await screen.findByRole('heading', { name: 'Control centre' });
+  render(<App />); await screen.findByRole('heading', { name: 'Pipelines' });
   sessionStorage.setItem('manzil-travel-data-choice-v1:dev-user', 'pending');
   act(() => signInDevelopment('user@manzil.test', 'ManzilUser123!'));
   await waitFor(() => expect(resolveNewState).toBeTypeOf('function'));
@@ -707,4 +718,38 @@ it('discards a previous account’s pending route response and clears its chosen
   expect(capture.props!.origin).toBeNull(); expect(capture.props!.destination).toBeNull(); expect(capture.props!.selectedRoute).toBeNull(); expect(capture.props!.routeOptions).toEqual([]);
   expect(screen.queryByRole('button', { name: 'Navigate' })).toBeNull();
   expect(planStages).toEqual(['dev-user:initial']);
+});
+
+
+it('reviews a bus proposal beside its source and publishes only a service notice without a road restriction', async () => {
+  signInDevelopment('admin@manzil.test', 'ManzilAdmin123!');
+  const post = agentNotice({status:'reviewed'}), extraction = agentExtraction();
+  const proposal: AgentProposal = {index:0,version:'bus-version',state:'pending',action:'disruption',impact:'unknown',kind:'transit',mapping:'transit',transitScope:'route',
+    draft:{},locationKey:'transit:r1:all:all',targetId:'bus-fixture',targetRevision:null,issues:[],transitDraft:{routeId:'r1',title:'Bus suspension',description:'Reviewed source',startsAt:'2027-01-15T12:00:00Z',endsAt:'2027-01-15T14:00:00Z',status:'published'}};
+  const result = {noticeId:post.id,noticeRevision:1,state:'review',extraction,proposals:[proposal],issues:[],closureIds:[]};
+  const network = {...transitFixture(),evaluatedAt:date,eventRevision:0,disruptionRevision:0,statuses:[],disruptions:[]};
+  const fetcher = vi.fn(async (url:string,init?:RequestInit) => {
+    if(url === '/api/state') return new Response(JSON.stringify({...state,notices:[post]}));
+    if(url === '/api/agent/results') return new Response(JSON.stringify([result]));
+    if(url === '/api/agent/status') return new Response(JSON.stringify({enabled:false,configured:false,pending:0,dailyLimit:20,attemptedToday:1}));
+    if(url.startsWith('/api/transit/network')) return new Response(JSON.stringify(network));
+    if(url.endsWith('/prepare')) return new Response(JSON.stringify(result));
+    if(url.endsWith('/review')) return new Response(JSON.stringify({result:{...result,state:'applied',proposals:[{...proposal,state:'approved'}],transitDisruptionIds:['bus-fixture']},proposal:{...proposal,state:'approved'},transitDisruption:{...proposal.transitDraft,id:'bus-fixture',revision:1}}));
+    return responseFor(url);
+  });
+  vi.stubGlobal('fetch',fetcher); render(<App/>);
+  const row = await screen.findByRole('button',{name:/Needs review.*Champ Alerts/}); fireEvent.click(row);
+  fireEvent.click(within(screen.getByRole('dialog',{name:'Post review'})).getByRole('button',{name:'Review bus service'}));
+  const dialog = await screen.findByRole('dialog',{name:'Review bus service'});
+  await waitFor(() => expect(within(dialog).queryByText('Loading bus lines…')).toBeNull());
+  expect(within(dialog).getByRole('combobox',{name:'Bus line'})).toHaveProperty('value','r1');
+  expect(within(dialog).queryByLabelText('Road / place')).toBeNull();
+  fireEvent.click(within(dialog).getByRole('checkbox',{name:'I confirmed the line, direction and affected stops against the source.'}));
+  fireEvent.click(within(dialog).getByRole('button',{name:'Approve suspension'}));
+  await waitFor(() => expect(screen.queryByRole('dialog',{name:'Review bus service'})).toBeNull());
+  const request = fetcher.mock.calls.find(([url]) => url.endsWith('/review'))!;
+  expect(JSON.parse(request[1]!.body as string)).toMatchObject({noticeRevision:1,index:0,version:'bus-version',decision:'approve',confirmTransitScope:true,transitDraft:{routeId:'r1',status:'published'}});
+  expect(JSON.parse(request[1]!.body as string)).not.toHaveProperty('draft');
+  expect(fetcher.mock.calls.some(([url]) => url === '/api/closures' || url === '/api/agent/run')).toBe(false);
+  expect(capture.props?.closures).toEqual([]);
 });

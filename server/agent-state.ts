@@ -1,4 +1,4 @@
-import type { AgentClaim, AgentCompletion, AgentResult, AgentUsage } from '../shared/agent.js';
+import { proposalFingerprint, type AgentClaim, type AgentCompletion, type AgentResult, type AgentUsage } from '../shared/agent.js';
 import type { TransitDisruptionState } from '../shared/transit.js';
 import type { Closure, SourceNotice } from '../shared/types.js';
 
@@ -12,6 +12,11 @@ export function claimAgent(input: AgentClaim, notice: SourceNotice | undefined, 
     leaseUntil: input.now + 180_000, retryAt: 0, startedAt: new Date(input.now).toISOString(), issues: [], closureIds: [] };
 }
 export function canFinishAgent(input: AgentCompletion, notice?: SourceNotice, claim?: AgentResult) {
+  if(input.reassessmentFingerprint !== undefined) return !!notice && notice.status !== 'dismissed' && notice.revision === input.revision &&
+    claim?.claimId === input.claimId && claim.noticeRevision === input.revision && claim.state === 'review' &&
+    proposalFingerprint(claim.proposals) === input.reassessmentFingerprint &&
+    !(claim.proposals ?? []).some(old=>old.state!=='pending' && JSON.stringify(old)!==JSON.stringify(input.result.proposals?.find(next=>next.index===old.index)));
+
   return !!notice && notice.status === 'pending_agent' && notice.revision === input.revision && claim?.claimId === input.claimId &&
     claim.noticeRevision === input.revision && claim.state === 'processing' && claim.leaseUntil >= Date.now();
 }
@@ -24,7 +29,7 @@ export function checkedCompletion(input: AgentCompletion, previous: (Closure | u
     const old = transit.records.find(record => record.id === change.id);
     return old ? old.revision !== change.expectedRevision || !old.agent || old.agent.overridden || old.status === 'cancelled' : change.expectedRevision !== null;
   }));
-  return conflict || transitConflict ? { ...input, changes: [], transitChanges: [], result: { ...input.result, state: 'review', closureIds: [], transitIds: [],
-    proposals: input.result.proposals?.map(proposal => proposal.decisionMode === 'automatic' ? { ...proposal, state: 'pending', decisionMode: undefined, closureId: undefined, issues: [...proposal.issues, 'Concurrent road/service change: review before publishing.'] } : proposal),
+  return conflict || transitConflict ? { ...input, changes: [], transitChanges: [], result: { ...input.result, state: 'review', closureIds: input.reassessmentFingerprint !== undefined ? input.result.closureIds.filter(id=>!input.changes.some(change=>change.id===id)) : [], transitIds: input.reassessmentFingerprint !== undefined ? (input.result.transitIds??[]).filter(id=>!input.transitChanges?.some(change=>change.id===id)) : [],
+    proposals: input.result.proposals?.map(proposal => proposal.decisionMode === 'automatic' && (input.changes.some(change=>change.id===proposal.closureId) || input.transitChanges?.some(change=>change.id===proposal.closureId)) ? { ...proposal, state: 'pending', decisionMode: undefined, closureId: undefined, issues: [...proposal.issues, 'Concurrent road/service change: review before publishing.'] } : proposal),
     issues: [...input.result.issues, 'The incident changed or was corrected by an administrator. Automatic changes were withheld.'] } } : input;
 }

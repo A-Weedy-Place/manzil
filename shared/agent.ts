@@ -15,6 +15,8 @@ export const extractionSchema = z.object({
     reason: z.enum(['vip', 'protest', 'accident', 'construction', 'other']),
     impact: z.enum(['closed', 'slow', 'unknown']),
     location: z.object({ city: optionalText, road: optionalText, from: optionalText, to: optionalText, point: optionalText }).strict(),
+    service: z.object({ route: optionalText, from: optionalText, to: optionalText,
+      scope: z.enum(['route', 'segment', 'unknown']) }).strict().nullable().optional(),
     startsAt: instant, endsAt: instant, timeBasis: z.enum(['explicit', 'publication_relative', 'unknown']),
     targetIncidentId: z.string().max(100).nullable(), confidence: z.number().min(0).max(1),
     quote: z.string().trim().min(1).max(700), imageIndex: z.number().int().min(0).max(1).nullable(),
@@ -31,17 +33,19 @@ export interface AgentResult {
   startedAt: string; finishedAt?: string; extraction?: AgentExtraction;
   issues: string[]; closureIds: string[]; errorCode?: string;
   usage?: { inputTokens: number; outputTokens: number }; imageCount?: number;
-  proposals?: AgentProposal[]; transitIds?: string[];
+  proposals?: AgentProposal[]; transitIds?: string[]; transitDisruptionIds?: string[]; policyVersion?: number; reassessmentAttempts?: number; reassessedAt?: string;
 }
 /** Private review work, deliberately separate from routable closure records. */
 export interface AgentProposal {
-  index: number; version: string; state: 'pending' | 'approved' | 'rejected';
+  index: number; version: string; state: 'pending' | 'approved' | 'rejected' | 'expired';
   kind?: 'road' | 'transit'; decisionMode?: 'automatic' | 'admin';
   transitDraft?: Partial<TransitDisruptionDraft>;
   action: AgentExtraction['events'][number]['action']; impact: AgentExtraction['events'][number]['impact'];
-  draft: Partial<ClosureDraft>; mapping: 'road' | 'place' | 'existing' | 'unresolved';
+  draft: Partial<ClosureDraft>; mapping: 'road' | 'place' | 'existing' | 'transit' | 'unresolved';
+  transitScope?: 'route' | 'segment' | 'unknown';
+  transitCandidates?: { id: string; shortName: string; name: string }[];
   locationKey: string; issues: string[]; targetId: string; targetRevision: number | null;
-  reviewedBy?: ClosureAuthor; reviewedAt?: string; closureId?: string;
+  reviewedBy?: ClosureAuthor; reviewedAt?: string; closureId?: string; transitDisruptionId?: string;
   preparedAt?: string; mappingAttempts?: number; mappingRetryAt?: number;
   steps?: { tool: 'interpret_source' | 'resolve_road' | 'search_landmark' | 'match_incident' | 'validate_times' | 'prepare_draft' | 'resolve_service' | 'publication_policy';
     state: 'done' | 'blocked' | 'needs_review'; detail: string }[];
@@ -51,13 +55,14 @@ export interface AgentProposalReview {
   noticeId: string; noticeRevision: number; index: number; version: string;
   decision: 'approve' | 'reject'; draft?: ClosureDraft; transitDraft?: TransitDisruptionDraft; reviewer: ClosureAuthor;
   confirmRestriction?: boolean; confirmUnknownEnd?: boolean;
+  confirmTransitScope?: boolean;
 }
-export interface AgentProposalDecision { result: AgentResult; proposal: AgentProposal; closure?: Closure; transit?: TransitDisruption; transitState?: TransitDisruptionState }
+export interface AgentProposalDecision { result: AgentResult; proposal: AgentProposal; closure?: Closure; transitDisruption?: TransitDisruption; transit?: TransitDisruption; transitState?: TransitDisruptionState }
 export interface AgentUsage { requests: number; reservedMicros: number }
 export interface AgentClaim { noticeId: string; revision: number; claimId: string; now: number; dailyLimit: number; budgetMicros: number; reservationMicros: number; model: string }
 export interface AgentClosureChange { proposalIndex?: number; id: string; expectedRevision: number | null; draft: ClosureInput }
 export interface AgentTransitChange { id: string; expectedRevision: number | null; draft: TransitDisruptionDraft; agent: NonNullable<Closure['agent']> }
-export interface AgentCompletion { noticeId: string; revision: number; claimId: string; result: AgentResult; changes: AgentClosureChange[]; expectedEventRevision?: number; transitChanges?: AgentTransitChange[]; expectedTransitRevision?: number }
+export interface AgentCompletion { reassessmentFingerprint?: string; noticeId: string; revision: number; claimId: string; result: AgentResult; changes: AgentClosureChange[]; expectedEventRevision?: number; transitChanges?: AgentTransitChange[]; expectedTransitRevision?: number }
 export const agentResultKey = (id: string) => `sourceAgentResult:${id}`;
 export const agentDay = (now: number) => new Date(now + 5 * 3600_000).toISOString().slice(0, 10);
 export const agentUsageKey = (now: number) => `sourceAgentUsage:${agentDay(now)}`;

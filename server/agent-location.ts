@@ -15,14 +15,15 @@ export async function resolveAgentLocation(event: AgentExtraction['events'][numb
   places: (query: string) => Promise<Place[]> = searchPlaces,
   graphFor: (points: Coordinate[]) => Promise<RoutingGraph> = points => roadCoverage.graphFor(points)): Promise<ResolvedAgentLocation> {
   const { city, road, from, to, point } = event.location;
-  if (!city || !road || /[,/]|\band\b/i.test(city)) throw new Error('Precise road mapping needs one city and a named road.');
+  if (!road || city && /[,/]|\band\b/i.test(city) || !city && !/^(?:M|N)[ -]?\d+$/i.test(road)) throw new Error('Precise road mapping needs one city and a named road.');
   if (!(from && to) && !point) throw new Error('The notice needs two named road endpoints or a precise named blockade point.');
+  if(point && /\binterchange\b/i.test(point) && event.restrictionType === 'blockade') throw new Error('Resolve the announced interchange ramp/direction before placing a barrier; the main motorway cannot be assumed closed.');
   const references = from && to ? [from, to] : [point!], located = new Map<string, Coordinate>();
   const lookup = async (name: string, requireCity: boolean): Promise<Coordinate> => {
-    const query = `${name}, ${road}, ${city}, Pakistan`;
+    const query = [name, road, city, 'Pakistan'].filter(Boolean).join(', ');
     if (query.length > 160) throw new Error('The location reference is too long to resolve.');
     const found = (await places(query)).filter(place => locationName(place.name.split(',')[0]).includes(locationName(name)) &&
-      (!requireCity || place.name.split(',').slice(1).some(part => locationName(part).includes(locationName(city)))) && isInPakistan(place.coordinate));
+      (!requireCity || !city || place.name.split(',').slice(1).some(part => locationName(part).includes(locationName(city!)))) && isInPakistan(place.coordinate));
     if (!found.length || found.some(place => distanceMeters(place.coordinate, found[0].coordinate) > 100)) throw new Error('Place lookup was unavailable or ambiguous; no road was guessed.');
     return found[0].coordinate;
   };
@@ -59,20 +60,26 @@ export async function resolveAgentLocation(event: AgentExtraction['events'][numb
     drawing = section.drawing;
   } else if (point) {
     const coordinate = await reference(point);
-    // Require a real nearby node of this named road, not a guessed latitude/longitude.
-    const closest = [...roadNodes].map(node => graph!.nodes[node].coordinate).sort((a, b) => distanceMeters(a, coordinate) - distanceMeters(b, coordinate))[0];
-    if (!closest || distanceMeters(closest, coordinate) > 45) throw new Error('The announced point is not close enough to a supported road node.');
-    drawing = event.restrictionType === 'blockade' ? agentBlockade(graph, coordinate, roadKey) : { kind: 'point', coordinates: [closest], widthMeters: 14 };
+    // Snap to an actual segment, including the middle of a long OSM edge.
+    const snaps = roadEdges.map(edge => {
+      const a=graph!.nodes[edge.from].coordinate,b=graph!.nodes[edge.to].coordinate,scale=Math.cos(coordinate[1]*Math.PI/180);
+      const dx=(b[0]-a[0])*scale,dy=b[1]-a[1],t=Math.max(0,Math.min(1,((coordinate[0]-a[0])*scale*dx+(coordinate[1]-a[1])*dy)/(dx*dx+dy*dy||1)));
+      const projected:Coordinate=[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];return {projected,distance:distanceMeters(projected,coordinate)};
+    }).sort((a,b)=>a.distance-b.distance);
+    const closest=snaps[0];
+    if(!closest || closest.distance>45) throw new Error('The announced point is not close enough to a supported road segment.');
+    if(snaps.some(candidate=>candidate.distance<=closest.distance+5 && distanceMeters(candidate.projected,closest.projected)>8)) throw new Error('The affected carriageway is ambiguous.');
+    drawing = event.restrictionType === 'blockade' ? agentBlockade(graph, closest.projected, roadKey) : {kind:'point',coordinates:[closest.projected],widthMeters:14};
   } else throw new Error('The notice needs two named road endpoints or a precise named blockade point.');
-  const key = [locationName(city), roadKey, ...(from && to ? [locationName(from), locationName(to)].sort() : [locationName(point!)])].join(':');
+  const key = [locationName(city ?? 'Pakistan'), roadKey, ...(from && to ? [locationName(from), locationName(to)].sort() : [locationName(point!)])].join(':');
   return { drawing, geometry: drawingToPolygon(drawing), key, ...(event.restrictionType ? { restrictionType: event.restrictionType } : {}) };
 }
 
 /** Derive a small transverse barrier only on a single, unambiguous carriageway.
  * Junctions/parallel carriageways need an administrator to choose the extent. */
 export function agentBlockade(graph: RoutingGraph, point: Coordinate, roadKey: string): Drawing {
-  const section = selectRoadPoint(graph, point), coords = section.drawing.coordinates;
-  if (section.distanceMeters < 19 || section.roadNames.length !== 1 || locationName(section.roadNames[0]) !== roadKey) throw new Error('Blockade is too close to a junction or an ambiguous road.');
+  const section = selectRoadPoint({...graph,edges:graph.edges.filter(edge=>locationName(edge.name)===roadKey)}, point), coords = section.drawing.coordinates;
+  if (section.distanceMeters < 3 || section.roadNames.length !== 1 || locationName(section.roadNames[0]) !== roadKey) throw new Error('Blockade is too close to a junction or an ambiguous road.');
   const a = coords[0], b = coords.at(-1)!, scale = Math.cos(point[1] * Math.PI / 180);
   const dx = (b[0] - a[0]) * scale, dy = b[1] - a[1], length = Math.hypot(dx, dy);
   if (!length) throw new Error('A unique road orientation is required.');
@@ -89,6 +96,13 @@ export function agentBlockade(graph: RoutingGraph, point: Coordinate, roadKey: s
     const projected:Coordinate=[start[0]+(end[0]-start[0])*t,start[1]+(end[1]-start[1])*t];
     return distanceMeters(centre,projected)<18;
   });
-  if (nearby.some(edge => locationName(edge.name) !== roadKey || !graph.edges.some(reverse => reverse.from === edge.to && reverse.to === edge.from && reverse.wayId === edge.wayId))) throw new Error('A junction or separate carriageway needs an explicit blockade review.');
+  if (nearby.some(edge => locationName(edge.name) !== roadKey)) throw new Error('A junction or separate carriageway needs an explicit blockade review.');
+  if (nearby.some(edge => {
+    const start=graph.nodes[edge.from].coordinate,end=graph.nodes[edge.to].coordinate;
+    const ex=(end[0]-start[0])*scale,ey=end[1]-start[1],size=Math.hypot(ex,ey);
+    const parallel=size && Math.abs((ex*dx+ey*dy)/(size*length))>.9;
+    const offset=Math.abs(((start[0]-centre[0])*scale*dy-(start[1]-centre[1])*dx)/length)*111320;
+    return parallel && offset>3;
+  })) throw new Error('Separate parallel carriageways need an evidenced affected direction.');
   return barrier.drawing;
 }

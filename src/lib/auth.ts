@@ -143,6 +143,15 @@ export async function resetPassword(email: string) {
   const { auth, sdk } = await initializeFirebase();
   await sdk.sendPasswordResetEmail(auth, email.trim());
 }
+/** Email action codes and passwords go directly to this build's configured Firebase project. */
+export async function verifyAccountPasswordReset(code: string): Promise<string> {
+  const { auth, sdk } = await initializeFirebase();
+  return sdk.verifyPasswordResetCode(auth, code);
+}
+export async function completeAccountPasswordReset(code: string, password: string): Promise<void> {
+  const { auth, sdk } = await initializeFirebase();
+  await sdk.confirmPasswordReset(auth, code, password);
+}
 export async function authorizationHeaders(): Promise<Record<string, string>> {
   if (!FIREBASE_AUTH_ENABLED || !session.user) return {};
   const { auth } = await initializeFirebase(), user = auth.currentUser;

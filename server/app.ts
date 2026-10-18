@@ -354,8 +354,9 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
     assertEditClosure(previous, member);
     const checkedBody = closureDraftSchema.parse({ ...body, restrictionType:body.restrictionType ?? previous.restrictionType });
     await assertRoadClosureScope(checkedBody);
+    const awaitingReview = previous.status === 'draft' && previous.moderation === 'pending';
     const draft: ClosureInput = { ...checkedBody, ...(previous.author ? { author: previous.author } : {}),
-      moderation: isReviewer(member) ? 'approved' : 'pending', status: isReviewer(member) ? body.status : 'draft',
+      moderation: awaitingReview || !isReviewer(member) ? 'pending' : 'approved', status: awaitingReview || !isReviewer(member) ? 'draft' : body.status,
       photos: body.photos ?? previous.photos ?? [], photoCount: (body.photos ?? previous.photos)?.length ?? 0,
       ...(previous.reviewedBy ? { reviewedBy: previous.reviewedBy, reviewedAt: previous.reviewedAt } : {}),
       ...(previous.agent ? { agent: { ...previous.agent, overridden: true } } : {}) };
@@ -443,7 +444,7 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
   });
   routes.post('/agent/notices/:id/review', async (request, response) => {
     const body = z.object({ noticeRevision: z.number().int().positive(), index: z.number().int().min(0).max(2),
-      version: z.string().uuid(), decision: z.enum(['approve', 'reject']), draft: closureDraftSchema.optional(), transitDraft: transitDisruptionSchema.optional(),
+      version: z.string().uuid(), decision: z.enum(['approve', 'reject']), draft: closureDraftSchema.optional(), transitDraft: transitDisruptionSchema.optional(), confirmTransitScope: z.boolean().optional(),
       confirmRestriction: z.boolean().optional(), confirmUnknownEnd: z.boolean().optional() }).strict().parse(request.body);
     if (body.decision === 'approve' && body.draft) await assertRoadClosureScope(body.draft);
     if (body.decision === 'approve' && body.transitDraft) validateTransitDraft(body.transitDraft);

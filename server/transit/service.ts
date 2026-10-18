@@ -9,10 +9,11 @@ import { instantSchema, placeSchema } from '../validation.js';
 import { loadTransitDataset } from './dataset.js';
 import { lineHitsClosure, overlap, publishedClosures } from './geometry.js';
 import { planTransit, transitPlanningLimits } from './planner.js';
+import { assertTransitDisruptionScope } from './disruptions.js';
+import { transitDisruptionSchema } from './disruptions.js';
+export { transitDisruptionSchema, transitDisruptionUpdateSchema } from './disruptions.js';
 
 export const transitPlanSchema=z.object({origin:placeSchema.strict(),destination:placeSchema.strict(),departureAt:instantSchema}).strict();
-export const transitDisruptionSchema=z.object({routeId:z.string().min(1).max(160),routeIds:z.array(z.string().min(1).max(160)).min(1).max(8).optional(),directionId:z.string().max(30).optional(),fromStopId:z.string().max(160).optional(),toStopId:z.string().max(160).optional(),title:z.string().trim().min(1).max(160),description:z.string().trim().max(1000),startsAt:instantSchema,endsAt:instantSchema,status:z.enum(['published','cancelled']),sourceUrl:z.string().url().max(1500).refine(value=>['http:','https:'].includes(new URL(value).protocol)).optional()}).strict().superRefine((value,context)=>{if(Date.parse(value.endsAt)<=Date.parse(value.startsAt))context.addIssue({code:'custom',path:['endsAt'],message:'End must follow start.'});if(!!value.fromStopId!==!!value.toStopId)context.addIssue({code:'custom',path:['fromStopId'],message:'Choose both segment endpoints or neither.'});});
-export const transitDisruptionUpdateSchema=z.object({...transitDisruptionSchema.shape,revision:z.number().int().positive()}).strict().superRefine((value,context)=>{const {revision:_revision,...draft}=value,result=transitDisruptionSchema.safeParse(draft);if(!result.success)for(const issue of result.error.issues)context.addIssue({code:'custom',path:issue.path,message:issue.message});});
 
 const publicPatterns=new WeakMap<TransitDataset,TransitPattern[]>();
 /** Geometry is precomputed once. Avoid sending backend pair paths as a second
@@ -58,10 +59,9 @@ export class TransitService {
     await this.store.updateTransitDisruptions(current=>{
       const old=current.records.find(record=>record.id===recordId);
       if(existingId&&!old)throw new HttpError(404,'Bus service notice not found.');
-      if(old&&author.role!=='admin'&&old.author.uid!==author.uid)throw new HttpError(403,'Only the author or an administrator can edit this bus notice.');
       if(old&&revision!==old.revision)throw new HttpError(409,'This bus notice changed. Reload it before saving.');
       if(!old&&current.records.length>=100)throw new HttpError(409,'The bus-notice store has reached its 100-record limit. Ask an administrator to archive old notices.');
-      saved={...draft,...(old?.agent?{agent:{...old.agent,overridden:true}}:{}),id:recordId,revision:(old?.revision??0)+1,author:old?.author??author,createdAt:old?.createdAt??now,updatedAt:now};
+      saved={...draft,...(old?.agent?{agent:{...old.agent,overridden:true},reviewedBy:author,reviewedAt:now}:{}),id:recordId,revision:(old?.revision??0)+1,author:old?.author??author,createdAt:old?.createdAt??now,updatedAt:now};
       return{revision:current.revision+1,records:[...current.records.filter(record=>record.id!==recordId),saved]};
     });
     return saved!;
@@ -71,12 +71,5 @@ export { transitPlanningLimits };
 
 /** The API and the agent use the same catalogue/ordered-stop validation. */
 export function validateTransitDraft(draft:TransitDisruptionDraft,data:TransitDataset|null=loadTransitDataset()) {
-  transitDisruptionSchema.parse(draft);
-  if(!data)throw new HttpError(503,'Load public bus data before publishing a service notice.');
-  const ids=draft.routeIds??[draft.routeId];
-  if(!ids.includes(draft.routeId)||new Set(ids).size!==ids.length||ids.some(id=>!data.routes.some(route=>route.id===id)))throw new HttpError(400,'Choose known local routes.');
-  if(ids.length>1&&(draft.directionId!==undefined||draft.fromStopId))throw new HttpError(400,'Multi-route notices must cover the whole service.');
-  const patterns=data.patterns.filter(pattern=>ids.includes(pattern.routeId)&&(draft.directionId===undefined||pattern.directionId===draft.directionId));
-  if(draft.directionId!==undefined&&!patterns.length)throw new HttpError(400,'Choose a known direction.');
-  if(draft.fromStopId&&!patterns.some(pattern=>pattern.stopIds.indexOf(draft.fromStopId!)>=0&&pattern.stopIds.indexOf(draft.toStopId!)>pattern.stopIds.indexOf(draft.fromStopId!)))throw new HttpError(400,'Select ordered stops from one route direction.');
+  assertTransitDisruptionScope(data,draft);
 }

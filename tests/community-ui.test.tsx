@@ -28,17 +28,21 @@ const state: AppState = {
 beforeEach(() => { setLanguage('en'); calls.api.mockReset().mockResolvedValue({ ...report, photos: [photo] }); calls.send.mockReset(); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); setLanguage('en'); });
 
-it('opens on Pipeline and combines Gemini posts with community reports in the review queue', async () => {
+it('uses workspace-selected sections and combines Gemini posts with community reports in Review queue', async () => {
   const post = notice({ status: 'reviewed' });
   const result = { noticeId: post.id,noticeRevision: 1,state: 'review',extraction: extraction(),issues: [],closureIds: [] };
   calls.api.mockImplementation(async path => path === '/agent/status' ? { enabled: true,configured: true,pending: 0,dailyLimit: 20,attemptedToday: 1 } : [result]);
   const props = listProps();
-  render(<AdminPanel state={{ ...state,notices: [post] }} at={at} selectedId={null} reload={vi.fn(async () => {})} notify={vi.fn()} onSelect={props.onSelect} onEdit={props.onEdit} onCancel={props.onCancel} onReview={props.onReview} onManualClosure={vi.fn()} />);
-  expect(screen.getByRole('tab',{ name: 'Pipeline' }).getAttribute('aria-selected')).toBe('true');
-  fireEvent.click(await screen.findByRole('tab',{ name: 'Review queue 2' }));
-  const queue = within(screen.getByRole('tabpanel',{ name: 'Review queue' }));
-  expect(queue.getByText('Needs review')).toBeTruthy(); expect(queue.getByRole('button',{ name: /Park RoadPending review/ })).toBeTruthy();
-  expect(queue.getByText('Review on map')).toBeTruthy();
+  const common = { state: { ...state, notices: [post] }, at, selectedId: null, reload: vi.fn(async () => {}), notify: vi.fn(), onSelect: props.onSelect, onEdit: props.onEdit, onCancel: props.onCancel, onReview: props.onReview, onManualClosure: vi.fn() };
+  const element = render(<AdminPanel {...common} />);
+  expect(screen.getByRole('heading', { name: 'Pipelines' })).toBeTruthy();
+  expect(screen.queryByRole('tablist')).toBeNull();
+  element.rerender(<AdminPanel {...common} initialTab="review" />);
+  const queue = within(screen.getByRole('tabpanel', { name: 'Review queue' }));
+  expect(await queue.findByText('Needs review')).toBeTruthy(); expect(queue.getByRole('button', { name: /Park RoadPending review/ })).toBeTruthy();
+  expect(queue.queryByText('Review on map')).toBeNull();
+  fireEvent.click(queue.getByRole('button', { name: /Needs review.*Park Road closure announced/ }));
+  expect(within(screen.getByRole('dialog', { name: 'Post review' })).getByText('Review on map')).toBeTruthy();
 });
 
 it('shows the road and both Pakistan schedule times before opening report details', () => {
@@ -81,10 +85,11 @@ it('excludes cancelled pending reports from the admin queue and never offers app
   const cancelled: Closure = { ...report, id: 'withdrawn', title: 'Kaghan Road', status: 'cancelled' };
   calls.api.mockResolvedValue(cancelled);
   const props = listProps();
-  render(<AdminPanel state={{ ...state, closures: [cancelled] }} at={at} selectedId={null} reload={vi.fn(async () => {})} notify={vi.fn()} onSelect={props.onSelect} onEdit={props.onEdit} onCancel={props.onCancel} onReview={props.onReview} onManualClosure={vi.fn()} />);
-  fireEvent.click(screen.getByRole('tab', { name: 'Blockades' }));
+  const common = { state: { ...state, closures: [cancelled] }, at, selectedId: null, reload: vi.fn(async () => {}), notify: vi.fn(), onSelect: props.onSelect, onEdit: props.onEdit, onCancel: props.onCancel, onReview: props.onReview, onManualClosure: vi.fn() };
+  const element = render(<AdminPanel {...common} initialTab="review" />);
   expect(screen.getByText('No closures here')).toBeTruthy(); expect(screen.queryByRole('button', { name: /Kaghan Road/ })).toBeNull();
-  fireEvent.change(screen.getByRole('combobox', { name: 'Report filter' }), { target: { value: 'all' } });
+  element.rerender(<AdminPanel {...common} initialTab="reports" />);
+  expect(screen.getByRole('heading', { name: 'Road closures' })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: /Kaghan Road/ })); await screen.findByText('Ali Hassan');
   expect(screen.getByText('cancelled')).toBeTruthy(); expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
 });
@@ -93,8 +98,8 @@ it('lets an admin verify and unverify a person, updating the displayed role afte
   calls.api.mockResolvedValue({ users: [{ uid: 'person 2', displayName: 'Sara', email: 'sara@example.test', role: 'user', verified: false, disabled: false }] });
   calls.send.mockResolvedValueOnce({ uid: 'person 2', role: 'verified', verified: true }).mockResolvedValueOnce({ uid: 'person 2', role: 'user', verified: false });
   const props = listProps();
-  render(<AdminPanel state={state} at={at} selectedId={null} reload={vi.fn(async () => {})} notify={vi.fn()} onSelect={props.onSelect} onEdit={props.onEdit} onCancel={props.onCancel} onReview={props.onReview} onManualClosure={vi.fn()} />);
-  fireEvent.click(screen.getByRole('tab', { name: 'Users' })); await screen.findByText('Sara');
+  render(<AdminPanel state={state} initialTab="users" at={at} selectedId={null} reload={vi.fn(async () => {})} notify={vi.fn()} onSelect={props.onSelect} onEdit={props.onEdit} onCancel={props.onCancel} onReview={props.onReview} onManualClosure={vi.fn()} />);
+  await screen.findByText('Sara');
   const panel = within(screen.getByRole('tabpanel', { name: 'Users' }));
   fireEvent.click(panel.getByRole('button', { name: 'Verify' }));
   await waitFor(() => expect(calls.send).toHaveBeenCalledWith('/admin/users/person%202', { verified: true }, 'PATCH'));
@@ -143,4 +148,35 @@ it('retains paginated users and exposes a loading state and directory failure', 
   fireEvent.click(screen.getByRole('button',{name:'Refresh users'}));
   expect(await screen.findByRole('alert')).toHaveProperty('textContent','Directory unavailable.');
   expect(screen.getByRole('article',{name:'First'})).toBeTruthy();
+});
+
+
+it('shows only returned profile-directory and sharing status, keeping unknown sharing distinct from off', async () => {
+  calls.api.mockResolvedValue({ users: [
+    { uid: 'one', displayName: 'Sharing user', city: 'Rawalpindi', travelDataSharing: true, role: 'verified', verified: true, disabled: false },
+    { uid: 'two', displayName: 'Private user', travelDataSharing: false, role: 'user', verified: false, disabled: false },
+    { uid: 'three', displayName: 'No profile yet', travelDataSharing: null, role: 'user', verified: false, disabled: false },
+  ] });
+  const props = listProps(); render(<AdminPanel state={state} initialTab="users" at={at} selectedId={null} reload={vi.fn(async () => {})} notify={vi.fn()} onSelect={props.onSelect} onEdit={props.onEdit} onCancel={props.onCancel} onReview={props.onReview} onManualClosure={vi.fn()} />);
+  const sharing = within(await screen.findByRole('article', { name: 'Sharing user' }));
+  expect(sharing.getByText('Rawalpindi')).toBeTruthy(); expect(sharing.getByText('Trip data sharing: Allowed')).toBeTruthy();
+  expect(within(screen.getByRole('article', { name: 'Private user' })).getByText('Trip data sharing: Off')).toBeTruthy();
+  expect(within(screen.getByRole('article', { name: 'No profile yet' })).getByText('Trip data sharing: Unknown')).toBeTruthy();
+});
+it('retains the previous user role when verification is rejected by current server authority', async () => {
+  calls.api.mockResolvedValue({ users: [{ uid: 'one', displayName: 'Sara', role: 'user', verified: false, disabled: false }] });
+  calls.send.mockRejectedValue(new Error('Administrator access required.'));
+  const props = listProps(); render(<AdminPanel state={state} initialTab="users" at={at} selectedId={null} reload={vi.fn(async () => {})} notify={vi.fn()} onSelect={props.onSelect} onEdit={props.onEdit} onCancel={props.onCancel} onReview={props.onReview} onManualClosure={vi.fn()} />);
+  const member = within(await screen.findByRole('article', { name: 'Sara' })); fireEvent.click(member.getByRole('button', { name: 'Verify' }));
+  expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Administrator access required.');
+  expect(member.getByText('Not verified')).toBeTruthy(); expect(member.queryByText('Verified contributor')).toBeNull();
+});
+it('keeps approval unavailable after evidence loading fails and retries to the latest revision', async () => {
+  calls.api.mockRejectedValueOnce(new Error('Evidence unavailable.')).mockResolvedValueOnce({ ...report, revision: 9, photos: [photo] });
+  const props = listProps(); render(<ClosureList {...props} reviewer />); fireEvent.click(screen.getByRole('button', { name: /Park Road/ }));
+  expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Evidence unavailable.');
+  expect((screen.getByRole('button', { name: 'Approve' }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' })); await screen.findByRole('img', { name: 'Closure photo 1' });
+  fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+  await waitFor(() => expect(props.onReview).toHaveBeenCalledWith(expect.objectContaining({ revision: 9 }), 'approve'));
 });
