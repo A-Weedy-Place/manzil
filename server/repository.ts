@@ -1,4 +1,14 @@
+import { createHash } from 'node:crypto';
+import { SOURCE_INTERVAL_MINUTES } from '../shared/source.js';
+import type { AgentClaim, AgentCompletion, AgentResult } from '../shared/agent.js';
 import type { Alert, Closure, ClosureInput, LocalProfile, SourceNotice, SourceStatus, Trip } from '../shared/types.js';
+
+/** An edit-only observation must not erase an already established original publication time. */
+export function retainNoticePublication(input: Omit<SourceNotice, 'id' | 'revision' | 'receivedAt' | 'status'>, previous?: SourceNotice) {
+  if (input.source !== 'x' || input.publishedAt || !previous?.publishedAt) return input;
+  const { contentHash: _hash, ...payload } = { ...input, publishedAt: previous.publishedAt };
+  return { ...payload, contentHash: createHash('sha256').update(JSON.stringify(payload)).digest('hex') };
+}
 
 export type Awaitable<T> = T | Promise<T>;
 export type RecordKind = 'closure' | 'commute' | 'alert' | 'trip';
@@ -37,6 +47,10 @@ export interface Repository {
   setNoticeStatus(id: string, status: SourceNotice['status']): Awaitable<SourceNotice>;
   pendingAgentCount(): Awaitable<number>;
   pendingAgentNotices(): Awaitable<SourceNotice[]>;
+  claimAgentWork(input: AgentClaim): Awaitable<AgentResult | null>;
+  completeAgentWork(input: AgentCompletion): Awaitable<boolean>;
+  saveAgentProposals(noticeId: string, revision: number, claimId: string, proposals: import('../shared/agent.js').AgentProposal[], expectedFingerprint?: string): Awaitable<AgentResult>;
+  reviewAgentProposal(input: import('../shared/agent.js').AgentProposalReview): Awaitable<import('../shared/agent.js').AgentProposalDecision>;
   addSourceRun(result: unknown): Awaitable<void>;
   addAlertOnce(id: string, alert: Omit<Alert, 'id'>): Awaitable<void>;
   speechUsage(month: string): Awaitable<number>;
@@ -51,6 +65,6 @@ export function defaultProfile(): LocalProfile {
     collectTravelData: false, inferFrequentRoutes: false, transport: 'car', createdAt: now, updatedAt: now };
 }
 export function defaultSourceStatus(enabled = false): SourceStatus {
-  return { enabled, intervalMinutes: 15, profileUrl: 'https://x.com/shaheryarhassan', lastAttemptAt: null, lastSuccessAt: null, nextCheckAt: null,
+  return { enabled, intervalMinutes: SOURCE_INTERVAL_MINUTES, profileUrl: 'https://x.com/shaheryarhassan', lastAttemptAt: null, lastSuccessAt: null, nextCheckAt: null,
     state: enabled ? 'idle' : 'disabled', message: 'Public collection has not run. Coverage is partial.', noticesCollected: 0, coverage: 'partial' };
 }

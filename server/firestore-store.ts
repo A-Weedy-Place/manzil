@@ -1,11 +1,16 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { SOURCE_LEASE_MS } from '../shared/source.js';
+import { agentResultKey, agentUsageKey, type AgentClaim, type AgentCompletion, type AgentResult, type AgentUsage } from '../shared/agent.js';
+import { canFinishAgent, checkedCompletion, claimAgent } from './agent-state.js';
+import { currentProposalResult, decideAgentProposal } from './agent-proposals.js';
+import { proposalFingerprint, type AgentProposal, type AgentProposalReview } from '../shared/agent.js';
 import type { Firestore, DocumentReference, CollectionReference } from 'firebase-admin/firestore';
 import type { Alert, Closure, ClosureInput, LocalProfile, SourceNotice, SourceStatus, Trip } from '../shared/types.js';
 import { HttpError } from './errors.js';
 import { closureSummary } from './community.js';
 import { sameVehicle } from '../shared/fuel.js';
 import { tripWithCurrentVehicle } from './fuel.js';
-import { defaultProfile, defaultSourceStatus, type RecordKind, type PersonalRecordKind, type Repository, type RoutingSnapshot } from './repository.js';
+import { defaultProfile, defaultSourceStatus, retainNoticePublication, type RecordKind, type PersonalRecordKind, type Repository, type RoutingSnapshot } from './repository.js';
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const decode = <T>(data: FirebaseFirestore.DocumentData | undefined): T | undefined => data?.json ? JSON.parse(data.json) as T : undefined;
@@ -135,7 +140,7 @@ export class FirestoreStore implements Repository {
   }
   async acquireSourceLease(now: number) {
     const ref = this.metaRef('sourceLeaseUntil');
-    return this.db.runTransaction(async tx => { const old = (await tx.get(ref)).data(); if ((old?.until ?? 0) > now) return false; tx.set(ref, { until: now + 70_000, owner: this.lease, ...pack(now + 70_000) }); return true; });
+    return this.db.runTransaction(async tx => { const old = (await tx.get(ref)).data(); if ((old?.until ?? 0) > now) return false; tx.set(ref, { until: now + SOURCE_LEASE_MS, owner: this.lease, ...pack(now + SOURCE_LEASE_MS) }); return true; });
   }
   async releaseSourceLease() {
     const ref = this.metaRef('sourceLeaseUntil');
@@ -148,10 +153,11 @@ export class FirestoreStore implements Repository {
     const ref = this.noticeRef(hash(`${input.source}:${input.sourceId}`));
     return this.db.runTransaction(async tx => {
       const old = decode<SourceNotice>((await tx.get(ref)).data());
-      if (old?.contentHash === input.contentHash) return { notice: old, changed: false };
+      const evidence = retainNoticePublication(input, old);
+      if (old?.contentHash === evidence.contentHash) return { notice: old, changed: false };
       const statusRef = this.metaRef('sourceStatus');
       const status = input.source === 'x' && !old ? decode<SourceStatus>((await tx.get(statusRef)).data()) ?? defaultSourceStatus(process.env.X_SCRAPER_ENABLED === 'true') : null;
-      const notice: SourceNotice = { ...input, id: ref.id, revision: (old?.revision ?? 0) + 1, receivedAt: new Date().toISOString(), status: 'pending_agent' };
+      const notice: SourceNotice = { ...evidence, id: ref.id, revision: (old?.revision ?? 0) + 1, receivedAt: new Date().toISOString(), status: 'pending_agent' };
       tx.set(ref, { ...pack(notice), status: notice.status, receivedAt: notice.receivedAt });
       tx.set(ref.collection('versions').doc(String(notice.revision)), pack(notice));
       if (status) tx.set(statusRef, pack({ ...status, noticesCollected: status.noticesCollected + 1 }));
@@ -166,6 +172,73 @@ export class FirestoreStore implements Repository {
   }
   async pendingAgentNotices() { return (await this.root.collection('notices').where('status', '==', 'pending_agent').limit(100).get()).docs.map(doc => decode<SourceNotice>(doc.data())!); }
   async pendingAgentCount() { return (await this.root.collection('notices').where('status', '==', 'pending_agent').count().get()).data().count; }
+  async claimAgentWork(input: AgentClaim): Promise<AgentResult | null> {
+    const noticeRef = this.noticeRef(input.noticeId), resultRef = this.metaRef(agentResultKey(input.noticeId)), usageRef = this.metaRef(agentUsageKey(input.now));
+    return this.db.runTransaction(async tx => {
+      const [notice, old, count] = await tx.getAll(noticeRef, resultRef, usageRef);
+      const usage = decode<AgentUsage>(count.data()) ?? { requests: 0, reservedMicros: 0 };
+      const result = claimAgent(input, decode<SourceNotice>(notice.data()), decode<AgentResult>(old.data()), usage);
+      if (!result) return null;
+      tx.set(usageRef, pack({ requests: usage.requests + 1, reservedMicros: usage.reservedMicros + input.reservationMicros }));
+      tx.set(resultRef, pack(result)); return result;
+    });
+  }
+  async completeAgentWork(input: AgentCompletion): Promise<boolean> {
+    const noticeRef = this.noticeRef(input.noticeId), resultRef = this.metaRef(agentResultKey(input.noticeId));
+    const committed = await this.db.runTransaction(async tx => {
+      const revisionRef = this.metaRef('eventRevision');
+      const [noticeDoc, claimDoc, revisionDoc] = await tx.getAll(noticeRef, resultRef, revisionRef);
+      const notice = decode<SourceNotice>(noticeDoc.data());
+      if (!canFinishAgent(input, notice, decode<AgentResult>(claimDoc.data()))) return false;
+      const refs = input.changes.map(change => this.record('closure', change.id));
+      const previous = refs.length ? (await tx.getAll(...refs)).map(doc => decode<Closure>(doc.data())) : [];
+      const checked = checkedCompletion(input, previous, decode<number>(revisionDoc.data()) ?? 0), now = new Date().toISOString();
+      checked.changes.forEach((change, index) => {
+        const next = { ...change.draft, id: change.id, revision: (previous[index]?.revision ?? 0) + 1, createdAt: previous[index]?.createdAt ?? now, updatedAt: now };
+        tx.set(refs[index], { ...pack(next), status: next.status, updatedAt: now });
+      });
+      if (checked.changes.length) tx.set(revisionRef, pack((decode<number>(revisionDoc.data()) ?? 0) + 1));
+      tx.set(resultRef, pack(checked.result));
+      tx.set(this.metaRef(`sourceAgentVersion:${input.noticeId}:${input.revision}`), pack(checked.result));
+      if (checked.result.state !== 'failed') {
+        const next = { ...notice!, status: checked.result.state === 'dismissed' ? 'dismissed' : 'reviewed' };
+        tx.set(noticeRef, { ...pack(next), status: next.status, receivedAt: next.receivedAt });
+      }
+      return true;
+    });
+    if (committed && input.changes.length) this.cache.snapshot = undefined;
+    return committed;
+  }
+  async saveAgentProposals(noticeId: string, revision: number, claimId: string, proposals: AgentProposal[], expectedFingerprint?: string): Promise<AgentResult> {
+    const ref = this.metaRef(agentResultKey(noticeId));
+    return this.db.runTransaction(async tx => {
+      const [notice, result] = await tx.getAll(this.noticeRef(noticeId), ref);
+      const old = currentProposalResult(decode<SourceNotice>(notice.data()), decode<AgentResult>(result.data()), revision);
+      if (old.claimId !== claimId) throw new HttpError(409, 'Interpretation changed. Refresh the Pipeline.');
+      if (expectedFingerprint !== undefined && proposalFingerprint(old.proposals) !== expectedFingerprint) throw new HttpError(409, 'A proposal changed during refinement. Refresh the review queue.');
+      if (old.proposals && expectedFingerprint === undefined) return old;
+      if (old.proposals?.some(item => item.state !== 'pending' && JSON.stringify(item) !== JSON.stringify(proposals.find(next => next.index === item.index))))
+        throw new HttpError(409, 'Refinement cannot replace an administrator decision.');
+      const next = { ...old, proposals }; tx.set(ref, pack(next));
+      tx.set(this.metaRef(`sourceAgentVersion:${noticeId}:${revision}`), pack(next)); return next;
+    });
+  }
+  async reviewAgentProposal(input: AgentProposalReview) {
+    const ref = this.metaRef(agentResultKey(input.noticeId)), revisionRef = this.metaRef('eventRevision');
+    const decision = await this.db.runTransaction(async tx => {
+      const [notice, result, revision] = await tx.getAll(this.noticeRef(input.noticeId), ref, revisionRef);
+      const old = decode<AgentResult>(result.data()), proposal = old?.proposals?.find(item => item.index === input.index);
+      const targetRef = proposal ? this.record('closure', proposal.targetId) : undefined;
+      const previous = targetRef ? decode<Closure>((await tx.get(targetRef)).data()) : undefined;
+      const next = decideAgentProposal(input, decode<SourceNotice>(notice.data()), old, previous);
+      if (next.closure) {
+        tx.set(targetRef!, { ...pack(next.closure), status: next.closure.status, updatedAt: next.closure.updatedAt });
+        tx.set(revisionRef, pack((decode<number>(revision.data()) ?? 0) + 1));
+      }
+      tx.set(ref, pack(next.result)); tx.set(this.metaRef(`sourceAgentVersion:${input.noticeId}:${input.noticeRevision}`), pack(next.result)); return next;
+    });
+    if (decision.closure) this.cache.snapshot = undefined; return decision;
+  }
   async addSourceRun(result: unknown) {
     await this.root.collection('sourceRuns').add({ ...pack(result), createdAt: new Date().toISOString() });
     const old = await this.root.collection('sourceRuns').orderBy('createdAt', 'desc').offset(100).limit(100).get();

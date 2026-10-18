@@ -27,3 +27,20 @@ it('never sends a personal payload with another account token after asynchronous
   await expect(request).rejects.toThrow('Account changed');
   expect(fetcher.mock.calls).toEqual([['/api/runtime']]);
 });
+
+it('uses the configured public Cloud Run API only for analysis after checking its project without credentials',async()=>{
+  const origin='https://manzil-api-example-as.a.run.app'; vi.stubEnv('VITE_AGENT_RUN_ORIGIN',origin);
+  const fetcher=vi.fn(async(url:string)=>url.endsWith('/runtime')?runtime():new Response('{"processed":1}')); vi.stubGlobal('fetch',fetcher);
+  const {send}=await import('../src/lib/api'); await send('/agent/run',{});
+  expect(fetcher.mock.calls.slice(0,2)).toEqual([['/api/runtime'],[origin+'/api/runtime']]);
+  expect(fetcher).toHaveBeenLastCalledWith(origin+'/api/agent/run',expect.objectContaining({headers:expect.objectContaining({Authorization:'Bearer alice-token'})}));
+  await send('/profile',{}); expect(fetcher).toHaveBeenLastCalledWith('/api/profile',expect.anything());
+});
+it('never forwards an account token to an invalid or different-project analysis API',async()=>{
+  vi.stubEnv('VITE_AGENT_RUN_ORIGIN','https://foreign.example'); const fetcher=vi.fn(); vi.stubGlobal('fetch',fetcher);
+  const {send}=await import('../src/lib/api'); await expect(send('/agent/run',{})).rejects.toThrow(/valid Cloud Run/);
+  expect(fetcher).not.toHaveBeenCalled(); expect(identity.headers).not.toHaveBeenCalled();
+  vi.stubEnv('VITE_AGENT_RUN_ORIGIN','https://manzil-api-example-as.a.run.app');
+  fetcher.mockResolvedValueOnce(runtime()).mockResolvedValueOnce(new Response('{"mode":"production","auth":"firebase","storage":"firestore","projectId":"wrong-project"}'));
+  await expect(send('/agent/run',{})).rejects.toThrow(/do not match/); expect(identity.headers).not.toHaveBeenCalled();
+});

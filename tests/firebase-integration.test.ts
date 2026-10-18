@@ -9,6 +9,10 @@ import { createApp } from '../server/app';
 import { readConfig } from '../server/config';
 import { SpeechService } from '../server/speech';
 import { createJourneyPlanner } from '../server/routing';
+import { agentResultKey, agentUsageKey, proposalFingerprint, type AgentResult } from '../shared/agent';
+import { claimInput, finished, notice as agentNotice } from './agent-fixtures';
+import { extraction as agentExtraction, location as agentLocation, now as agentNow } from './agent-fixtures';
+import { prepareAgentProposals } from '../server/agent-proposals';
 import type { Planner } from '../server/commutes';
 import type { Alert, Closure, ClosureDraft, Commute, FuelPriceStatus, PlanRequest, PlanResponse, Trip } from '../shared/types';
 
@@ -18,9 +22,9 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
   let services: ReturnType<typeof firebaseServices>, store: FirestoreStore, server: Server, base: string;
   let alice: string, bob: string, admin: string;
   const children: ChildProcess[] = [];
-  async function compiledServer(role: 'api' | 'worker') {
+  async function compiledServer(role: 'api' | 'worker', workerJobs = 'source,commutes,fuel') {
     const port = await new Promise<number>(resolve => { const listener = createServer(); listener.listen(0, '127.0.0.1', () => { const port = (listener.address() as { port: number }).port; listener.close(() => resolve(port)); }); });
-    const child = spawn(process.execPath, ['build/server/index.js'], { stdio: 'ignore', env: { ...process.env, NODE_ENV: 'test', MANZIL_MODE: 'emulator', MANZIL_SERVICE_ROLE: role, FIREBASE_PROJECT_ID: projectId, HOST: '127.0.0.1', PORT: String(port), X_SCRAPER_ENABLED: 'false', TTS_ENABLED: 'false' } });
+    const child = spawn(process.execPath, ['build/server/index.js'], { stdio: 'ignore', env: { ...process.env, NODE_ENV: 'test', MANZIL_MODE: 'emulator', MANZIL_SERVICE_ROLE: role, WORKER_ALLOWED_JOBS: workerJobs, FIREBASE_PROJECT_ID: projectId, HOST: '127.0.0.1', PORT: String(port), X_SCRAPER_ENABLED: 'false', TTS_ENABLED: 'false' } });
     children.push(child);
     const url = `http://127.0.0.1:${port}`;
     for (let attempt = 0; attempt < 80; attempt++) {
@@ -322,6 +326,13 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
     const count = (await store.sourceStatus()).noticesCollected;
     await store.upsertNotice(source); await store.upsertNotice(source); await store.upsertNotice({ ...source, contentHash: 'edited-x' });
     expect((await store.sourceStatus()).noticesCollected).toBe(count + 1);
+    const publication = { ...source, sourceId: 'synthetic-edit-time', publishedAt: '2026-10-17T08:00:00.000Z' };
+    await store.upsertNotice(publication);
+    const editOnly = { ...publication, publishedAt: null, text: 'Edited synthetic evidence',
+      sourceTimestamp: { at: '2026-10-17T09:00:00.000Z', kind: 'edited' as const }, contentHash: 'edit-only-fixture' };
+    const retained = await new FirestoreStore(services.db).upsertNotice(editOnly);
+    expect(retained.notice).toMatchObject({ publishedAt: publication.publishedAt, sourceTimestamp: editOnly.sourceTimestamp, revision: 2 });
+    expect((await store.upsertNotice(editOnly)).changed).toBe(false);
     const month = 'budget-test';
     const results = await Promise.allSettled([store.reserveSpeech(month, 6, 10), new FirestoreStore(services.db).reserveSpeech(month, 6, 10)]);
     expect(results.filter(item => item.status === 'fulfilled')).toHaveLength(1); expect(await store.speechUsage(month)).toBe(6);
@@ -330,6 +341,92 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
     await new SpeechService(store, config, synthesize).audio('en', { kind: 'test' });
     await new SpeechService(new FirestoreStore(services.db), config, synthesize).audio('en', { kind: 'test' });
     expect(calls).toBe(1);
+  });
+  it('claims Gemini revisions once across instances and atomically rejects stale publication', async () => {
+    const { id: _id, revision: _revision, receivedAt: _received, status: _status, ...input } = agentNotice({ sourceId: 'agent-transaction-fixture' });
+    const post = (await store.upsertNotice(input)).notice, other = new FirestoreStore(services.db), claim = claimInput(post);
+    const before = await store.meta<{ requests: number }>(agentUsageKey(claim.now));
+    const attempts = await Promise.all([store.claimAgentWork(claim), other.claimAgentWork({ ...claim, claimId: 'other-worker' })]);
+    expect(attempts.filter(Boolean)).toHaveLength(1);
+    expect(await store.meta(agentUsageKey(claim.now))).toMatchObject({ requests: (before?.requests ?? 0) + 1 });
+    const claimed = attempts.find(Boolean)!;
+    await other.upsertNotice({ ...input, text: 'Edited while Gemini was processing', contentHash: 'new-agent-revision' });
+    expect(await store.completeAgentWork({ noticeId: post.id, revision: 1, claimId: claimed.claimId, result: finished(claimed), changes: [] })).toBe(false);
+    const edited = (await store.getNotice(post.id))!, next = (await other.claimAgentWork(claimInput(edited, { claimId: 'new-edit' })))!;
+    const snapshot = await store.routingSnapshot(true);
+    expect(await store.completeAgentWork({ noticeId: edited.id, revision: edited.revision, claimId: next.claimId, result: { ...finished(next, 'applied'), closureIds: ['agent-firestore-fixture'] },
+      expectedEventRevision: snapshot.revision, changes: [{ id: 'agent-firestore-fixture', expectedRevision: null, draft: { ...draft,
+        agent: { noticeId: edited.id, sourceId: edited.sourceId, sourceRevision: edited.revision, evidenceAt: edited.publishedAt!, locationKey: 'synthetic-location' } } }] })).toBe(true);
+    expect((await other.getNotice(post.id))?.status).toBe('reviewed');
+    expect((await other.routingSnapshot()).closures.find(item => item.id === 'agent-firestore-fixture')).toMatchObject({ revision: 1 });
+    expect(await other.meta(`sourceAgentVersion:${post.id}:2`)).toMatchObject({ state: 'applied' });
+    const cancelled = await request('/closures/agent-firestore-fixture', admin, undefined, 'DELETE');
+    expect(cancelled.status).toBe(200); expect(await cancelled.json()).toMatchObject({ status: 'cancelled', agent: { overridden: true } });
+    // Any later source update must respect that persistent correction.
+    const third = (await store.upsertNotice({ ...input, text: 'Third source revision', contentHash: 'third-agent-revision' })).notice;
+    const finalClaim = (await store.claimAgentWork(claimInput(third, { claimId: 'third' })))!;
+    const current = await store.routingSnapshot(true), existing = current.closures.find(item => item.id === 'agent-firestore-fixture')!;
+    expect(await other.completeAgentWork({ noticeId: third.id, revision: 3, claimId: finalClaim.claimId, result: finished(finalClaim, 'applied'), expectedEventRevision: current.revision,
+      changes: [{ id: existing.id, expectedRevision: existing.revision, draft: { ...existing, status: 'published' } }] })).toBe(true);
+    expect(await store.meta<AgentResult>(agentResultKey(post.id))).toMatchObject({ state: 'review', closureIds: [] });
+    expect(await store.get('closure', existing.id)).toMatchObject({ status: 'cancelled', agent: { overridden: true } });
+  });
+  it('keeps Gemini status, settings and archived source images admin-only', async () => {
+    for (const path of ['/agent/status', '/agent/results', '/source/media/example']) {
+      expect((await request(path)).status).toBe(401); expect((await request(path, bob)).status).toBe(403);
+    }
+    expect((await request('/agent/status', admin)).status).toBe(200);
+    expect((await request('/agent/settings', bob, { enabled: false, autoPublish: false }, 'PATCH')).status).toBe(403);
+    expect((await request('/agent/settings', admin, { enabled: false, autoPublish: false }, 'PATCH')).status).toBe(200);
+  });
+  async function proposalFixture(sourceId: string) {
+    const { id, revision, receivedAt, status, ...input } = agentNotice({ sourceId });
+    const post = (await store.upsertNotice(input)).notice, claim = (await store.claimAgentWork(claimInput(post)))!;
+    const value = agentExtraction();
+    await store.completeAgentWork({ noticeId: post.id, revision: post.revision, claimId: claim.claimId, result: { ...finished(claim), extraction: value }, changes: [] });
+    const proposals = await prepareAgentProposals(post, value, [], { resolve: async () => agentLocation(), now: agentNow });
+    await store.saveAgentProposals(post.id, post.revision, claim.claimId, proposals);
+    const proposal = proposals[0];
+    return { input, post, proposal, body: { noticeRevision: post.revision, index: 0, version: proposal.version, decision: 'approve',
+      draft: { ...proposal.draft, status: 'published' } } };
+  }
+  it('keeps agent proposals private and requires an admin decision before a single atomic route change', async () => {
+    const { post, proposal, body } = await proposalFixture('agent-admin-proposal-fixture');
+    const path = `/agent/notices/${post.id}`, before = (await store.routingSnapshot()).revision;
+    expect((await store.routingSnapshot()).closures.some(item => item.id === proposal.targetId)).toBe(false);
+    for (const token of [undefined, bob, alice]) {
+      expect((await request(path + '/prepare', token, { revision: 1 })).status).toBe(token ? 403 : 401);
+      expect((await request(path + '/refine', token, { revision: 1 })).status).toBe(token ? 403 : 401);
+      expect((await request(path + '/review', token, body)).status).toBe(token ? 403 : 401);
+    }
+    expect((await request('/agent/settings', admin, { enabled: true, autoPublish: true }, 'PATCH')).status).toBe(409);
+    expect((await request(path + '/prepare', admin, { revision: 1 })).status).toBe(200);
+    const attempts = await Promise.all([request(path + '/review', admin, body), request(path + '/review', admin, body)]);
+    expect(attempts.map(item => item.status).sort()).toEqual([200,409]);
+    expect((await store.routingSnapshot()).revision).toBe(before + 1);
+    expect(await new FirestoreStore(services.db).get('closure', proposal.targetId)).toMatchObject({ revision: 1, reviewedBy: { role: 'admin' }, agent: { sourceRevision: 1 } });
+    expect(await store.meta(`sourceAgentVersion:${post.id}:1`)).toMatchObject({ proposals: [{ state: 'approved' }] });
+  });
+  it('retains rejected proposal history and invalidates source edits across Firestore instances', async () => {
+    const one = await proposalFixture('agent-rejected-proposal-fixture'), before = (await store.routingSnapshot()).revision;
+    expect((await request(`/agent/notices/${one.post.id}/review`, admin, { ...one.body, decision: 'reject', draft: undefined })).status).toBe(200);
+    expect((await request(`/agent/notices/${one.post.id}/review`, admin, one.body)).status).toBe(409);
+    const prepared = await (await request(`/agent/notices/${one.post.id}/prepare`, admin, { revision: 1 })).json();
+    expect(prepared.proposals[0].state).toBe('rejected');
+    expect(await store.get('closure', one.proposal.targetId)).toBeUndefined();
+    const two = await proposalFixture('agent-stale-proposal-fixture');
+    await new FirestoreStore(services.db).upsertNotice({ ...two.input, contentHash: 'updated-proposal-evidence', text: 'New source version' });
+    expect((await request(`/agent/notices/${two.post.id}/review`, admin, two.body)).status).toBe(409);
+    expect((await store.routingSnapshot()).revision).toBe(before);
+  });
+  it('rejects a Firestore refinement racing an administrator decision and preserves its history', async () => {
+    const one = await proposalFixture('agent-refinement-race-fixture');
+    const result = (await store.meta<AgentResult>(agentResultKey(one.post.id)))!;
+    const fingerprint = proposalFingerprint(result.proposals), other = new FirestoreStore(services.db);
+    expect((await request(`/agent/notices/${one.post.id}/review`, admin, { ...one.body,decision: 'reject',draft: undefined })).status).toBe(200);
+    await expect(other.saveAgentProposals(one.post.id,1,result.claimId,result.proposals!,fingerprint)).rejects.toThrow(/changed during refinement/);
+    expect(await other.meta<AgentResult>(agentResultKey(one.post.id))).toMatchObject({ proposals: [{ state: 'rejected' }] });
+    expect(await other.get('closure',one.proposal.targetId)).toBeUndefined();
   });
   it('purges GPS across retention pages and eventually removes every expired summary', async () => {
     const personal = store.forUser('retention-fixture'), now = Date.now();
@@ -353,5 +450,13 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
     const tick = (token?: string) => fetch(`${worker}/internal/tick`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ job: 'commutes' }) });
     expect((await tick()).status).toBe(401); expect((await tick(bob)).status).toBe(403); expect((await tick(admin)).status).toBe(200);
     expect((await fetch(`${worker}/api/state`)).status).toBe(404);
+    const sourceWorker = await compiledServer('worker', 'source');
+    await store.updateSourceStatus({ enabled: false, state: 'disabled' });
+    const sourceTick = (job: string, token = admin) => fetch(`${sourceWorker}/internal/tick`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ job }) });
+    expect((await sourceTick('commutes')).status).toBe(403);
+    expect((await sourceTick('fuel')).status).toBe(403);
+    expect((await sourceTick('source', bob)).status).toBe(403);
+    const disabled = await sourceTick('source');
+    expect(disabled.status).toBe(200); expect(await disabled.json()).toMatchObject({ executed: false, status: { enabled: false } });
   }, 30000);
 });

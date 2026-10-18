@@ -5,6 +5,7 @@ import type { AppState, Closure } from '../shared/types';
 import ClosureList from '../src/components/ClosureList';
 import AdminPanel from '../src/components/AdminPanel';
 import { setLanguage } from '../src/lib/language';
+import { notice, extraction } from './agent-fixtures';
 
 const calls = vi.hoisted(() => ({ api: vi.fn(), send: vi.fn() }));
 vi.mock('../src/lib/api', () => ({ api: calls.api, send: calls.send }));
@@ -26,6 +27,19 @@ const state: AppState = {
 };
 beforeEach(() => { setLanguage('en'); calls.api.mockReset().mockResolvedValue({ ...report, photos: [photo] }); calls.send.mockReset(); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); setLanguage('en'); });
+
+it('opens on Pipeline and combines Gemini posts with community reports in the review queue', async () => {
+  const post = notice({ status: 'reviewed' });
+  const result = { noticeId: post.id,noticeRevision: 1,state: 'review',extraction: extraction(),issues: [],closureIds: [] };
+  calls.api.mockImplementation(async path => path === '/agent/status' ? { enabled: true,configured: true,pending: 0,dailyLimit: 20,attemptedToday: 1 } : [result]);
+  const props = listProps();
+  render(<AdminPanel state={{ ...state,notices: [post] }} at={at} selectedId={null} reload={vi.fn(async () => {})} notify={vi.fn()} onSelect={props.onSelect} onEdit={props.onEdit} onCancel={props.onCancel} onReview={props.onReview} onManualClosure={vi.fn()} />);
+  expect(screen.getByRole('tab',{ name: 'Pipeline' }).getAttribute('aria-selected')).toBe('true');
+  fireEvent.click(await screen.findByRole('tab',{ name: 'Review queue 2' }));
+  const queue = within(screen.getByRole('tabpanel',{ name: 'Review queue' }));
+  expect(queue.getByText('Needs review')).toBeTruthy(); expect(queue.getByRole('button',{ name: /Park RoadPending review/ })).toBeTruthy();
+  expect(queue.getByText('Review on map')).toBeTruthy();
+});
 
 it('shows the road and both Pakistan schedule times before opening report details', () => {
   render(<ClosureList {...listProps()} />);
@@ -68,6 +82,7 @@ it('excludes cancelled pending reports from the admin queue and never offers app
   calls.api.mockResolvedValue(cancelled);
   const props = listProps();
   render(<AdminPanel state={{ ...state, closures: [cancelled] }} at={at} selectedId={null} reload={vi.fn(async () => {})} notify={vi.fn()} onSelect={props.onSelect} onEdit={props.onEdit} onCancel={props.onCancel} onReview={props.onReview} onManualClosure={vi.fn()} />);
+  fireEvent.click(screen.getByRole('tab', { name: 'Blockades' }));
   expect(screen.getByText('No closures here')).toBeTruthy(); expect(screen.queryByRole('button', { name: /Kaghan Road/ })).toBeNull();
   fireEvent.change(screen.getByRole('combobox', { name: 'Report filter' }), { target: { value: 'all' } });
   fireEvent.click(screen.getByRole('button', { name: /Kaghan Road/ })); await screen.findByText('Ali Hassan');

@@ -6,6 +6,7 @@ import type { Closure, ClosureDraft, ClosureReason, Drawing, MapMode } from '../
 import { send } from '../lib/api';
 import { inputISO, localInput } from '../lib/format';
 import { fileToPhotoDataUrl } from '../lib/images';
+import type { AgentProposal } from '../../shared/agent';
 
 interface Props {
   closure: Closure | null; drawing: Drawing; onDraw: (drawing: Drawing) => void;
@@ -13,8 +14,9 @@ interface Props {
   onSave: (draft: ClosureDraft) => Promise<void>; onCancel: () => void;
   seed?: Partial<ClosureDraft>;
   canPublish?: boolean; selectedRoadName?: string;
+  agentProposal?: AgentProposal; onReject?: () => Promise<void>;
 }
-export default function ClosureEditor({ closure, drawing, onDraw, mode, setMode, onSave, onCancel, seed, canPublish = true, selectedRoadName = '' }: Props) {
+export default function ClosureEditor({ closure, drawing, onDraw, mode, setMode, onSave, onCancel, seed, canPublish = true, selectedRoadName = '', agentProposal, onReject }: Props) {
   const [title, setTitle] = useState(closure?.title ?? seed?.title ?? '');
   const [titleTouched, setTitleTouched] = useState(!!(closure?.title ?? seed?.title));
   const [roadTool, setRoadTool] = useState(mode === 'road');
@@ -25,10 +27,11 @@ export default function ClosureEditor({ closure, drawing, onDraw, mode, setMode,
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; sectionSequence.current++; }; }, []);
   useEffect(() => { if (selectedRoadName && !titleTouched && !closure) setTitle(selectedRoadName); }, [selectedRoadName, titleTouched, closure]);
   const [description, setDescription] = useState(closure?.description ?? seed?.description ?? '');
-  const [reason, setReason] = useState<ClosureReason>(closure?.reason ?? 'other');
-  const [start, setStart] = useState(closure ? localInput(new Date(closure.startsAt)) : localInput());
-  const [end, setEnd] = useState(closure?.endsAt ? localInput(new Date(closure.endsAt)) : localInput(new Date(Date.now() + 60 * 60 * 1000)));
-  const [unknownEnd, setUnknownEnd] = useState(closure ? !closure.endsAt : false);
+  const [reason, setReason] = useState<ClosureReason>(closure?.reason ?? seed?.reason ?? 'other');
+  const [start, setStart] = useState(closure?.startsAt || seed?.startsAt ? localInput(new Date((closure?.startsAt ?? seed?.startsAt)!)) : agentProposal ? '' : localInput());
+  const [end, setEnd] = useState(closure?.endsAt || seed?.endsAt ? localInput(new Date((closure?.endsAt ?? seed?.endsAt)!)) : agentProposal ? '' : localInput(new Date(Date.now() + 60 * 60 * 1000)));
+  const [unknownEnd, setUnknownEnd] = useState(closure ? !closure.endsAt : agentProposal ? seed?.endsAt === null : false);
+  const [endConfirmed, setEndConfirmed] = useState(false), [accessConfirmed, setAccessConfirmed] = useState(false);
   const [publish, setPublish] = useState(closure?.status !== 'draft');
   const [sourceUrl, setSourceUrl] = useState(closure?.sourceUrl ?? seed?.sourceUrl ?? '');
   const [error, setError] = useState('');
@@ -45,12 +48,15 @@ export default function ClosureEditor({ closure, drawing, onDraw, mode, setMode,
   async function save(event: React.FormEvent) {
     event.preventDefault(); setError('');
     try {
+      if (agentProposal && !start) throw new Error('Enter the confirmed start time before approving.');
+      if (agentProposal && unknownEnd && !endConfirmed) throw new Error('Confirm that this restriction should remain active until cancelled, or set an end time.');
+      if (agentProposal && (agentProposal.action === 'disruption' || agentProposal.impact !== 'closed') && !accessConfirmed) throw new Error('Confirm that this is an actual road restriction before approving.');
       if (drawing.coordinates.length < minPoints) throw new Error(`Add at least ${minPoints} point${minPoints > 1 ? 's' : ''} to the map.`);
       const startsAt = inputISO(start); const endsAt = unknownEnd ? null : inputISO(end);
       if (endsAt && endsAt <= startsAt) throw new Error('End time must be after the start time.');
       setSaving(true);
       const geometry = await send<Polygon>('/geometry', drawing);
-      await onSave({ title: title.trim(), description: description.trim(), reason, startsAt, endsAt, status: canPublish && publish ? 'published' : 'draft', sourceUrl: sourceUrl.trim() || undefined, geometry, drawing, photos });
+      await onSave({ title: title.trim(), description: description.trim(), reason, startsAt, endsAt, status: canPublish && (agentProposal || publish) ? 'published' : 'draft', sourceUrl: sourceUrl.trim() || undefined, geometry, drawing, photos });
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not save this closure.'); }
     finally { setSaving(false); }
   }
@@ -72,6 +78,7 @@ export default function ClosureEditor({ closure, drawing, onDraw, mode, setMode,
     onDraw({ ...drawing, coordinates: drawing.kind === 'point' ? [next] : [...drawing.coordinates, next] }); setCoordinate(''); setError('');
   }
   return <form className="editor-form" onSubmit={save}>
+    {agentProposal && <div className="pipeline-outcome"><h2>{t('Review agent map proposal')}</h2><p>{t('This draft does not affect routes until you approve it. Check its location, road access and timing.')}</p>{agentProposal.issues.map((issue, index) => <p className="small" key={index}>{t(issue)}</p>)}{(agentProposal.action === 'disruption' || agentProposal.impact !== 'closed') && <label className="check-row"><input type="checkbox" checked={accessConfirmed} onChange={event => setAccessConfirmed(event.target.checked)} />{t('I confirm this is an actual road restriction, not only congestion or a service suspension.')}</label>}</div>}
     <div className="section-heading"><div><span className="eyebrow">{t("MAP EDITOR")}</span><h1>{closure ? t("Edit restriction") : t("Add a road restriction")}</h1></div><button type="button" className="icon-button" aria-label={t("Close editor")} onClick={onCancel}><X size={18} /></button></div>
     <fieldset className="tool-fieldset"><legend>{t('Affected section')}</legend><div className="segmented drawing-tools">
       <button type="button" className={roadTool ? 'active' : ''} aria-pressed={roadTool} onClick={chooseRoad}><Route size={16} aria-hidden="true" />{t('Road section')}</button>
@@ -88,13 +95,15 @@ export default function ClosureEditor({ closure, drawing, onDraw, mode, setMode,
     <label className="field-label">{t("Starts · Pakistan time")}<input type="datetime-local" required value={start} onInput={e => setStart(e.currentTarget.value)} /></label>
     {!unknownEnd && <label className="field-label">{t("Ends · Pakistan time")}<input type="datetime-local" required value={end} onInput={e => setEnd(e.currentTarget.value)} /></label>}
     <label className="check-row"><input type="checkbox" checked={unknownEnd} onChange={e => setUnknownEnd(e.target.checked)} />{t("End time unknown; keep active until cancelled")}</label>
+    {agentProposal && unknownEnd && <label className="check-row"><input type="checkbox" checked={endConfirmed} onChange={event => setEndConfirmed(event.target.checked)} />{t('I approve keeping this restriction active until an administrator cancels it.')}</label>}
     <label className="field-label">{t("Notes ")}<span className="optional">{t("optional")}</span><textarea rows={2} maxLength={3000} value={description} placeholder={t("Affected directions, landmarks or context…")} onChange={e => setDescription(e.target.value)} /></label>
     <div className="closure-photo-editor"><span className="field-label">{t('Photos')} <span className="optional">{photos.length}/2</span></span><div className="closure-photo-grid">{photos.map((photo, index) => <div key={index}><img src={photo} alt={`${t('Closure photo')} ${index + 1}`} /><button type="button" className="icon-button" aria-label={`${t('Remove photo')} ${index + 1}`} onClick={() => setPhotos(current => current.filter((_, i) => i !== index))}><X size={16} /></button></div>)}</div><label className="secondary-button photo-upload"><ImagePlus size={17} aria-hidden="true" />{t(photoBusy ? 'Preparing photo…' : 'Add photo')}<input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={photoBusy || photos.length >= 2} onChange={event => { void addPhoto(event.target.files); event.target.value = ''; }} /></label></div>
     <label className="field-label">{t("Source link ")}<span className="optional">{t("optional")}</span><input type="url" value={sourceUrl} placeholder={t("https://…")} onChange={e => setSourceUrl(e.target.value)} /></label>
-    {canPublish ? <label className="check-row"><input type="checkbox" checked={publish} onChange={e => setPublish(e.target.checked)} />{t("Apply to route planning ")}<span className="optional">{t("otherwise save as draft")}</span></label> : <p className="review-note"><ShieldNote />{t('Your report will be reviewed before appearing on the public map.')}</p>}
+    {agentProposal ? <p className="review-note">{t('Approving publishes your reviewed restriction to the map and route planner.')}</p> : canPublish ? <label className="check-row"><input type="checkbox" checked={publish} onChange={e => setPublish(e.target.checked)} />{t("Apply to route planning ")}<span className="optional">{t("otherwise save as draft")}</span></label> : <p className="review-note"><ShieldNote />{t('Your report will be reviewed before appearing on the public map.')}</p>}
     <p className="small muted">{t("Drawn restrictions apply to intersecting roads in both directions. Review flyovers and divided roads before saving.")}</p>
     {error && <div className="error-box" role="alert">{t(error)}</div>}
-    <button className="primary-button full" disabled={saving || photoBusy || roadBusy || !title.trim()}>{saving ? t("Saving restriction…") : <><Check size={17} />{!canPublish ? t('Submit for review') : closure ? t("Save changes") : publish ? t("Save restriction") : t("Save draft")}</>}</button>
+    <button className="primary-button full" disabled={saving || photoBusy || roadBusy || !title.trim()}>{saving ? t("Saving restriction…") : <><Check size={17} />{agentProposal ? t('Approve and add to map') : !canPublish ? t('Submit for review') : closure ? t("Save changes") : publish ? t("Save restriction") : t("Save draft")}</>}</button>
+    {agentProposal && onReject && <button type="button" className="secondary-button full" disabled={saving} onClick={async () => { setSaving(true); try { await onReject(); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not reject map draft.'); } finally { setSaving(false); } }}>{t('Reject proposal')}</button>}
     <button type="button" className="text-button full centered" onClick={onCancel}>{t("Cancel")}</button>
   </form>;
 }

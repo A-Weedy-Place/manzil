@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 import { useEffect } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { AppState, Closure, RouteOption } from '../shared/types';
 import type { MapViewProps } from '../src/components/MapView';
 import { setLanguage } from '../src/lib/language';
 import { getAuthSession, signInDevelopment, signOut } from '../src/lib/auth';
 import App from '../src/App';
+import type { AgentProposal } from '../shared/agent';
+import { extraction as agentExtraction, location as agentLocation, notice as agentNotice } from './agent-fixtures';
 const capture = vi.hoisted(() => ({ props: null as MapViewProps | null, mounts: 0 }));
 vi.mock('../src/components/MapView', () => ({ default: (props: MapViewProps) => { capture.props = props; useEffect(() => { capture.mounts++; }, []); return <div data-testid="map" />; } }));
 const date = '2026-10-15T10:00:00Z';
@@ -42,6 +44,40 @@ it('takes an administrator from sign-in to the control centre', async () => {
   fireEvent.submit(screen.getByRole('form', { name: 'Sign in' }));
   expect(await screen.findByRole('heading', { name: 'Control centre' })).toBeTruthy();
   expect(screen.getByRole('tab', { name: 'People' })).toBeTruthy();
+});
+it('opens an agent proposal with its map drawing and populated fields, then approves through the protected proposal endpoint', async () => {
+  signInDevelopment('admin@manzil.test', 'ManzilAdmin123!');
+  const post = agentNotice({ status: 'reviewed' }), value = agentExtraction(), event = value.events[0];
+  const proposal: AgentProposal = { index: 0, version: 'offline-version', state: 'pending', action: 'closure', impact: 'closed', mapping: 'road',
+    targetId: 'offline-agent-closure', targetRevision: null, locationKey: agentLocation().key, issues: [],
+    draft: { title: event.title, reason: 'vip', description: post.text, sourceUrl: post.url, startsAt: event.startsAt!, endsAt: event.endsAt,
+      status: 'draft', drawing: agentLocation().drawing, geometry: agentLocation().geometry } };
+  const result = { noticeId: post.id, noticeRevision: 1, state: 'review', extraction: value, proposals: [proposal], issues: [], closureIds: [] };
+  const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === '/api/state') return new Response(JSON.stringify({ ...state, notices: [post] }));
+    if (url === '/api/agent/results') return new Response(JSON.stringify([result]));
+    if (url === '/api/agent/status') return new Response(JSON.stringify({ enabled: true, configured: true, autoPublish: false, dailyLimit: 20, attemptedToday: 1, pending: 0 }));
+    if (url === '/api/geometry') return new Response(JSON.stringify(agentLocation().geometry));
+    if (url.endsWith('/review')) return new Response(JSON.stringify({ result, proposal: { ...proposal, state: 'approved' },
+      closure: { ...JSON.parse(init!.body as string).draft, id: proposal.targetId, revision: 1, createdAt: date, updatedAt: date } }));
+    return responseFor(url);
+  });
+  vi.stubGlobal('fetch', fetcher); render(<App />); await screen.findByRole('tab', { name: 'Pipeline' });
+  fireEvent.click(screen.getByRole('tab', { name: 'Pipeline' }));
+  const panel = screen.getByRole('tabpanel', { name: 'Pipeline' });
+  await within(panel).findByText('Map draft prepared; awaiting approval.');
+  fireEvent.click(panel.querySelector('.pipeline-post>summary')!);
+  fireEvent.click(within(panel).getByRole('button', { name: 'Review on map' }));
+  expect(await screen.findByRole('heading', { name: 'Review agent map proposal' })).toBeTruthy();
+  expect((screen.getByLabelText('Reason') as HTMLSelectElement).value).toBe('vip');
+  expect((screen.getByLabelText('Road / place') as HTMLInputElement).value).toBe(event.title);
+  expect(capture.props?.drawing).toEqual(agentLocation().drawing);
+  expect(capture.props?.focus?.coordinates).toEqual(agentLocation().drawing.coordinates);
+  fireEvent.click(screen.getByRole('button', { name: 'Approve and add to map' }));
+  await waitFor(() => expect(fetcher.mock.calls.some(([url]) => url === `/api/agent/notices/${post.id}/review`)).toBe(true));
+  const approval = fetcher.mock.calls.find(([url]) => url.endsWith('/review'))!;
+  expect(JSON.parse(approval[1]!.body as string)).toMatchObject({ noticeRevision: 1, index: 0, version: proposal.version, decision: 'approve', draft: { title: event.title, reason: 'vip', status: 'published' } });
+  expect(fetcher.mock.calls.some(([url]) => url === '/api/closures')).toBe(false);
 });
 it('can request and display online routes when the bundled local graph is unavailable', async () => {
   const fetcher = vi.fn(async (url: string, init?: RequestInit) => {

@@ -1,147 +1,129 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-import { chromium, type Browser, type Page } from 'playwright-core';
 import type { SourceStatus } from '../shared/types.js';
 import type { Repository } from './repository.js';
+import { SOURCE_INTERVAL_MINUTES } from '../shared/source.js';
+import type { MediaArchiver, MediaSummary } from './source-archive.js';
+import { canonicalPostUrl, MAX_SOURCE_BYTES, parsePublicPosts, PROFILE_URL, sourceMediaUrl, type PublicPost } from './source-html.js';
 
-export const PROFILE_URL = 'https://x.com/shaheryarhassan';
-const AUTHOR = 'shaheryarhassan';
-const INTERVAL_MS = 15 * 60_000;
-export interface PublicPost {
-  sourceId: string; url: string; text: string; publishedAt: string; mediaUrls: string[];
-  contentState?: 'text' | 'media_only' | 'possibly_truncated';
-}
+export { canonicalPostUrl, parsePublicPosts, PROFILE_URL, type PublicPost } from './source-html.js';
+const INTERVAL_MS = SOURCE_INTERVAL_MINUTES * 60_000;
+// Follow clock slots: dispatch jitter must not push a due check past the next cron tick.
+export const nextSourceCheck = (now: number) => Math.floor(now / INTERVAL_MS) * INTERVAL_MS + INTERVAL_MS;
 export interface CollectionResult {
   posts: PublicPost[]; state: 'partial' | 'blocked' | 'error'; message: string;
   observedCount: number;
+  diagnostics?: SourceRequestDiagnostic[];
+}
+export interface SourceRequestDiagnostic {
+  stage: 'profile' | 'detail'; url: string; elapsedMs: number; httpStatus: number | null;
+  failure: 'http_status' | 'content_type' | 'missing_body' | 'body_too_large' | 'request_timeout' | 'collection_timeout' | 'network' | null;
+  networkCode?: string;
 }
 export type Collector = () => Promise<CollectionResult>;
 export const contentHash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
-export function canonicalPostUrl(value: string): { sourceId: string; url: string } | null {
-  try {
-    const url = new URL(value, PROFILE_URL);
-    if (!['x.com', 'www.x.com', 'twitter.com', 'www.twitter.com'].includes(url.hostname)) return null;
-    const match = url.pathname.match(/^\/([^/]+)\/status\/(\d+)\/?$/);
-    if (!match || match[1].toLowerCase() !== AUTHOR) return null;
-    return { sourceId: match[2], url: `https://x.com/${AUTHOR}/status/${match[2]}` };
-  } catch { return null; }
-}
-
 /** Recent raw evidence only; this is not an assertion that a road is closed. */
 export function eligiblePost(post: PublicPost, now: number): boolean {
-  const time = Date.parse(post.publishedAt), age = now - time;
+  const time = Date.parse(post.publishedAt ?? post.sourceTimestamp?.at ?? ''), age = now - time;
+  if (post.pinned && !post.publishedAt) return false;
   if (!Number.isFinite(time) || age < -5 * 60_000 || age > 7 * 86400_000) return false;
   if (age <= 86400_000) return true;
+  if (!post.publishedAt) return false;
   // Keep visible older announcements with an explicit future-day/date hint for agent review.
   // Missing dates are never replaced with the collection time.
   return /tomorrow|next\s+(?:week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|\b\d{1,2}[\/-]\d{1,2}(?:[\/-]\d{2,4})?\b|\b\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)|کل|آئندہ|بروز/i.test(post.text);
 }
 
-export function browserExecutable(): string | undefined {
-  const localRoot = resolve(process.env.PLAYWRIGHT_BROWSERS_PATH ?? '.playwright');
-  const bundled: string[] = [];
-  if (existsSync(localRoot)) {
-    for (const entry of readdirSync(localRoot).filter(name => /^chromium(?:_headless_shell)?-\d+$/.test(name)).sort().reverse()) {
-      bundled.push(join(localRoot, entry, 'chrome-win64/chrome.exe'), join(localRoot, entry, 'chrome-win/chrome.exe'),
-        join(localRoot, entry, 'chrome-linux64/chrome'), join(localRoot, entry, 'chrome-linux/chrome'),
-        join(localRoot, entry, 'chrome-headless-shell-win64/headless_shell.exe'));
-    }
+class SourceRequestError extends Error {
+  constructor(readonly blocked: boolean, readonly failure: SourceRequestDiagnostic['failure']) { super('Public source request was not usable.'); }
+}
+// Only emit machine codes, never raw errors, headers, environment values or response bodies.
+function networkCode(error: unknown): string | undefined {
+  for (let depth = 0; depth < 5 && error && typeof error === 'object'; depth++) {
+    const item = error as { code?: unknown; cause?: unknown };
+    if (typeof item.code === 'string' && /^(?:E[A-Z0-9_]+|UND_ERR_[A-Z0-9_]+|ERR_TLS_[A-Z0-9_]+|CERT_[A-Z0-9_]+|DEPTH_ZERO_SELF_SIGNED_CERT)$/.test(item.code)) return item.code;
+    error = item.cause;
   }
-  const paths = [process.env.BROWSER_EXECUTABLE_PATH, process.env.MANZIL_BROWSER_EXECUTABLE,
-    ...bundled,
-    process.env.PROGRAMFILES && join(process.env.PROGRAMFILES, 'Google/Chrome/Application/chrome.exe'),
-    process.env['PROGRAMFILES(X86)'] && join(process.env['PROGRAMFILES(X86)']!, 'Microsoft/Edge/Application/msedge.exe'),
-    process.env.PROGRAMFILES && join(process.env.PROGRAMFILES, 'Microsoft/Edge/Application/msedge.exe'),
-    process.env.LOCALAPPDATA && join(process.env.LOCALAPPDATA, 'Google/Chrome/Application/chrome.exe'),
-    '/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome', chromium.executablePath()];
-  return paths.find((path): path is string => Boolean(path && existsSync(path)));
+}
+async function publicHtml(url: string, fetcher: typeof fetch, signal: AbortSignal, diagnostics: SourceRequestDiagnostic[]): Promise<string> {
+  const started = Date.now(), requestSignal = AbortSignal.any([signal, AbortSignal.timeout(15_000)]);
+  const diagnostic: SourceRequestDiagnostic = { stage: url === PROFILE_URL ? 'profile' : 'detail', url, elapsedMs: 0, httpStatus: null, failure: null };
+  try {
+    const response = await fetcher(url, { redirect: 'manual', signal: requestSignal,
+      headers: { Accept: 'text/html,application/xhtml+xml' } });
+    diagnostic.httpStatus = response.status;
+    const blocked = [401, 403, 429].includes(response.status) || response.status >= 300 && response.status < 400;
+    let failure: SourceRequestDiagnostic['failure'] = null;
+    if (!response.ok) failure = 'http_status';
+    else if (!/^(?:text\/html|application\/xhtml\+xml)(?:;|$)/i.test(response.headers.get('content-type') ?? '')) failure = 'content_type';
+    else if (Number(response.headers.get('content-length')) > MAX_SOURCE_BYTES) failure = 'body_too_large';
+    if (failure || !response.body) {
+      await response.body?.cancel(); throw new SourceRequestError(blocked, failure ?? 'missing_body');
+    }
+    const reader = response.body.getReader(), decoder = new TextDecoder(); let bytes = 0, html = '';
+    try {
+      while (true) {
+        const part = await reader.read(); if (part.done) break;
+        bytes += part.value.byteLength;
+        if (bytes > MAX_SOURCE_BYTES) throw new SourceRequestError(false, 'body_too_large');
+        html += decoder.decode(part.value, { stream: true });
+      }
+      return html + decoder.decode();
+    } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
+  } catch (error) {
+    diagnostic.failure = error instanceof SourceRequestError ? error.failure : signal.aborted ? 'collection_timeout' : requestSignal.aborted || error instanceof Error && error.name === 'TimeoutError' ? 'request_timeout' : 'network';
+    const code = networkCode(error); if (code) diagnostic.networkCode = code;
+    throw error;
+  } finally { diagnostic.elapsedMs = Date.now() - started; diagnostics.push(diagnostic); }
 }
 
-async function visiblePosts(page: Page): Promise<PublicPost[]> {
-  const candidates = await page.locator('article').evaluateAll(articles => articles.slice(0, 35).map(article => {
-    const time = article.querySelector('time');
-    const anchor = time?.closest('a');
-    const text = article.querySelector('[data-testid="tweetText"]')?.textContent ?? '';
-    const mediaUrls = [...new Set([...article.querySelectorAll('img[src], video[poster]')].map(image => image.getAttribute('src') || image.getAttribute('poster') || '')
-      .filter(url => /^https:\/\/pbs\.twimg\.com\/(?:media|ext_tw_video_thumb|amplify_video_thumb)\//.test(url)))].slice(0, 4);
-    const truncated = Boolean(article.querySelector('[data-testid="tweet-text-show-more-link"]')) || /(?:…|\.\.\.)\s*$/.test(text);
-    return { url: anchor?.getAttribute('href') ?? '', publishedAt: time?.getAttribute('datetime') ?? '', text, mediaUrls, truncated };
-  }));
-  return candidates.flatMap(post => {
-    const id = canonicalPostUrl(post.url);
-    return id && (post.text.trim() || post.mediaUrls.length) && Number.isFinite(Date.parse(post.publishedAt))
-      ? [{ ...id, publishedAt: post.publishedAt, mediaUrls: post.mediaUrls, text: post.text.trim().slice(0, 20_000),
-        contentState: !post.text.trim() ? 'media_only' as const : post.truncated ? 'possibly_truncated' as const : 'text' as const }] : [];
-  });
-}
-
-/** A new, signed-out browser context; no existing user profile, cookies, or sessions. */
-export async function collectPublicPosts(): Promise<CollectionResult> {
-  const executablePath = browserExecutable();
-  if (!executablePath) return { posts: [], state: 'blocked', observedCount: 0,
-    message: 'No supported local Chrome, Edge, or Chromium executable found. Set MANZIL_BROWSER_EXECUTABLE or import a notice manually. No browser is downloaded automatically.' };
-  let browser: Browser | undefined;
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  const started = Date.now();
-  let phase = 'browser launch';
+/** Bounded, cookie-free public HTML. No browser, script execution or alternate-source fallback. */
+export async function collectPublicPosts(options: { fetcher?: typeof fetch; now?: number } = {}): Promise<CollectionResult> {
+  const fetcher = options.fetcher ?? fetch, now = options.now ?? Date.now();
+  const deadline = AbortSignal.timeout(35_000);
+  const diagnostics: SourceRequestDiagnostic[] = [];
+  let observedCount = 0, incomplete = 0;
   const posts = new Map<string, PublicPost>();
   try {
-    browser = await chromium.launch({ executablePath, headless: true, timeout: 10_000 });
-    timeout = setTimeout(() => { void browser?.close().catch(() => {}); }, Math.max(1000, 43_000 - (Date.now() - started)));
-    const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
-    const page = await context.newPage();
-    page.setDefaultTimeout(5000);
-    phase = 'public profile navigation';
-    const response = await page.goto(PROFILE_URL, { waitUntil: 'domcontentloaded', timeout: 20_000 });
-    if (response && [401, 403, 429].includes(response.status())) return { posts: [], state: 'blocked', observedCount: 0,
-      message: `X returned HTTP ${response.status()} to a signed-out visitor. Collection stopped; manual import remains available.` };
-    phase = 'public profile inspection';
-    // Only inspect the normal public UI. Never interact with login or challenge controls.
-    await page.locator('article, [data-testid="primaryColumn"]').first().waitFor({ timeout: 7000 }).catch(() => {});
-    for (let pass = 0; pass < 3 && Date.now() - started < 28_000; pass++) {
-      for (const post of await visiblePosts(page)) posts.set(post.sourceId, post);
-      if (pass < 2) { await page.mouse.wheel(0, 900); await page.waitForTimeout(1200); }
-    }
-    if (!posts.size) {
-      const body = (await page.locator('body').innerText()).slice(0, 12_000);
-      const blocked = /log in|sign in|sign up|something went wrong|verify|captcha|rate limit|not supported/i.test(body);
-      return { posts: [], observedCount: 0, state: blocked ? 'blocked' : 'partial', message: blocked
-        ? 'X did not expose timestamped public posts to this signed-out browser (login, error, or challenge page). No bypass was attempted. Import public notices manually.'
-        : 'No timestamped posts by the configured author were visible. This check cannot establish whether new posts exist. Import notices manually if needed.' };
-    }
-    // A few canonical public permalinks can expose full text where the profile card was truncated.
-    for (const post of [...posts.values()].filter(item => eligiblePost(item, Date.now())).sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt)).slice(0, 3)) {
-      if (Date.now() - started > 34_000) break;
+    const profile = parsePublicPosts(await publicHtml(PROFILE_URL, fetcher, deadline, diagnostics));
+    observedCount = profile.observedCount;
+    if (!profile.posts.length) return { posts: [], observedCount, diagnostics, state: profile.blocked ? 'blocked' : 'partial',
+      message: 'The public page exposed no usable timestamped posts. Access or markup may have changed; coverage is unknown. Manual import remains available.' };
+    const candidates = profile.posts.filter(post => eligiblePost(post, now)).sort((a, b) =>
+      Date.parse(b.publishedAt ?? b.sourceTimestamp!.at) - Date.parse(a.publishedAt ?? a.sourceTimestamp!.at));
+    for (const post of candidates.slice(0, 4)) {
+      let selected = post;
       try {
-        phase = 'visible public permalink inspection';
-        await page.goto(post.url, { waitUntil: 'domcontentloaded', timeout: 4000 });
-        await page.locator('article').first().waitFor({ timeout: 1500 });
-        const expanded = (await visiblePosts(page)).find(item => item.sourceId === post.sourceId);
-        if (expanded && (expanded.text.length >= post.text.length || expanded.mediaUrls.length > post.mediaUrls.length)) posts.set(post.sourceId, expanded);
-      } catch { /* Keep the publicly visible profile text, with partial coverage stated. */ }
+        const detail = parsePublicPosts(await publicHtml(post.url, fetcher, deadline, diagnostics), post.sourceId).posts[0];
+        if (detail) selected = detail; else incomplete++;
+      } catch (error) {
+        incomplete++;
+        if (error instanceof SourceRequestError && error.blocked) {
+          if (post.publishedAt) posts.set(post.sourceId, post);
+          return { posts: [...posts.values()], observedCount, diagnostics, state: posts.size ? 'partial' : 'blocked',
+            message: 'A public detail request was blocked or redirected. Further requests stopped; no bypass was attempted. Coverage remains partial.' };
+        }
+      }
+      // Profile-only relative/displayed times can be edit times. Never label them as publication.
+      // Keep known edited times separately, with publishedAt null, for explicit later review.
+      if ((selected.publishedAt || selected.sourceTimestamp?.kind === 'edited') && eligiblePost(selected, now)) posts.set(selected.sourceId, selected);
+      else incomplete++;
+      if (deadline.aborted) break;
     }
-    return { posts: [...posts.values()], observedCount: posts.size, state: 'partial',
-      message: 'Inspected a bounded signed-out public profile and up to three visible post permalinks. Coverage is partial: missing posts, images, deleted posts, and text truncation may be missed. Raw notices await your agent.' };
+    return { posts: [...posts.values()], observedCount, diagnostics, state: 'partial',
+      message: `Read bounded signed-out public HTML and at most four linked posts. ${incomplete} detail/time checks were incomplete. Coverage is partial: bursts, edits, deletions and media may be missed; unknown publication times require review. Raw notices await the agent.` };
   } catch (error) {
-    const networkCode = error instanceof Error ? error.message.match(/net::(ERR_[A-Z_]+)/)?.[1] : undefined;
-    const category = error instanceof Error && error.name === 'TimeoutError' ? 'time limit'
-      : networkCode ? `network access error: ${networkCode}` : 'browser operation error';
-    return { posts: [...posts.values()], observedCount: posts.size, state: posts.size ? 'partial' : 'error',
-      message: `The bounded signed-out check stopped during ${phase} (${category}). No login or access-control bypass was attempted. Manual import is available.` };
-  } finally {
-    if (timeout) clearTimeout(timeout);
-    await browser?.close().catch(() => {});
+    return { posts: [...posts.values()], observedCount, diagnostics, state: posts.size ? 'partial' : error instanceof SourceRequestError && error.blocked ? 'blocked' : 'error',
+      message: 'The bounded public HTML check failed or was blocked. Existing data is retained; no alternate source or access-control bypass was attempted. Manual import remains available.' };
   }
 }
 
 export class SourceService {
   private running: Promise<SourceStatus> | null = null;
   private timer?: ReturnType<typeof setInterval>;
-  constructor(private store: Repository, private collector: Collector = collectPublicPosts) {}
+  constructor(private store: Repository, private collector: Collector = collectPublicPosts, private archive?: MediaArchiver) {}
   async settings(enabled: boolean): Promise<SourceStatus> {
-    return this.store.updateSourceStatus({ enabled, intervalMinutes: 15,
+    return this.store.updateSourceStatus({ enabled, intervalMinutes: SOURCE_INTERVAL_MINUTES,
       state: enabled ? (this.running ? 'checking' : 'idle') : 'disabled',
       nextCheckAt: enabled ? new Date().toISOString() : null,
       message: enabled ? 'Automatic signed-out public checks enabled. Coverage remains partial.' : 'Automatic source checks disabled. Manual import is available.' });
@@ -153,7 +135,7 @@ export class SourceService {
   }
   start() {
     if (this.timer) return;
-    // API startup never waits for a browser. A missed deadline is caught up once after restart.
+    // API startup never waits for source I/O. A missed deadline is caught up once after restart.
     this.timer = setInterval(() => { void this.due().then(due => due ? this.check() : undefined).catch(() => {}); }, 30_000);
     this.timer.unref();
     setImmediate(() => { void this.due().then(due => due ? this.check() : undefined).catch(() => {}); });
@@ -167,28 +149,39 @@ export class SourceService {
   private async run(): Promise<SourceStatus> {
     const now = Date.now();
     if (!await this.store.acquireSourceLease(now)) return this.store.sourceStatus();
-    await this.store.updateSourceStatus({ lastAttemptAt: new Date(now).toISOString(), state: 'checking',
-      nextCheckAt: new Date(now + INTERVAL_MS).toISOString(), message: 'Checking the signed-out public profile. Coverage is partial.' });
+    await this.store.updateSourceStatus({ lastAttemptAt: new Date(now).toISOString(), state: 'checking', intervalMinutes: SOURCE_INTERVAL_MINUTES,
+      nextCheckAt: new Date(nextSourceCheck(now)).toISOString(), message: 'Checking the signed-out public profile. Coverage is partial.' });
     try {
       const result = await this.collector();
-      let changed = 0, skipped = 0;
+      const acceptedPosts: PublicPost[] = [];
+      let changed = 0, skipped = 0, accepted = 0;
       for (const post of result.posts) {
         const canonical = canonicalPostUrl(post.url);
-        if (!canonical || canonical.sourceId !== post.sourceId || !eligiblePost(post, now)) { skipped++; continue; }
-        const input = { source: 'x' as const, ...canonical, text: post.text.slice(0, 20_000), publishedAt: new Date(post.publishedAt).toISOString(),
-          mediaUrls: post.mediaUrls.filter(value => /^https:\/\/pbs\.twimg\.com\/(?:media|ext_tw_video_thumb|amplify_video_thumb)\//.test(value)).slice(0, 4),
+        if (!canonical || canonical.sourceId !== post.sourceId || !eligiblePost(post, now) ||
+          !post.publishedAt && post.sourceTimestamp?.kind !== 'edited') { skipped++; continue; }
+        const input = { source: 'x' as const, ...canonical, text: post.text.slice(0, 20_000), publishedAt: post.publishedAt ? new Date(post.publishedAt).toISOString() : null,
+          ...(post.sourceTimestamp ? { sourceTimestamp: post.sourceTimestamp } : {}),
+          mediaUrls: post.mediaUrls.filter(sourceMediaUrl).slice(0, 4),
           contentState: post.contentState ?? (!post.text.trim() ? 'media_only' : 'text') };
+        accepted++;
+        acceptedPosts.push(post);
         if ((await this.store.upsertNotice({ ...input, contentHash: contentHash(input) })).changed) changed++;
       }
+      let media: MediaSummary | undefined;
+      if (this.archive) media = await this.archive(acceptedPosts);
       await this.store.setMeta('sourceCoverage', { checkedAt: new Date(now).toISOString(), observedCount: result.observedCount,
         latestObservedId: result.posts.map(post => post.sourceId).sort((a, b) => a.length - b.length || a.localeCompare(b)).at(-1) ?? null,
         skipped, changed, completeHistory: false });
       const current = await this.store.sourceStatus();
       const status = await this.store.updateSourceStatus({ state: current.enabled ? result.state : 'disabled',
-        lastSuccessAt: result.posts.length ? new Date().toISOString() : current.lastSuccessAt,
-        message: `${result.message} ${changed} new or edited notices queued; ${skipped} outside the date/author window skipped.` });
-      await this.store.addSourceRun({ startedAt: new Date(now).toISOString(), finishedAt: new Date().toISOString(),
-        state: status.state, observedCount: result.observedCount, changed, skipped, coverage: 'partial' });
+        lastSuccessAt: accepted ? new Date().toISOString() : current.lastSuccessAt,
+        message: `${result.message} ${changed} new or edited notices queued; ${skipped} outside the date/author window skipped.${media ? ` Images: ${media.saved} saved, ${media.cached} cached, ${media.failed} failed, ${media.skipped} skipped.` : ''}` });
+      const run = { startedAt: new Date(now).toISOString(), finishedAt: new Date().toISOString(),
+        state: status.state, observedCount: result.observedCount, accepted, changed, skipped, coverage: 'partial',
+        diagnostics: result.diagnostics ?? [], ...(media ? { media } : {}) };
+      await this.store.setMeta('sourceLastRun', run);
+      await this.store.addSourceRun(run);
+      console.log(JSON.stringify({ event: 'source_collection', ...run }));
       return status;
     } catch {
       return this.store.updateSourceStatus({ state: (await this.store.sourceStatus()).enabled ? 'error' : 'disabled',

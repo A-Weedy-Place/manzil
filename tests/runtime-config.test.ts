@@ -2,6 +2,21 @@ import { describe, expect, it } from 'vitest';
 import { isAllowedApplicationHost, readConfig } from '../server/config';
 const production = { NODE_ENV: 'production', FIREBASE_PROJECT_ID: 'manzil-example', ALLOWED_HOSTS: 'manzil-api.example.run.app', ALLOWED_ORIGINS: 'https://manzil-example.web.app' };
 describe('runtime isolation', () => {
+  it('confines manual model dispatch to an exact private HTTPS origin and project workload identity',()=>{
+    const origin='https://worker-abc-as.a.run.app';
+    expect(readConfig({...production,AGENT_WORKER_URL:origin}).agentWorkerUrl).toBe(origin);
+    for (const url of ['http://worker-abc-as.a.run.app','https://worker.example.test','https://worker-abc-as.a.run.app/path','https://worker-abc-as.a.run.app?q=x','https://user:password@worker-abc-as.a.run.app'])
+      expect(()=>readConfig({...production,AGENT_WORKER_URL:url})).toThrow();
+    expect(()=>readConfig({AGENT_WORKER_URL:origin})).toThrow();
+    expect(()=>readConfig({...production,WORKER_MANUAL_SERVICE_ACCOUNT_EMAIL:'api@other-project.iam.gserviceaccount.com'})).toThrow();
+  });
+  it('confines source-media configuration to production workers and validates allowed jobs', () => {
+    const env = { ...production, MANZIL_SERVICE_ROLE: 'worker', WORKER_AUDIENCE: 'https://worker.example.run.app', WORKER_SERVICE_ACCOUNT_EMAIL: 'scheduler@example.test', SOURCE_MEDIA_BUCKET: 'private-source-media', WORKER_ALLOWED_JOBS: 'source' };
+    expect(readConfig(env)).toMatchObject({ sourceMediaBucket: 'private-source-media', workerJobs: ['source'] });
+    expect(() => readConfig({ ...env, MANZIL_SERVICE_ROLE: 'api' })).toThrow('production worker');
+    expect(() => readConfig({ ...env, WORKER_ALLOWED_JOBS: 'unknown' })).toThrow();
+    expect(() => readConfig({ SOURCE_MEDIA_BUCKET: 'private-source-media' })).toThrow('production worker');
+  });
   it('accepts Firebase Hosting tags only for the explicitly selected Cloud Run service', () => {
     const service = 'manzil-api-abc123-as.a.run.app';
     const env = { ...production, ALLOWED_HOSTS: service, FIREBASE_HOSTING_SERVICE_HOST: service };

@@ -11,6 +11,11 @@ import { HttpError } from './errors.js';
 import { drawingToPolygon, summarizeTrace } from './geometry.js';
 import { closureDraftSchema, closureUpdateSchema, commuteSchema, coordinateSchema, drawingSchema, instantSchema, noticeSchema, planSchema, polygonSchema, profilePatchSchema, tripSchema } from './validation.js';
 import { SourceService, contentHash } from './source.js';
+import { cloudMediaArchiver } from './source-archive.js';
+import { SOURCE_INTERVAL_MINUTES } from '../shared/source.js';
+import { AgentService } from './agent.js';
+import { createAgentDispatch } from './agent-dispatch.js';
+import { cloudAgentImages } from './agent-images.js';
 import { getRoutingGraph, graphStatus, planJourney, searchPlaces } from './routing/index.js';
 import { activeClosureRoads } from './routing/closure-segments.js';
 import { demoCatalogue, toggleDemo } from './demos.js';
@@ -31,6 +36,8 @@ interface AppOptions {
   speech?: SpeechService;
   fuel?: FuelService;
   source?: SourceService; planner?: Planner;
+  agent?: AgentService;
+  dispatchAgent?: () => Promise<unknown>;
   graph?: () => GraphStatus; places?: (query: string) => Place[] | Promise<Place[]>;
   roadGraph?: () => RoutingGraph | null;
 }
@@ -70,7 +77,12 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
   // services deliberately use the root repository and never acquire personal scope.
   const store = new Proxy(rootStore, { get(_target, key) { const scoped = context.getStore() ?? rootStore; const value = Reflect.get(scoped, key); return typeof value === 'function' ? value.bind(scoped) : value; } });
   const app = express();
-  const source = options.source ?? new SourceService(rootStore);
+  const source = options.source ?? new SourceService(rootStore, undefined,
+    config.sourceMediaBucket ? cloudMediaArchiver(rootStore, config.projectId, config.sourceMediaBucket) : undefined);
+  const imageReader = config.sourceMediaBucket || config.sourceMediaReadBucket
+    ? cloudAgentImages(rootStore, config.projectId, (config.sourceMediaBucket ?? config.sourceMediaReadBucket)!) : undefined;
+  const agent = options.agent ?? new AgentService(rootStore, undefined, undefined, imageReader);
+  const dispatchAgent = options.dispatchAgent ?? (config.agentWorkerUrl ? createAgentDispatch(config.agentWorkerUrl) : undefined);
   const speech = options.speech ?? new SpeechService(rootStore);
   const fuel = options.fuel ?? new FuelService(rootStore);
   const verifyToken = options.verifyToken ?? (async token => { const decoded = await firebaseServices(config.projectId).auth.verifyIdToken(token, true); return { uid: decoded.uid, admin: decoded.admin === true, name: typeof decoded.name === 'string' ? decoded.name : undefined }; });
@@ -103,7 +115,7 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
     next();
   });
   app.use(express.json({ limit: '4mb', strict: true }));
-  mountWorker(app, config, rootStore, source, fuel);
+  mountWorker(app, config, rootStore, source, fuel, agent);
   // Finish writes/checks before responding in cloud mode; no untracked work after HTTP success.
   // Capture the actual scope, not the proxy's process-wide object identity.
   const recheck = () => checkEnabledCommutes(context.getStore() ?? rootStore, planner, Date.now(), true);
@@ -267,13 +279,14 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
     const draft: ClosureInput = { ...body, ...(previous.author ? { author: previous.author } : {}),
       moderation: isReviewer(member) ? 'approved' : 'pending', status: isReviewer(member) ? body.status : 'draft',
       photos: body.photos ?? previous.photos ?? [], photoCount: (body.photos ?? previous.photos)?.length ?? 0,
-      ...(previous.reviewedBy ? { reviewedBy: previous.reviewedBy, reviewedAt: previous.reviewedAt } : {}) };
+      ...(previous.reviewedBy ? { reviewedBy: previous.reviewedBy, reviewedAt: previous.reviewedAt } : {}),
+      ...(previous.agent ? { agent: { ...previous.agent, overridden: true } } : {}) };
     const closure = await store.saveClosure(draft, previous.id, revision); if (config.mode === 'local') await recheck(); response.json(closure);
   });
   routes.delete('/closures/:id', async (request, response) => {
     const previous = await getRecord<Closure>(store, 'closure', id(request));
     assertEditClosure(previous, response.locals.membership);
-    const closure = await store.saveClosure({ ...previous, status: 'cancelled' }, previous.id, previous.revision); if (config.mode === 'local') await recheck(); response.json(closure);
+    const closure = await store.saveClosure({ ...previous, status: 'cancelled', ...(previous.agent ? { agent: { ...previous.agent, overridden: true } } : {}) }, previous.id, previous.revision); if (config.mode === 'local') await recheck(); response.json(closure);
   });
   routes.get('/commutes', async (_request, response) => response.json(await store.list('commute', 100)));
   routes.post('/commutes', async (request, response) => {
@@ -337,10 +350,49 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
     response.json(await store.setNoticeStatus(id(request), body.status));
   });
   routes.get('/agent/outbox', async (_request, response) => response.json(await store.pendingAgentNotices()));
+  routes.get('/agent/status', async (_request, response) => response.json({ ...await agent.status(),
+    canRunHere: config.mode === 'production' ? !!dispatchAgent : agent.config.enabled && !!agent.config.apiKey,
+    execution: config.mode === 'production' ? dispatchAgent ? 'private_worker' : 'scheduled_only' : 'local' }));
+  routes.get('/agent/results', async (_request, response) => response.json(await agent.results()));
+  routes.post('/agent/notices/:id/prepare', async (request, response) => {
+    const body = z.object({ revision: z.number().int().positive() }).strict().parse(request.body);
+    response.json(await agent.prepareNotice(id(request), body.revision));
+  });
+  routes.post('/agent/notices/:id/review', async (request, response) => {
+    const body = z.object({ noticeRevision: z.number().int().positive(), index: z.number().int().min(0).max(2),
+      version: z.string().uuid(), decision: z.enum(['approve', 'reject']), draft: closureDraftSchema.optional(),
+      confirmRestriction: z.boolean().optional(), confirmUnknownEnd: z.boolean().optional() }).strict().parse(request.body);
+    const reviewer = await actorFor(store, response.locals.membership!, response.locals.user);
+    const decision = await rootStore.reviewAgentProposal({ ...body, noticeId: id(request), reviewer });
+    if (decision.closure && config.mode === 'local') await recheck(); response.json(decision);
+  });
+  routes.post('/agent/run', async (_request, response) => {
+    z.object({}).strict().parse(_request.body);
+    if (config.mode === 'production') {
+      if (!dispatchAgent) throw new HttpError(409, 'Manual analysis is not configured. The private scheduled worker still processes saved posts.');
+      response.json(await dispatchAgent()); return;
+    }
+    response.json(await agent.run());
+  });
+  routes.post('/agent/notices/:id/refine', async (request, response) => {
+    const body = z.object({ revision: z.number().int().positive() }).strict().parse(request.body);
+    response.json(await agent.refineNotice(id(request), body.revision));
+  });
+  routes.patch('/agent/settings', async (request, response) => {
+    const settings = z.object({ enabled: z.boolean(), autoPublish: z.boolean() }).strict().parse(request.body);
+    if (settings.autoPublish) throw new HttpError(409, 'Administrator approval is required for agent map changes.');
+    await rootStore.setMeta('sourceAgentSettings', settings); response.json(await agent.status());
+  });
+  routes.get('/source/media/:id', async (request, response) => {
+    if (!imageReader) throw new HttpError(503, 'Private source image access is not configured.');
+    const notice = await store.getNotice(id(request));
+    if (!notice) throw new HttpError(404, 'Source notice not found.');
+    response.json({ images: (await imageReader(notice)).map(image => ({ mimeType: image.mimeType, data: image.bytes.toString('base64'), kind: image.kind })) });
+  });
   routes.get('/source/status', async (_request, response) => response.json(await store.sourceStatus()));
   routes.post('/source/check', async (_request, response) => response.json(await source.check()));
   routes.patch('/source/settings', async (request, response) => {
-    const settings = z.object({ enabled: z.boolean(), intervalMinutes: z.literal(15).optional() }).strict().parse(request.body);
+    const settings = z.object({ enabled: z.boolean(), intervalMinutes: z.literal(SOURCE_INTERVAL_MINUTES).optional() }).strict().parse(request.body);
     response.json(await source.settings(settings.enabled));
   });
   app.use('/api', routes);

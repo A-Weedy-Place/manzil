@@ -22,9 +22,12 @@
     "test": "vitest run",
     "start": "tsx server/index.ts",
     "data:import": "tsx scripts/import-osm.ts",
-    "source:check": "tsx scripts/check-source.ts"
+    "source:check": "tsx scripts/check-source.ts",
+    "source:probe": "tsx scripts/probe-source.ts",
+    "agent:probe": "tsx scripts/probe-agent.ts"
   },
   "dependencies": {
+    "@google-cloud/storage": "^8.4.0",
     "@google-cloud/text-to-speech": "^7.2.0",
     "@turf/boolean-intersects": "^7.2.0",
     "@turf/buffer": "^7.2.0",
@@ -36,12 +39,15 @@
     "google-auth-library": "^11.3.1",
     "lucide-react": "^0.468.0",
     "maplibre-gl": "^6.14.0",
+    "parse5": "^8.0.1",
     "playwright-core": "^1.55.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "zod": "^4.1.0"
   },
-  "overrides": { "@grpc/grpc-js": "^1.14.0" },
+  "overrides": {
+    "@grpc/grpc-js": "^1.14.0"
+  },
   "devDependencies": {
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.8",

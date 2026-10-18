@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { Store } from '../server/store';
-import { SourceService, canonicalPostUrl, eligiblePost, type PublicPost } from '../server/source';
+import { SourceService, canonicalPostUrl, eligiblePost, nextSourceCheck, type PublicPost } from '../server/source';
 
 const stores: Store[] = [];
 afterEach(() => stores.splice(0).forEach(store => store.close()));
@@ -10,6 +10,32 @@ const post = (changes: Partial<PublicPost> = {}): PublicPost => ({ sourceId: '12
   publishedAt: new Date().toISOString(), mediaUrls: [], ...changes });
 
 describe('bounded public source intake', () => {
+  it('aligns deadlines with cron slots so variable dispatch delay does not skip the next tick', () => {
+    const slot = Date.parse('2026-10-17T15:00:00Z');
+    expect(nextSourceCheck(slot + 33_000)).toBe(slot + 300_000);
+    expect(nextSourceCheck(slot + 1_000)).toBe(slot + 300_000);
+    expect(nextSourceCheck(slot - 1)).toBe(slot);
+    expect(nextSourceCheck(slot)).toBe(slot + 300_000);
+  });
+  it('uses five-minute deadlines and keeps its lease through media persistence', async () => {
+    const db = store(), before = Date.now();
+    const archive = async () => {
+      expect(db.acquireSourceLease(Date.now())).toBe(false);
+      expect(db.meta<number>('sourceLeaseUntil')).toBeGreaterThan(before + 150_000);
+      return { saved: 1, cached: 0, failed: 0, skipped: 0 };
+    };
+    const service = new SourceService(db, async () => ({ state: 'partial', posts: [post()], observedCount: 1, message: 'Fixture' }), archive);
+    await service.settings(true); await service.check();
+    const status = db.sourceStatus();
+    expect(status.intervalMinutes).toBe(5);
+    expect(Date.parse(status.nextCheckAt!) % 300_000).toBe(0);
+    expect(Date.parse(status.nextCheckAt!) - Date.parse(status.lastAttemptAt!)).toBeGreaterThan(0);
+    expect(Date.parse(status.nextCheckAt!) - Date.parse(status.lastAttemptAt!)).toBeLessThanOrEqual(300_000);
+    expect(db.meta('sourceLastRun')).toMatchObject({ accepted: 1, changed: 1, media: { saved: 1 } });
+    expect(db.acquireSourceLease(Date.now())).toBe(true);
+    expect(await service.due(Date.parse(status.nextCheckAt!) - 1)).toBe(false);
+    expect(await service.due(Date.parse(status.nextCheckAt!))).toBe(true);
+  });
   it('only accepts canonical posts by the configured author', async () => {
     expect(canonicalPostUrl('https://twitter.com/shaheryarhassan/status/123456789?s=20')).toEqual({ sourceId: '123456789', url: post().url });
     expect(canonicalPostUrl('https://x.com/other/status/123456789')).toBeNull();
@@ -60,5 +86,30 @@ describe('bounded public source intake', () => {
     const a = service.check(), b = service.check(); finish(); await Promise.all([a, b]); expect(calls).toBe(1); expect((await service.due())).toBe(false);
     db.updateSourceStatus({ state: 'checking', nextCheckAt: new Date(Date.now() + 15 * 60_000).toISOString() });
     db.setMeta('sourceLeaseUntil', Date.now() - 1); expect((await service.due())).toBe(true);
+  });
+  it('retains an established publication time across edit-only observations and deduplicates repeated edits', async () => {
+    const db = store(), publishedAt = new Date(Date.now() - 60_000).toISOString(), editedAt = new Date().toISOString();
+    let current = post({ publishedAt });
+    const service = new SourceService(db, async () => ({ state: 'partial', observedCount: 1, posts: [current], message: 'Synthetic edit evidence' }));
+    await service.check();
+    current = post({ text: 'Edited synthetic advisory', publishedAt: null, sourceTimestamp: { at: editedAt, kind: 'edited' } });
+    await service.check(); await service.check();
+    expect(db.listNotices()[0]).toMatchObject({ publishedAt, sourceTimestamp: { at: editedAt, kind: 'edited' }, revision: 2 });
+    expect(db.pendingAgentCount()).toBe(1);
+  });
+  it('stores edit-only evidence with unknown original publication, rather than using collection time', async () => {
+    const db = store(), editedAt = new Date().toISOString();
+    const service = new SourceService(db, async () => ({ state: 'partial', observedCount: 1, posts: [post({ publishedAt: null, sourceTimestamp: { at: editedAt, kind: 'edited' } })], message: 'Synthetic edit-only evidence' }));
+    await service.check(); await service.check();
+    expect(db.listNotices()[0]).toMatchObject({ publishedAt: null, sourceTimestamp: { at: editedAt, kind: 'edited' }, revision: 1 });
+  });
+  it('does not call an old pinned-only or ambiguous timestamp result a successful check', async () => {
+    const db = store();
+    const service = new SourceService(db, async () => ({ state: 'partial', observedCount: 2, posts: [
+      post({ publishedAt: '2023-09-24T15:29:02Z', pinned: true }),
+      post({ publishedAt: null, sourceTimestamp: { at: new Date().toISOString(), kind: 'displayed' } }),
+    ], message: 'Synthetic unusable evidence' }));
+    await service.check();
+    expect(db.sourceStatus().lastSuccessAt).toBeNull(); expect(db.listNotices()).toEqual([]);
   });
 });

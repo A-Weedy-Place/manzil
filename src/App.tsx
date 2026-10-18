@@ -29,6 +29,8 @@ import { normalizeMapStyleId } from './lib/mapStyle';
 import AdminPanel from './components/AdminPanel';
 import ClosureList from './components/ClosureList';
 import { useTravelCapture } from './lib/useTravelCapture';
+import type { AgentProposal, AgentProposalDecision } from '../shared/agent';
+import AgentReopeningReview from './components/AgentReopeningReview';
 
 type View = 'journey' | 'planning' | 'closures' | 'commutes' | 'activity' | 'sources' | 'alerts' | 'profile' | 'navigation' | 'admin';
 const NAV = [
@@ -82,6 +84,8 @@ export default function App() {
   const [planning, setPlanning] = useState(false); const [planError, setPlanError] = useState('');
   const [editorOpen, setEditorOpen] = useState(false); const [editing, setEditing] = useState<Closure | null>(null);
   const [editorSeed, setEditorSeed] = useState<Partial<ClosureDraft> | undefined>();
+  const [agentReview, setAgentReview] = useState<{ notice: SourceNotice; proposal: AgentProposal } | null>(null);
+  const [adminWorkspaceTab,setAdminWorkspaceTab] = useState<'reports' | 'users' | 'pipeline' | 'review'>('pipeline');
   const [editorKey, setEditorKey] = useState(0);
   const [drawing, setDrawing] = useState<Drawing | null>(null);
   const [selectedRoadName, setSelectedRoadName] = useState('');
@@ -133,9 +137,10 @@ export default function App() {
       setOrigin(EXAMPLE_ORIGIN); setDestination(EXAMPLE_DESTINATION); setWaypoints([]); setNavigationPosition(null); setFocus(null); setView('journey');
     }
     previousAccount.current = user?.uid;
+    setAdminWorkspaceTab('pipeline');
     if (user) { setEntryAccepted(true); setView(user.role === 'admin' ? 'admin' : 'journey'); }
     setState(null); lastLoadedState.current = null; setRecordedPoints([]); setHistoryTrace([]);
-    setEditorOpen(false); setEditing(null); setEditorSeed(undefined); setDrawing(null); setSelectedRoadName(''); setSelectedClosure(null); setBaselineSelected(false);
+    setEditorOpen(false); setEditing(null); setEditorSeed(undefined); setAgentReview(null); setDrawing(null); setSelectedRoadName(''); setSelectedClosure(null); setBaselineSelected(false);
     setDeparture(localInput()); setClock(new Date().toISOString());
     reload().catch(() => {});
     const timer = setInterval(() => { if (!document.hidden) void reload().catch(() => {}); }, 20000);
@@ -248,20 +253,39 @@ export default function App() {
   }
   function beginClosure(seed?: Partial<ClosureDraft>) {
     if (!user) { setAccountOpen(true); return; }
-    setView('closures'); setEditing(null); setEditorSeed(seed); setSelectedClosure(null);
+    setView('closures'); setEditing(null); setEditorSeed(seed); setSelectedClosure(null); setAgentReview(null);
     setSelectedRoadName(''); setDrawing({ kind: 'line', coordinates: [], widthMeters: 14 }); setMode('road'); setEditorOpen(true); setEditorKey(key => key + 1);
+  }
+  function reviewAgentOnMap(notice: SourceNotice, proposal?: AgentProposal) {
+    beginClosure(proposal?.draft ?? { description: notice.text, sourceUrl: notice.url || undefined });
+    if (!proposal) return;
+    setAgentReview({ notice, proposal });
+    if (proposal.draft.drawing) { setDrawing(proposal.draft.drawing); setMode('browse'); focusPoints(proposal.draft.drawing.coordinates); }
+    else if (proposal.draft.geometry) { setDrawing({ kind: 'polygon', coordinates: proposal.draft.geometry.coordinates[0].slice(0, -1) as Coordinate[], widthMeters: 14 }); setMode('browse'); focusPoints(proposal.draft.geometry.coordinates[0] as Coordinate[]); }
+  }
+  async function decideAgentOnMap(decision: 'approve' | 'reject', draft?: ClosureDraft) {
+    if (!agentReview) return;
+    const { notice, proposal } = agentReview;
+    const result = await send<AgentProposalDecision>(`/agent/notices/${encodeURIComponent(notice.id)}/review`,
+      { noticeRevision: notice.revision, index: proposal.index, version: proposal.version, decision, ...(draft ? { draft,
+        confirmRestriction: true, confirmUnknownEnd: draft.endsAt === null } : {}) });
+    cancelEditor(); await reload();
+    setAdminWorkspaceTab('review'); setView('admin');
+    if (result.closure) { setSelectedClosure(result.closure.id); focusPoints(result.closure.geometry.coordinates[0] as Coordinate[]); }
+    notify(decision === 'reject' ? 'Agent proposal rejected. No map change was made.' : proposal.action === 'reopening' ? 'Reopening approved. The restriction has been cancelled.' : 'Agent proposal approved and added to the map.');
   }
   async function editClosure(closure: Closure) {
     const startingView = latestView.current;
     try { closure = await api<Closure>(`/closures/${encodeURIComponent(closure.id)}`); } catch (reason) { notify(reason instanceof Error ? reason.message : 'Could not load the report.'); return; }
     if (latestView.current !== startingView) return;
     setSelectedRoadName('');
-    setEditing(closure); setEditorSeed(undefined); setSelectedClosure(closure.id); setView('closures');
+    setEditing(closure); setEditorSeed(undefined); setAgentReview(null); setSelectedClosure(closure.id); setView('closures');
     setDrawing(closure.drawing ?? { kind: 'polygon', coordinates: closure.geometry.coordinates[0].slice(0, -1) as Coordinate[], widthMeters: 35 });
     setMode('browse'); setEditorOpen(true); setEditorKey(key => key + 1); focusPoints(closure.geometry.coordinates[0] as Coordinate[]);
   }
-  function cancelEditor() { setEditorOpen(false); setDrawing(null); setEditing(null); setEditorSeed(undefined); setMode('browse'); }
+  function cancelEditor() { setEditorOpen(false); setDrawing(null); setEditing(null); setEditorSeed(undefined); setAgentReview(null); setMode('browse'); }
   async function saveClosure(draft: ClosureDraft) {
+    if (agentReview) { await decideAgentOnMap('approve', draft); return; }
     const result = editing ? await send<Closure>(`/closures/${editing.id}`, { ...draft, revision: editing.revision }, 'PUT') : await send<Closure>('/closures', draft);
     cancelEditor(); setSelectedClosure(result.id); await reload(); focusPoints(result.geometry.coordinates[0] as Coordinate[]); notify(result.moderation === 'pending' ? 'Report submitted for review.' : editing ? 'Restriction updated. Replan to use the latest schedule.' : 'Restriction saved. It will apply during its scheduled period.');
   }
@@ -370,7 +394,7 @@ export default function App() {
         <button className="sheet-size-toggle" aria-label={panelExpanded ? 'Show more of the map' : 'Expand controls'} aria-expanded={panelExpanded} onClick={() => setPanelExpanded(!panelExpanded)}><span /></button>
         {!state ? <div className="panel-content"><span className="eyebrow">{t("MANZIL LOCAL")}</span><h1>{t("Getting the road ready.")}</h1><p className="muted">{t("Connecting to your local workspace…")}</p>{startupError && <><div className="error-box">{t(startupError)}</div><button className="secondary-button" onClick={() => reload().catch(() => {})}><RefreshCw size={16} />{t("Retry connection")}</button><p className="small muted">{t("Run ")}<code>{t("npm run dev")}</code> {t("from the project folder.")}</p></>}</div> : <>
           {!online && <div className="offline-banner"><WifiOff size={16} />{t("Connection lost. Showing the last loaded data.")}</div>}
-          {view === 'admin' && isAdmin && <div className="panel-content"><AdminPanel state={state} at={mapDepartureAt} selectedId={selectedClosure} reload={reload} notify={notify} onSelect={selectClosure} onEdit={editClosure} onCancel={cancelClosure} onReview={reviewClosure} onManualClosure={notice => beginClosure({ description: notice.text, sourceUrl: notice.url || undefined })} /></div>}
+          {view === 'admin' && isAdmin && <div className="panel-content"><AdminPanel state={state} at={mapDepartureAt} selectedId={selectedClosure} reload={reload} notify={notify} onSelect={selectClosure} onEdit={editClosure} onCancel={cancelClosure} onReview={reviewClosure} onManualClosure={reviewAgentOnMap} initialTab={adminWorkspaceTab} onTabChange={setAdminWorkspaceTab} /></div>}
           <div className="panel-content" hidden={view !== 'journey' && view !== 'planning'}>
             <div className="section-heading journey-heading"><h1>{view === 'planning' ? t('Plan ahead') : plan ? t("Your routes") : t("Where to?")}</h1><button className="text-button" data-tour="help" onClick={() => setHelpOpen(!helpOpen)} aria-expanded={helpOpen}>{t("Help & demos")}</button></div>
             {view === 'planning' && <PlanAheadTime at={departureISO} onChange={changeMapTime} onLive={() => navigate('journey')} />}
@@ -390,7 +414,7 @@ export default function App() {
             {(view === 'journey' || view === 'planning') && helpOpen && <div className="help-panel"><button className="text-button" onClick={() => { navigate('journey'); setTourOpen(true); }}>{t('Replay tour')}</button><button className="text-button" onClick={() => navigate('closures')}>{t('Road closures')}</button><button className="text-button" onClick={() => navigate('sources')}>{t('Source updates')}</button></div>}
           </div>
           <div className="panel-content" hidden={view !== 'closures'}>
-            {editorOpen && drawing ? <ClosureEditor key={editorKey} closure={editing} seed={editorSeed} drawing={drawing} onDraw={setDrawing} mode={mode} setMode={setMode} onSave={saveClosure} onCancel={cancelEditor} canPublish={isReviewer} selectedRoadName={selectedRoadName} /> : <>
+            {editorOpen && drawing ? agentReview?.proposal.action === 'reopening' ? <AgentReopeningReview proposal={agentReview.proposal} onApprove={() => decideAgentOnMap('approve')} onReject={() => decideAgentOnMap('reject')} onCancel={cancelEditor} /> : <ClosureEditor key={editorKey} closure={editing} seed={editorSeed} drawing={drawing} onDraw={setDrawing} mode={mode} setMode={setMode} onSave={saveClosure} onCancel={cancelEditor} canPublish={isReviewer} selectedRoadName={selectedRoadName} agentProposal={agentReview?.proposal} onReject={agentReview ? () => decideAgentOnMap('reject') : undefined} /> : <>
               <div className="section-heading"><h1>{t("Road closures")}</h1><Flag size={22} /></div><button className="primary-button full" onClick={() => beginClosure()}><Plus size={18} />{t("Add closure")}</button>
               {isAdmin && (<div className="row import-export"><button className="text-button" onClick={exportClosures} disabled={!state.closures.length}><Download size={15} />{t("Export GeoJSON")}</button><button className="text-button" onClick={() => fileInput.current?.click()}><Upload size={15} />{t("Import")}</button><input ref={fileInput} type="file" accept=".geojson,.json,application/geo+json,application/json" hidden onChange={importClosures} /></div>)}
               <div className="filter-row"><span className="small muted">{t("At ")}{time(departureISO)} {t("· ")}{dayDate(departureISO)}</span><select className="small-select" aria-label={t("Filter restrictions")} value={closureFilter} onChange={e => setClosureFilter(e.target.value)}><option value="current">{t("Current & upcoming")}</option><option value="active">{t("Active")}</option><option value="scheduled">{t("Scheduled")}</option><option value="draft">{t("Drafts")}</option><option value="all">{t("All restrictions")}</option></select></div>
@@ -400,7 +424,7 @@ export default function App() {
           </div>
           <div className="panel-content" hidden={view !== 'commutes'}>{!user ? <PersonalFeatureGate onSignIn={() => setAccountOpen(true)} /> : <CommutePanel key={`commutes-${commuteOpen}`} state={state} origin={origin} destination={destination} waypoints={waypoints} initialOpen={commuteOpen > 0} reload={reload} notify={notify} onPlan={selectCommute} onSelectEndpoints={() => navigate('journey')} />}</div>
           <div className="panel-content" hidden={view !== 'activity'}>{!user ? <PersonalFeatureGate onSignIn={() => setAccountOpen(true)} /> : <ActivityPanel key={user.uid} active={view === 'activity'} state={state} points={recordedPoints} setPoints={points => { setRecordedPoints(points); if (points.length) setHistoryTrace([]); }} reload={reload} notify={notify} onView={trip => { setHistoryTrace(trip.points); setHistoryName(trip.name); focusPoints(trip.points.map(p => p.coordinate)); }} />}</div>
-          <div className="panel-content" hidden={view !== 'sources'}>{isAdmin && <SourcePanel state={state} reload={reload} notify={notify} onManualClosure={notice => beginClosure({ title: 'Review · imported notice', description: notice.text, sourceUrl: notice.url || undefined })} />}</div>
+          <div className="panel-content" hidden={view !== 'sources'}>{isAdmin && view === 'sources' && <SourcePanel state={state} reload={reload} notify={notify} onManualClosure={reviewAgentOnMap} />}</div>
           <div className="panel-content" hidden={view !== 'profile'}>{state.profile && <ProfilePanel account={user} onSignOut={leaveAccount} personalFeaturesAvailable={!!user} onSignIn={() => setAccountOpen(true)} onTour={() => { navigate('journey'); setTourOpen(true); }} state={state} reload={reload} notify={notify} onSources={() => navigate('sources')} onActivity={() => navigate('activity')} onSaveProposal={saveProposal} />}</div>
           {view === 'navigation' && <div className="panel-content">{routeForGuidance && destination ? <NavigationPanel key={user?.uid ?? 'guest'} onSample={travel.capture} savesTravelData={!!user && state.profile.collectTravelData === true} onVisitedStops={count => { visitedStops.current = count; }} stops={waypoints.filter((place): place is Place => !!place).map(place => place.coordinate)} route={routeForGuidance} destination={destination.name} stale={stale} onBack={() => navigate('journey')} onPosition={setNavigationPosition} onReplan={replanFromGPS} onFocus={focusPoints} /> : <><h1>{t("Choose a route first")}</h1><button className="primary-button" onClick={() => navigate('journey')}>{t("Open the planner")}</button></>}</div>}
           <div className="panel-content" hidden={view !== 'alerts'}>{!user ? <PersonalFeatureGate onSignIn={() => setAccountOpen(true)} /> : <>

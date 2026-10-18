@@ -16,6 +16,8 @@ export function translate(text: string, language: Language): string {
   if (translated !== undefined) return text.replace(trimmed, translated);
   // Format dynamic, app-owned messages without changing source evidence or road names.
   const patterns: [RegExp, (match: RegExpMatchArray) => string][] = [
+    [/^(\d+) min ago$/, m => `${m[1]} منٹ پہلے`],
+    [/^Scheduled checks every (\d+) minutes$/, m => `ہر ${m[1]} منٹ بعد مقررہ جانچ`],
     [/^Step (\d+) of (\d+)$/, m => `مرحلہ ${m[1]} از ${m[2]}`],
     [/^Stop (\d+)$/, m => `پڑاؤ ${m[1]}`],
     [/^(\d+) min$/, m => `${m[1]} منٹ`], [/^(\d+) hr (\d+) min$/, m => `${m[1]} گھنٹے ${m[2]} منٹ`],

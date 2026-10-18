@@ -7,25 +7,39 @@ import { t } from '../lib/language';
 import ClosureList from './ClosureList';
 import SourcePanel from './SourcePanel';
 import FuelPrices from './FuelPrices';
+import type { AgentProposal } from '../../shared/agent';
+import AgentPanel from './AgentPanel';
+import { useAgentPipeline } from '../lib/useAgentPipeline';
+import { pipelineCounts } from '../lib/pipeline';
 
 interface Member { uid: string; email?: string; displayName?: string; disabled: boolean; role: 'user' | 'verified' | 'admin'; verified: boolean; createdAt?: string; lastSignInAt?: string }
 interface Directory { users: Member[]; nextPageToken?: string }
 interface Props {
   state: AppState; at: string; selectedId: string | null; reload: () => Promise<void>; notify: (message: string) => void;
   onSelect: (closure: Closure) => void; onEdit: (closure: Closure) => void; onCancel: (closure: Closure) => void;
-  onReview: (closure: Closure, decision: 'approve' | 'reject') => Promise<void>; onManualClosure: (notice: SourceNotice) => void;
+  onReview: (closure: Closure, decision: 'approve' | 'reject') => Promise<void>; onManualClosure: (notice: SourceNotice, proposal?: AgentProposal) => void;
+  initialTab?: 'reports' | 'users' | 'pipeline' | 'review'; onTabChange?: (tab: 'reports' | 'users' | 'pipeline' | 'review') => void;
 }
 export default function AdminPanel(props: Props) {
-  const [tab, setTab] = useState<'reports' | 'users' | 'pipeline'>('reports');
+  const [tab, updateTab] = useState<'reports' | 'users' | 'pipeline' | 'review'>(props.initialTab ?? 'pipeline');
+  const setTab = (value: typeof tab) => { updateTab(value); props.onTabChange?.(value); };
+  const pipeline = useAgentPipeline(props.state.notices);
+  const counts = pipelineCounts(props.state.notices,pipeline.results);
   const [filter, setFilter] = useState<'pending' | 'all'>('pending');
   const pending = props.state.closures.filter(item => item.status === 'draft' && item.moderation === 'pending');
+  const reviewCount = pipeline.loading ? '…' : pipeline.error ? '?' : pending.length + counts.review;
   return <>
     <div className="section-heading"><div><span className="eyebrow">{t('ADMIN WORKSPACE')}</span><h1>{t('Control centre')}</h1></div><ShieldCheck size={25} /></div>
-    <div className="admin-stats"><div><strong>{pending.length}</strong><span>{t('Awaiting review')}</span></div><div><strong>{props.state.closures.filter(item => closureState(item, props.at) === 'active').length}</strong><span>{t('Active closures')}</span></div></div>
-    <div className="admin-tabs" role="tablist" aria-label={t('Admin sections')}>{([['reports', Flag, 'Blockades'], ['users', Users, 'People'], ['pipeline', Workflow, 'Pipeline']] as const).map(([key, Icon, label]) => <button role="tab" aria-selected={tab === key} key={key} onClick={() => setTab(key)}><Icon size={16} aria-hidden="true" />{t(label)}</button>)}</div>
+    <div className="admin-stats pipeline-admin-stats"><button onClick={() => setTab('review')}><strong>{reviewCount}</strong><span>{t('Awaiting review')}</span></button><button onClick={() => setTab('pipeline')}><strong>{counts.waiting + counts.processing}</strong><span>{t('Waiting / analysing')}</span></button><button onClick={() => setTab('reports')}><strong>{props.state.closures.filter(item => closureState(item, props.at) === 'active').length}</strong><span>{t('Active closures')}</span></button></div>
+    <div className="admin-tabs" role="tablist" aria-label={t('Admin sections')}>{([['pipeline', Workflow, 'Pipeline'], ['review', ShieldCheck, 'Review queue'], ['reports', Flag, 'Blockades'], ['users', Users, 'People']] as const).map(([key, Icon, label]) => <button role="tab" aria-selected={tab === key} aria-label={key === 'review' ? `${t(label)} ${reviewCount}` : undefined} key={key} onClick={() => setTab(key)}><Icon size={16} aria-hidden="true" />{t(label)}{key === 'review' && <span className="tab-count">{reviewCount}</span>}</button>)}</div>
+    {tab === 'review' && <section role="tabpanel" aria-label={t('Review queue')} className="source-pipeline"><h2>{t('Awaiting your decision')}</h2><p className="small muted">{t('This queue combines Gemini post proposals and community reports. Analysed does not mean approved.')}</p>
+      <AgentPanel notices={props.state.notices} pipeline={pipeline} reviewOnly onManualClosure={props.onManualClosure} onRefresh={props.reload}
+        onMark={async (notice,status) => { await send('/notices/' + encodeURIComponent(notice.id),{status},'PATCH'); await props.reload(); await pipeline.refresh(); }} />
+      <h2>{t('Community reports')} ({pending.length})</h2><ClosureList closures={pending} at={props.at} selectedId={props.selectedId} reviewer canEdit={() => true} onSelect={props.onSelect} onEdit={props.onEdit} onCancel={props.onCancel} onReview={props.onReview} />
+    </section>}
     {tab === 'reports' && <section role="tabpanel" aria-label={t('Blockades')}><div className="filter-row"><select aria-label={t('Report filter')} value={filter} onChange={event => setFilter(event.target.value as typeof filter)}><option value="pending">{t('Awaiting review')}</option><option value="all">{t('All blockades')}</option></select><button className="icon-button" aria-label={t('Refresh reports')} onClick={() => props.reload().catch(reason => props.notify(String(reason)))}><RefreshCw size={17} /></button></div><ClosureList closures={filter === 'pending' ? pending : props.state.closures} at={props.at} selectedId={props.selectedId} reviewer canEdit={() => true} onSelect={props.onSelect} onEdit={props.onEdit} onCancel={props.onCancel} onReview={props.onReview} /></section>}
     {tab === 'users' && <section role="tabpanel" aria-label={t('People')}><UserDirectory /></section>}
-    {tab === 'pipeline' && <section role="tabpanel" aria-label={t('Pipeline')}><FuelPipeline state={props.state} reload={props.reload} /><SourcePanel state={props.state} reload={props.reload} notify={props.notify} onManualClosure={props.onManualClosure} /></section>}
+    {tab === 'pipeline' && <section role="tabpanel" aria-label={t('Pipeline')}><SourcePanel state={props.state} reload={props.reload} notify={props.notify} onManualClosure={props.onManualClosure} pipeline={pipeline} onOpenReview={() => setTab('review')} /><details className="pipeline-help"><summary>{t('Daily fuel prices')}</summary><FuelPipeline state={props.state} reload={props.reload} /></details></section>}
   </>;
 }
 function FuelPipeline({ state, reload }: Pick<Props, 'state' | 'reload'>) {

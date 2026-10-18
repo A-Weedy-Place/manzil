@@ -11,8 +11,14 @@ ALLOWED_ORIGINS: "https://manzil-app-v1.web.app,https://manzil-app-v1.firebaseap
 TTS_ENABLED: "false"
 PUBLIC_CLOUD_SPEECH: "false"
 TTS_MONTHLY_CHARACTER_LIMIT: "100000"
+# Initial default only; persisted source settings enable the private-worker pilot.
+# The API never starts a production polling timer.
 X_SCRAPER_ENABLED: "false"
 # Public endpoints for light, non-commercial prototype use. Both clients cache,
 # coalesce and limit remote request starts; replace before larger-scale operation.
 OSRM_BASE_URL: "https://router.project-osrm.org"
 PHOTON_BASE_URL: "https://photon.komoot.io"
+# Authenticated admin previews only; the public API never receives the model key.
+SOURCE_MEDIA_READ_BUCKET: "manzil-app-v1-source-media"
+# Admin-triggered analysis uses this API's workload identity; no model secret here.
+AGENT_WORKER_URL: "https://manzil-source-worker-ld6lwscfya-as.a.run.app"

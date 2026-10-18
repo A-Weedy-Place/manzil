@@ -1,5 +1,9 @@
 # Vehicle and fuel estimates
 
+**17 October Gemini release:** model-extracted petrol/diesel announcements can appear in admin Pipeline as **unconfirmed**, retaining effective-date uncertainty and source evidence. They do not overwrite authoritative PSO records or reprice recorded trips. Gemini is deployed and real text/image generation is verified; daily production PSO scheduling is still separate and inactive. [Model workflow](GEMINI_INTEGRATION.md).
+
+**Production status (17 October):** vehicle/fuel features are deployed in `0fd5592` / `manzil-api-00005-zg5`. The hosted cache currently reports **unavailable** with zero records. An authenticated admin can request the existing bounded PSO check from Pipeline; deployment QA did not run that mutation. No private worker/Scheduler is deployed, so automatic daily production refresh is not active. Source prices/browser evidence below belong to the earlier local phase. [Release evidence](IMPLEMENTATION_STATUS.md#feature-release-deployed--17-october).
+
 Profiles can store an optional car or motorcycle, a label, petrol or diesel, and self-reported **km per litre**. Economy may be blank; no fuel cost is shown until both an economy and an applicable dated price exist. Valid economy is 1–200 km/L. A motorcycle selection describes consumption only: the current road engine still uses its existing car-access profile, so it does not claim motorcycle-specific permissions or shortcuts.
 
 Route cards calculate `distance / 1000 / kmPerLitre × PKR per litre`. These are estimates, separate from travel time. They exclude idling, road conditions, driving style, tolls, maintenance and outlet freight. A future journey uses the latest known applicable reference rate; future prices are not forecast or guaranteed.

@@ -21,6 +21,7 @@ export interface ClosureDraft {
   startsAt: string; endsAt: string | null;
   status: 'published' | 'draft' | 'cancelled';
   geometry: Polygon; drawing?: Drawing; sourceUrl?: string; photos?: string[];
+  agent?: { noticeId: string; sourceId: string; sourceRevision: number; evidenceAt: string; evidenceBasis?: 'source' | 'admin_review'; locationKey: string; overridden?: boolean };
 }
 export interface Closure extends ClosureDraft, ClosureModeration { id: string; revision: number; createdAt: string; updatedAt: string }
 export type ClosureInput = ClosureDraft & ClosureModeration;
@@ -61,6 +62,8 @@ export interface Alert {
 export interface SourceNotice {
   id: string; source: 'x' | 'manual'; sourceId: string; url: string;
   text: string; publishedAt: string | null; receivedAt: string;
+  /** Source-displayed/edit time is evidence, never a replacement for unknown publication time. */
+  sourceTimestamp?: { at: string; kind: 'published' | 'edited' | 'displayed' };
   status: 'pending_agent' | 'reviewed' | 'dismissed';
   revision: number; mediaUrls: string[]; contentHash: string;
   contentState?: 'text' | 'media_only' | 'possibly_truncated';

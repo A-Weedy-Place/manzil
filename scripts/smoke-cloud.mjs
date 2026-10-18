@@ -1,7 +1,9 @@
 // Read-only deployment checks. Rejected write requests must never create records.
 const base = new URL(process.argv[2] ?? 'https://manzil-app-v1.web.app');
 const expectedProject = process.argv[3] ?? 'manzil-app-v1';
-const national = process.argv[4] === '--national';
+const national = process.argv.slice(4).includes('--national');
+const collectionEnabled = process.argv.slice(4).includes('--collection-enabled');
+const gemini = process.argv.slice(4).includes('--gemini');
 if (base.protocol !== 'https:' || base.pathname !== '/' || base.search || base.hash || base.username || base.password)
   throw new Error('Provide an HTTPS origin without a path, query or credentials.');
 const websiteOrigin = `https://${expectedProject}.web.app`;
@@ -23,7 +25,8 @@ const runtime = await request('/api/runtime');
 assert(runtime.mode === 'production' && runtime.projectId === expectedProject && runtime.auth === 'firebase', 'Wrong deployed environment');
 const state = await request('/api/state');
 for (const key of ['commutes', 'alerts', 'trips', 'notices']) assert(Array.isArray(state[key]) && state[key].length === 0, `Guest state exposes ${key}`);
-assert(!state.sourceStatus.enabled, 'Automatic collection must stay disabled for the first deployment');
+assert(state.sourceStatus.enabled === collectionEnabled, 'Source collection does not match the expected deployment state');
+if (collectionEnabled) assert(state.sourceStatus.intervalMinutes === 5, 'Expected five-minute collection interval');
 const speech = await request('/api/speech/status');
 assert(speech.enabled === false, 'Cloud speech must stay disabled for the first deployment');
 const plan = await request('/api/plan', { body: {
@@ -44,6 +47,16 @@ await request('/api/CLOSURES/', { body: {}, status: 401 });
 await request('/api/NoTiCeS/', { status: 401 });
 await request('/api/runtime', { status: 401, headers: { Authorization: 'Bearer deployment-invalid-token' } });
 await request('/api/runtime', { status: 403, headers: { Origin: 'https://example.invalid' } });
+if (gemini) {
+  await request('/api/agent/status', { status: 401 });
+  await request('/api/agent/results', { status: 401 });
+  await request('/api/agent/run', { body: {}, status: 401 });
+  await request('/api/agent/notices/smoke/refine', { body: { revision: 1 }, status: 401 });
+  await request('/api/agent/settings', { method: 'PATCH', body: { enabled: true, autoPublish: true }, status: 401 });
+  await request('/api/source/media/deployment-readonly-probe', { status: 401 });
+  await request('/api/agent/notices/deployment-readonly-probe/prepare', { body: { revision: 1 }, status: 401 });
+  await request('/api/agent/notices/deployment-readonly-probe/review', { body: {}, status: 401 });
+}
 let nationalResult;
 if (national) {
   const places = await request('/api/places?q=Lahore');
@@ -64,5 +77,5 @@ if (national) {
     distanceMeters: nationalPlan.options[0].distanceMeters, durationSeconds: nationalPlan.options[0].durationSeconds, foreignEndpointRejected: true };
 }
 console.log(JSON.stringify({ origin: base.origin, checks, graphReady: true, storage: 'firestore', project: expectedProject,
-  routeOptions: plan.options.length, personalAccessDenied: true, guestWritesDenied: true, cloudSpeechEnabled: false,
-  automaticCollectionEnabled: false, national: nationalResult }, null, 2));
+  routeOptions: plan.options.length, personalAccessDenied: true, guestWritesDenied: true, cloudSpeechEnabled: speech.enabled,
+  automaticCollectionEnabled: state.sourceStatus.enabled, geminiEndpointsGuestDenied: gemini || undefined, national: nationalResult }, null, 2));

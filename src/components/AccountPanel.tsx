@@ -3,20 +3,21 @@ import { ArrowRight, Mail, ShieldCheck, X } from 'lucide-react';
 import { t } from '../lib/language';
 import Modal from './Modal';
 import { DEV_ACCOUNTS, DEV_AUTH_ENABLED, EMULATOR_AUTH_ENABLED, FIREBASE_AUTH_ENABLED, signInAccount, createAccount, resetPassword } from '../lib/auth';
+import { accountError } from '../lib/accountErrors';
 
-/** Explicit localhost development login; Firebase will later supply real identity/tokens. */
+/** Shared account form for explicit local development and Firebase identities. */
 export default function AccountPanel({ onClose, entry = false, onAuthenticated }: { onClose: () => void; entry?: boolean; onAuthenticated?: () => void }) {
   const [screen, setScreen] = useState<'login' | 'signup' | 'reset'>('login');
-  const [email, setEmail] = useState(''), [password, setPassword] = useState(''), [error, setError] = useState('');
+  const [email, setEmail] = useState(''), [password, setPassword] = useState(''), [error, setError] = useState<{ message: string; code?: string } | null>(null);
   const [busy, setBusy] = useState(false), [message, setMessage] = useState('');
   async function submit(event: React.FormEvent) {
-    event.preventDefault(); setError('');
+    event.preventDefault(); setError(null);
     if (busy || !DEV_AUTH_ENABLED && !FIREBASE_AUTH_ENABLED || DEV_AUTH_ENABLED && screen !== 'login') return;
     setBusy(true); setMessage('');
     try {
       if (screen === 'reset') { await resetPassword(email); setMessage('Check your email for password reset instructions.'); }
       else { if (screen === 'signup') await createAccount(email, password); else await signInAccount(email, password); setPassword(''); (onAuthenticated ?? onClose)(); }
-    } catch { setError('Could not complete account action. Check your details and connection.'); }
+    } catch (reason) { setError(accountError(reason, screen)); }
     finally { setBusy(false); }
   }
   return <Modal titleId="account-title" onClose={onClose} className={`account-modal${entry ? ' account-entry' : ''}`}>
@@ -28,14 +29,14 @@ export default function AccountPanel({ onClose, entry = false, onAuthenticated }
     <div className="notice-box soft"><ShieldCheck size={21} /><div><strong>{t(DEV_AUTH_ENABLED ? 'Development sign-in' : EMULATOR_AUTH_ENABLED ? 'Local Firebase emulators' : FIREBASE_AUTH_ENABLED ? 'Firebase Authentication' : 'Account connection coming soon')}</strong><p>{t(DEV_AUTH_ENABLED ? 'Dummy accounts unlock local testing. They share this local workspace and do not use Firebase.' : EMULATOR_AUTH_ENABLED ? 'Test accounts use local authentication and isolated user records.' : FIREBASE_AUTH_ENABLED ? 'Your account protects saved journeys and personal history.' : 'Firebase sign-in is not configured in this build.')}</p></div></div>
     <form onSubmit={submit} aria-label={t(screen === 'reset' ? 'Reset password' : 'Sign in')}>
       <fieldset disabled={busy || !(DEV_AUTH_ENABLED || FIREBASE_AUTH_ENABLED) || DEV_AUTH_ENABLED && screen !== 'login'} className="account-fields"><label className="field-label">{t('Email')}<input type="email" value={email} onChange={event => setEmail(event.target.value)} required autoComplete="email" placeholder="name@example.com" /></label>
-        {screen !== 'reset' && <label className="field-label">{t('Password')}<input type="password" value={password} onChange={event => setPassword(event.target.value)} required autoComplete="off" placeholder="••••••••" /></label>}
+        {screen !== 'reset' && <label className="field-label">{t('Password')}<input type="password" value={password} onChange={event => setPassword(event.target.value)} required autoComplete={screen === 'signup' ? 'new-password' : 'current-password'} placeholder="••••••••" /></label>}
         <button className="primary-button full" type="submit"><Mail size={18} />{t(screen === 'reset' ? 'Reset password' : screen === 'signup' ? 'Create account' : 'Sign in')}</button>
       </fieldset>
     </form>
-    {error && <p className="error-box" role="alert">{t(error)}</p>}
+    {error && <div className="error-box" role="alert"><p>{t(error.message)}</p>{error.code && <small>{t('Error code')}: <code>{error.code}</code></small>}</div>}
     {message && <p role="status">{t(message)}</p>}
-    {(DEV_AUTH_ENABLED || EMULATOR_AUTH_ENABLED) && screen === 'login' && <div className="dev-accounts"><span className="field-label">{t('Choose a development account')}</span>{DEV_ACCOUNTS.map(account => <button className="dev-account" key={account.uid} type="button" onClick={() => { setEmail(account.email); setPassword(account.password); setError(''); }}><strong>{t(account.role === 'admin' ? 'Admin user' : 'Normal user')}</strong><code>{account.email}</code><small>{t('Password')}: <bdi>{account.password}</bdi></small></button>)}</div>}
-    <div className="row wrap"><button className="text-button" onClick={() => setScreen(screen === 'signup' || screen === 'reset' ? 'login' : 'signup')}>{t(screen === 'login' ? 'Create account' : 'Back to sign in')}</button>{screen === 'login' && <button className="text-button" onClick={() => setScreen('reset')}>{t('Forgot password?')}</button>}</div>
+    {(DEV_AUTH_ENABLED || EMULATOR_AUTH_ENABLED) && screen === 'login' && <div className="dev-accounts"><span className="field-label">{t('Choose a development account')}</span>{DEV_ACCOUNTS.map(account => <button className="dev-account" key={account.uid} type="button" onClick={() => { setEmail(account.email); setPassword(account.password); setError(null); }}><strong>{t(account.role === 'admin' ? 'Admin user' : 'Normal user')}</strong><code>{account.email}</code><small>{t('Password')}: <bdi>{account.password}</bdi></small></button>)}</div>}
+    <div className="row wrap"><button className="text-button" onClick={() => { setScreen(screen === 'signup' || screen === 'reset' ? 'login' : 'signup'); setError(null); setMessage(''); }}>{t(screen === 'login' ? 'Create account' : 'Back to sign in')}</button>{screen === 'login' && <button className="text-button" onClick={() => { setScreen('reset'); setError(null); setMessage(''); }}>{t('Forgot password?')}</button>}</div>
   </Modal>;
 }
 

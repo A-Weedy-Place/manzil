@@ -7,6 +7,12 @@ import { HttpError } from './errors.js';
 import { closureSummary } from './community.js';
 import { sameVehicle } from '../shared/fuel.js';
 import { tripWithCurrentVehicle } from './fuel.js';
+import { retainNoticePublication } from './repository.js';
+import { SOURCE_INTERVAL_MINUTES, SOURCE_LEASE_MS } from '../shared/source.js';
+import { agentResultKey, agentUsageKey, type AgentClaim, type AgentCompletion, type AgentResult, type AgentUsage } from '../shared/agent.js';
+import { canFinishAgent, checkedCompletion, claimAgent } from './agent-state.js';
+import { currentProposalResult, decideAgentProposal } from './agent-proposals.js';
+import { proposalFingerprint, type AgentProposal, type AgentProposalReview } from '../shared/agent.js';
 
 type Kind = 'closure' | 'commute' | 'alert' | 'trip';
 const PROFILE_URL = 'https://x.com/shaheryarhassan';
@@ -60,7 +66,7 @@ export class Store {
       }
     });
     if (!this.meta<SourceStatus>('sourceStatus')) this.setMeta('sourceStatus', {
-      enabled: process.env.X_SCRAPER_ENABLED !== 'false', intervalMinutes: 15, profileUrl: PROFILE_URL,
+      enabled: process.env.X_SCRAPER_ENABLED !== 'false', intervalMinutes: SOURCE_INTERVAL_MINUTES, profileUrl: PROFILE_URL,
       lastAttemptAt: null, lastSuccessAt: null, nextCheckAt: null,
       state: process.env.X_SCRAPER_ENABLED === 'false' ? 'disabled' : 'idle',
       message: 'Public accountless collection has not run. Coverage is always partial.',
@@ -170,7 +176,7 @@ export class Store {
   acquireSourceLease(now: number): boolean {
     return this.transaction(() => {
       if ((this.meta<number>('sourceLeaseUntil') ?? 0) > now) return false;
-      this.setMeta('sourceLeaseUntil', now + 70_000);
+      this.setMeta('sourceLeaseUntil', now + SOURCE_LEASE_MS);
       return true;
     });
   }
@@ -188,8 +194,9 @@ export class Store {
     return this.transaction(() => {
       const row = this.db.prepare('SELECT data FROM notices WHERE source=? AND source_id=?').get(input.source, input.sourceId);
       const old: SourceNotice | undefined = row ? JSON.parse(String(row.data)) as SourceNotice : undefined;
-      if (old?.contentHash === input.contentHash) return { notice: old, changed: false };
-      const notice: SourceNotice = { ...input, id: old?.id ?? randomUUID(), receivedAt: new Date().toISOString(),
+      const evidence = retainNoticePublication(input, old);
+      if (old?.contentHash === evidence.contentHash) return { notice: old, changed: false };
+      const notice: SourceNotice = { ...evidence, id: old?.id ?? randomUUID(), receivedAt: new Date().toISOString(),
         revision: (old?.revision ?? 0) + 1, status: 'pending_agent' };
       this.db.prepare('INSERT INTO notices(id,source,source_id,data,received_at) VALUES(?,?,?,?,?) ON CONFLICT(source,source_id) DO UPDATE SET data=excluded.data,received_at=excluded.received_at')
         .run(notice.id, notice.source, notice.sourceId, JSON.stringify(notice), notice.receivedAt);
@@ -211,6 +218,56 @@ export class Store {
       this.db.prepare('UPDATE agent_outbox SET state=? WHERE notice_id=? AND revision=?')
         .run(status === 'pending_agent' ? status : 'resolved', id, notice.revision);
       return notice;
+    });
+  }
+  claimAgentWork(input: AgentClaim): AgentResult | null {
+    return this.transaction(() => {
+      const usage = this.meta<AgentUsage>(agentUsageKey(input.now)) ?? { requests: 0, reservedMicros: 0 };
+      const result = claimAgent(input, this.getNotice(input.noticeId), this.meta<AgentResult>(agentResultKey(input.noticeId)), usage);
+      if (!result) return null;
+      this.setMeta(agentUsageKey(input.now), { requests: usage.requests + 1, reservedMicros: usage.reservedMicros + input.reservationMicros });
+      this.setMeta(agentResultKey(input.noticeId), result); return result;
+    });
+  }
+  completeAgentWork(input: AgentCompletion): boolean {
+    return this.transaction(() => {
+      if (!canFinishAgent(input, this.getNotice(input.noticeId), this.meta<AgentResult>(agentResultKey(input.noticeId)))) return false;
+      const old = input.changes.map(change => this.get<Closure>('closure', change.id));
+      const checked = checkedCompletion(input, old, this.eventRevision), now = new Date().toISOString();
+      checked.changes.forEach((change, index) => this.put('closure', { ...change.draft, id: change.id,
+        revision: (old[index]?.revision ?? 0) + 1, createdAt: old[index]?.createdAt ?? now, updatedAt: now }, now));
+      if (checked.changes.length) this.setMeta('eventRevision', this.eventRevision + 1);
+      this.setMeta(agentResultKey(input.noticeId), checked.result);
+      this.setMeta(`sourceAgentVersion:${input.noticeId}:${input.revision}`, checked.result);
+      if (checked.result.state !== 'failed') {
+        const notice = this.getNotice(input.noticeId)!;
+        notice.status = checked.result.state === 'dismissed' ? 'dismissed' : 'reviewed';
+        this.db.prepare('UPDATE notices SET data=? WHERE id=?').run(JSON.stringify(notice), notice.id);
+        this.db.prepare("UPDATE agent_outbox SET state='resolved' WHERE notice_id=? AND revision=?").run(notice.id, notice.revision);
+      }
+      return true;
+    });
+  }
+  saveAgentProposals(noticeId: string, revision: number, claimId: string, proposals: AgentProposal[], expectedFingerprint?: string): AgentResult {
+    return this.transaction(() => {
+      const old = currentProposalResult(this.getNotice(noticeId), this.meta<AgentResult>(agentResultKey(noticeId)), revision);
+      if (old.claimId !== claimId) throw new HttpError(409, 'Interpretation changed. Refresh the Pipeline.');
+      if (expectedFingerprint !== undefined && proposalFingerprint(old.proposals) !== expectedFingerprint) throw new HttpError(409, 'A proposal changed during refinement. Refresh the review queue.');
+      if (old.proposals && expectedFingerprint === undefined) return old;
+      if (old.proposals?.some(item => item.state !== 'pending' && JSON.stringify(item) !== JSON.stringify(proposals.find(next => next.index === item.index))))
+        throw new HttpError(409, 'Refinement cannot replace an administrator decision.');
+      const next = { ...old, proposals };
+      this.setMeta(agentResultKey(noticeId), next); this.setMeta(`sourceAgentVersion:${noticeId}:${revision}`, next); return next;
+    });
+  }
+  reviewAgentProposal(input: AgentProposalReview) {
+    return this.transaction(() => {
+      const old = this.meta<AgentResult>(agentResultKey(input.noticeId));
+      const proposal = old?.proposals?.find(item => item.index === input.index);
+      const decision = decideAgentProposal(input, this.getNotice(input.noticeId), old, proposal ? this.get<Closure>('closure', proposal.targetId) : undefined);
+      if (decision.closure) { this.put('closure', decision.closure); this.setMeta('eventRevision', this.eventRevision + 1); }
+      this.setMeta(agentResultKey(input.noticeId), decision.result);
+      this.setMeta(`sourceAgentVersion:${input.noticeId}:${input.noticeRevision}`, decision.result); return decision;
     });
   }
   pendingAgentCount() {
