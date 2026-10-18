@@ -11,6 +11,7 @@ import { closureMarkerCoordinate, closureRoadKey, exclusiveBaselineSegments, pre
 import { preserveMapOverlays, updateSourceIfChanged } from '../lib/mapSourceUpdates';
 import { tripTraceSections, usableTracePoints } from '../lib/tripTrace';
 import { transitOverlayFeatures, type TransitMapState } from '../lib/transitMap';
+import { locationAccuracyArea } from '../lib/locationAccuracy';
 import './trip-history.css';
 
 setWorkerUrl(workerUrl);
@@ -31,14 +32,14 @@ export interface MapViewProps {
   drawing: Drawing | null; departureAt: string; focus: MapFocus | null;
   showClosures: boolean; showBaseline: boolean; recordedPoints: RecordedPoint[];
   theme?: MapTheme; mapDetail?: MapDetail; mapStyle?: MapStyleId;
-  navigationPosition?: Coordinate | null; followPosition?: boolean;
+  navigationPosition?: Coordinate | null; navigationAccuracy?: number | null; followPosition?: boolean;
   onPick: (coordinate: Coordinate) => void; onDraw: (drawing: Drawing) => void;
   onEndpointMove: (letter: 'A' | 'B', coordinate: Coordinate) => void;
   onWaypointMove?: (index: number, coordinate: Coordinate) => void;
   onClosureSelect: (id: string) => void; onReady?: () => void;
 }
 
-const SOURCE_IDS = ['transit', 'transit-stops', 'transit-journey', 'baseline', 'routes', 'connectors', 'closure-roads', 'upcoming-roads', 'drawing', 'trace', 'trace-end'] as const;
+const SOURCE_IDS = ['location-accuracy', 'transit', 'transit-stops', 'transit-journey', 'baseline', 'routes', 'connectors', 'closure-roads', 'upcoming-roads', 'drawing', 'trace', 'trace-end'] as const;
 const sid = (id: typeof SOURCE_IDS[number]) => `manzil-${id}`;
 const emptyFeatures = (): FeatureCollection => ({ type: 'FeatureCollection', features: [] });
 const feature = (geometry: Geometry, properties: Record<string, unknown> = {}): Feature => ({ type: 'Feature', geometry, properties });
@@ -54,6 +55,8 @@ function updateSource(map: LibreMap, name: typeof SOURCE_IDS[number], data: Feat
 function installOverlays(map: LibreMap) {
   for (const id of SOURCE_IDS) if (!map.getSource(sid(id))) map.addSource(sid(id), { type: 'geojson', data: emptyFeatures() });
   const addLayer = (layer: Parameters<LibreMap['addLayer']>[0]) => { if (!map.getLayer(layer.id)) map.addLayer(layer); };
+  addLayer({ id: 'manzil-location-accuracy-fill', type: 'fill', source: sid('location-accuracy'), paint: { 'fill-color': '#367cf5', 'fill-opacity': .12 } });
+  addLayer({ id: 'manzil-location-accuracy-line', type: 'line', source: sid('location-accuracy'), paint: { 'line-color': '#367cf5', 'line-width': 1.3, 'line-opacity': .65 } });
   addLayer({ id: 'manzil-transit-casing', type: 'line', source: sid('transit'), filter: ['==', ['get', 'schematic'], false], layout: { 'line-cap': 'round', 'line-join': 'round', 'line-sort-key': ['get', 'order'] }, paint: { 'line-color': '#18394b', 'line-width': ['case', ['get', 'selected'], 10, 6], 'line-opacity': ['case', ['get', 'selected'], .35, .16] } });
   addLayer({ id: 'manzil-transit-line', type: 'line', source: sid('transit'), filter: ['==', ['get', 'schematic'], false], layout: { 'line-cap': 'round', 'line-join': 'round', 'line-sort-key': ['get', 'order'] }, paint: { 'line-color': ['get', 'color'], 'line-width': ['case', ['get', 'selected'], 7.8, 4.5], 'line-opacity': ['case', ['get', 'selected'], 1, .96] } });
   addLayer({ id: 'manzil-transit-schematic', type: 'line', source: sid('transit'), filter: ['==', ['get', 'schematic'], true], layout: { 'line-cap': 'round', 'line-join': 'round', 'line-sort-key': ['get', 'order'] }, paint: { 'line-color': ['get', 'color'], 'line-width': ['case', ['get', 'selected'], 7.4, 4.4], 'line-dasharray': [2, 1.8], 'line-opacity': ['case', ['get', 'selected'], 1, .96] } });
@@ -531,13 +534,15 @@ export default function MapView(props: MapViewProps) {
 
   useEffect(() => {
     const map = mapRef.current, position = props.navigationPosition;
+    if (map) updateSource(map, 'location-accuracy', locationAccuracyArea(position, props.navigationAccuracy));
     if (!map || !position || !validCoordinate(position)) { navigationMarker.current?.remove(); navigationMarker.current = null; return; }
     if (!navigationMarker.current) {
-      const element = document.createElement('div'); element.className = 'map-navigation-marker'; element.setAttribute('role', 'img'); element.setAttribute('aria-label', t('Navigation'));
+      const element = document.createElement('div'); element.className = 'map-navigation-marker'; element.setAttribute('role', 'img'); element.setAttribute('aria-label', t('Current location'));
       navigationMarker.current = new Marker({ element, anchor: 'center' }).setLngLat(position).addTo(map);
     } else navigationMarker.current.setLngLat(position);
-    if (props.followPosition) map.easeTo({ center: position, zoom: Math.max(map.getZoom(), 15), pitch: 0, bearing: 0, duration: reducedMotion() ? 0 : 180 });
-  }, [props.navigationPosition, props.followPosition, retry]);
+    navigationMarker.current.getElement().setAttribute('aria-label', props.navigationAccuracy != null ? `${t('Current location')} · ±${Math.ceil(props.navigationAccuracy)} m` : t('Current location'));
+    if (props.followPosition) map.easeTo({ center: position, zoom: props.navigationAccuracy != null && props.navigationAccuracy > 60 ? 14 : Math.max(map.getZoom(), 15), pitch: 0, bearing: 0, duration: reducedMotion() ? 0 : 180 });
+  }, [props.navigationPosition, props.navigationAccuracy, props.followPosition, styleVersion, retry]);
   useEffect(() => () => { navigationMarker.current?.remove(); navigationMarker.current = null; for (const marker of closureMarkers.current.values()) marker.remove(); closureMarkers.current.clear(); }, [retry]);
 
   return <>

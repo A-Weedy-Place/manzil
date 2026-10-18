@@ -176,6 +176,49 @@ it('starts missing preferences with a Classic backdrop and avoids equivalent Cla
   expect(maps.instances).toHaveLength(1);
 });
 
+it('shows raw location uncertainty below routes and closures, updates it without moving endpoints, and restores it after a style swap', async () => {
+  const getCurrentPosition = vi.fn(), watchPosition = vi.fn();
+  Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition, watchPosition } });
+  const selected = route('current', 0), base = { ...props(), mapStyle: 'minimal' as const, selectedRoute: selected, routeOptions: [selected],
+    origin: { name: 'Start', coordinate: selected.snappedOrigin }, destination: { name: 'End', coordinate: selected.snappedDestination }, followPosition: false };
+  const raw: Coordinate = [73.04567, 33.65123], next: Coordinate = [73.04613, 33.65189];
+  const result = render(<MapView {...base} navigationPosition={raw} navigationAccuracy={500} />); await act(async () => {});
+  const map = maps.instances[0], source = map.getSource('manzil-location-accuracy')!;
+  expect(source.data.features).toHaveLength(1); expect(source.data.features[0].properties).toEqual({ accuracyMeters: 500 });
+  const routeBefore = structuredClone(map.getSource('manzil-routes')!.data);
+  const endpointA = maps.markers.find(marker => marker.options.element.classList.contains('map-endpoint-a'))!;
+  const endpointB = maps.markers.find(marker => marker.options.element.classList.contains('map-endpoint-b'))!;
+  const location = maps.markers.find(marker => marker.options.element.classList.contains('map-navigation-marker'))!;
+  expect(location.coordinate).toEqual(raw); expect(location.options.element.getAttribute('aria-label')).toContain('±500 m');
+  const order = [...map.layers.keys()];
+  for (const id of ['manzil-route-line', 'manzil-closure-roads-line']) {
+    expect(order.indexOf('manzil-location-accuracy-fill')).toBeLessThan(order.indexOf(id));
+    expect(order.indexOf('manzil-location-accuracy-line')).toBeLessThan(order.indexOf(id));
+  }
+
+  result.rerender(<MapView {...base} navigationPosition={next} navigationAccuracy={12} />); await act(async () => {});
+  expect(map.getSource('manzil-location-accuracy')).toBe(source); expect(source.data.features[0].properties).toEqual({ accuracyMeters: 12 });
+  expect(location.coordinate).toEqual(next); expect(location.options.element.getAttribute('aria-label')).toContain('±12 m');
+  expect(endpointA.coordinate).toEqual(selected.snappedOrigin); expect(endpointB.coordinate).toEqual(selected.snappedDestination);
+  expect(map.getSource('manzil-routes')!.data).toEqual(routeBefore); expect(base.onEndpointMove).not.toHaveBeenCalled();
+  expect(map.easeTo).not.toHaveBeenCalled(); expect(getCurrentPosition).not.toHaveBeenCalled(); expect(watchPosition).not.toHaveBeenCalled();
+
+  // A real style replacement removes GeoJSON sources; model that boundary so
+  // this proves the uncertainty is restored even when location itself is stable.
+  map.sources.clear(); map.layers.clear();
+  result.rerender(<MapView {...base} mapStyle="night" navigationPosition={next} navigationAccuracy={12} />); await act(async () => {});
+  const restored = map.getSource('manzil-location-accuracy')!;
+  expect(restored).not.toBe(source); expect(restored.data.features).toHaveLength(1);
+  expect(restored.data.features[0].properties).toEqual({ accuracyMeters: 12 }); expect(location.coordinate).toEqual(next);
+  expect(map.getSource('manzil-routes')!.data).toEqual(routeBefore);
+  expect(map.setStyle).toHaveBeenCalledTimes(2); expect(maps.instances).toHaveLength(1);
+
+  result.rerender(<MapView {...base} mapStyle="night" navigationPosition={null} navigationAccuracy={null} />); await act(async () => {});
+  expect(restored.data.features).toEqual([]); expect(location.options.element.isConnected).toBe(false);
+  expect(endpointA.coordinate).toEqual(selected.snappedOrigin); expect(endpointB.coordinate).toEqual(selected.snappedDestination);
+  expect(maps.instances).toHaveLength(1);
+});
+
 it('keeps a clear blue route during passive refresh without pending labels or rebuilding the map', async () => {
   const selected = route('current', 0), base = { ...props(), routeOptions: [selected], selectedRoute: selected };
   const result = render(<MapView {...base} />); await act(async () => {});

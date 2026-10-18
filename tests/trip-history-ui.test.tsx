@@ -153,7 +153,7 @@ it('aborts image rendering and revokes its preview on close, then can return to 
 it('drops late image results after an account change and guards already-ready downloads', async () => {
   let resolve!: (result: unknown) => void; mock.image.mockReturnValue(new Promise(done => { resolve = done; }));
   const ui = render(<TripHistory {...props()} state={state()} />); fireEvent.click(screen.getByRole('button', { name: 'Share' }));
-  await screen.findByText('Creating your trip image…'); const signal = mock.image.mock.calls[0][1].signal as AbortSignal;
+  await screen.findByText('Creating your trip image…'); await waitFor(() => expect(mock.image).toHaveBeenCalledTimes(1)); const signal = mock.image.mock.calls[0][1].signal as AbortSignal;
   mock.userId = 'other'; ui.rerender(<TripHistory {...props()} state={state([], 'other')} />);
   await act(async () => resolve({ blob: new Blob(['png']), basemap: 'map' }));
   expect(signal.aborted).toBe(true); expect(URL.createObjectURL).not.toHaveBeenCalled(); expect(screen.queryByRole('img')).toBeNull();

@@ -1,5 +1,7 @@
 # Manzil API
 
+**18 October local navigation follow-up:** speech endpoint contracts below are unchanged. The client caches `GET /api/speech/status` for at most 60 seconds (four-second request limit) before optional synthesis and checks session/cancellation again before `POST /api/speech`. Disabled/unavailable cloud speech falls back to a compatible device voice; Urdu additionally has fixed, same-origin public audio under `/audio/navigation/ur-f3-v1/`. These clips contain no submitted road names, locations or personal history. The pack is loaded on demand, not a new API, cloud integration or guarantee of offline availability before files are cached. Location accuracy is a client display/guidance concern; routing coordinates, closure/time/access validation and personal recording contracts remain unchanged. [Behavior and limits](BILINGUAL_NAVIGATION_AND_CLOUD.md).
+
 **18 October pipeline:** production Run Gemini now is supported through the authenticated API/private worker boundary; unified review counts include Gemini proposals. See [manual dispatch, progress, limits and review](AGENT_MAP_REVIEW.md#visible-pipeline-and-manual-analysis---18-october). Older scheduled-only descriptions below are historical.
 
 **Current admin map-review contract (17 October):** agent interpretations now prepare private per-event map proposals. Every agent map change requires administrator approval; this supersedes automatic-publication descriptions below. [Complete workflow, persistence and limits](AGENT_MAP_REVIEW.md).
