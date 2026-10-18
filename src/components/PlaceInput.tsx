@@ -1,9 +1,10 @@
 import { t } from '../lib/language';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Crosshair, LocateFixed, MapPin, Search, X } from 'lucide-react';
-import type { Coordinate, Place } from '../../shared/types';
+import type { Place } from '../../shared/types';
 import { api } from '../lib/api';
 import { getAuthSession } from '../lib/auth';
+import { requestLocation } from '../lib/location';
 
 interface Props { label: string; letter: string; value: Place | null; onChange: (place: Place | null) => void; onPick: () => void; active: boolean; locationContext?: number }
 export default function PlaceInput({ label, letter, value, onChange, onPick, active, locationContext }: Props) {
@@ -14,13 +15,15 @@ export default function PlaceInput({ label, letter, value, onChange, onPick, act
   const [resultsFor, setResultsFor] = useState<string | null>(null), [activeIndex, setActiveIndex] = useState(-1);
   const [locating, setLocating] = useState(false);
   const editing = useRef(false), locationSequence = useRef(0), blurTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const cancelLocation = useRef<(() => void) | undefined>(undefined);
+  function cancelPendingLocation() { locationSequence.current++; cancelLocation.current?.(); setLocating(false); }
   useEffect(() => {
-    locationSequence.current++; setLocating(false); setLocationError('');
+    cancelPendingLocation(); setLocationError('');
     if (value) { setQuery(value.name); editing.current = false; }
     else if (!editing.current) setQuery('');
   }, [value]);
-  useEffect(() => { locationSequence.current++; setLocating(false); }, [locationContext]);
-  useEffect(() => () => { locationSequence.current++; clearTimeout(blurTimer.current); }, []);
+  useEffect(() => { cancelPendingLocation(); }, [locationContext]);
+  useEffect(() => () => { locationSequence.current++; cancelLocation.current?.(); clearTimeout(blurTimer.current); }, []);
   useEffect(() => {
     if (!open) return;
     const controller = new AbortController(); let deadline: ReturnType<typeof setTimeout> | undefined;
@@ -48,8 +51,8 @@ export default function PlaceInput({ label, letter, value, onChange, onPick, act
   }, [query, open]);
   const canSelect = !loading && resultsFor === query;
   const count = 2 + (canSelect ? places.length : 0);
-  function select(place: Place) { locationSequence.current++; setLocating(false); setLocationError(''); editing.current = false; onChange(place); setQuery(place.name); setOpen(false); setActiveIndex(-1); }
-  function pick() { locationSequence.current++; setLocating(false); setOpen(false); onPick(); }
+  function select(place: Place) { cancelPendingLocation(); setLocationError(''); editing.current = false; onChange(place); setQuery(place.name); setOpen(false); setActiveIndex(-1); }
+  function pick() { cancelPendingLocation(); setOpen(false); onPick(); }
   function locate() {
     if (locating) return;
     setLocationError('');
@@ -57,13 +60,14 @@ export default function PlaceInput({ label, letter, value, onChange, onPick, act
     const sequence = ++locationSequence.current, owner = getAuthSession().user?.uid;
     const current = () => sequence === locationSequence.current && owner === getAuthSession().user?.uid;
     setLocating(true);
-    const unavailable = () => { if (current()) { setLocating(false); setLocationError('Location is unavailable or permission was declined. Choose on map instead.'); } };
-    try { navigator.geolocation.getCurrentPosition(position => {
-      if (!current()) return;
-      const coordinate: Coordinate = [position.coords.longitude, position.coords.latitude];
-      if (!coordinate.every(Number.isFinite) || Math.abs(coordinate[0]) > 180 || Math.abs(coordinate[1]) > 90) { unavailable(); return; }
-      setLocating(false); select({ name: t('Current location'), coordinate });
-    }, unavailable, { maximumAge: 30000, timeout: 15000 }); } catch { unavailable(); }
+    cancelLocation.current?.();
+    cancelLocation.current = requestLocation({
+      onSuccess: fix => { if (current()) select({ name: t(`Current location · ±${Math.ceil(fix.accuracy)} m`), coordinate: fix.coordinate }); },
+      onError: reason => {
+        if (!current()) return;
+        setLocating(false); setLocationError(reason === 'denied' ? 'Location permission was declined. Choose on map instead.' : reason === 'timeout' ? 'Location timed out. Try again or choose on map.' : 'Location is unavailable. Try again or choose on map.');
+      },
+    });
   }
   return <div className={`place-field ${active ? 'picking' : ''}`} data-endpoint={letter} data-tour={letter === 'A' ? 'starting-point' : letter === 'B' ? 'destination' : undefined} onBlur={event => {
     if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
@@ -73,7 +77,7 @@ export default function PlaceInput({ label, letter, value, onChange, onPick, act
     <div className="place-input-row">
       <input ref={input} id={id} value={query} placeholder={t('Search a place or address')} autoComplete="off" role="combobox" aria-expanded={open} aria-controls={open ? `${id}-options` : undefined} aria-activedescendant={open && activeIndex >= 0 ? `${id}-option-${activeIndex}` : undefined}
         onFocus={() => { clearTimeout(blurTimer.current); setOpen(true); }}
-        onChange={event => { locationSequence.current++; setLocating(false); setLocationError(''); editing.current = true; setQuery(event.target.value); setPlaces([]); setResultsFor(null); setActiveIndex(-1); setLoading(true); if (value) onChange(null); setOpen(true); }}
+        onChange={event => { cancelPendingLocation(); setLocationError(''); editing.current = true; setQuery(event.target.value); setPlaces([]); setResultsFor(null); setActiveIndex(-1); setLoading(true); if (value) onChange(null); setOpen(true); }}
         onKeyDown={event => {
           if (event.key === 'Escape' && open) { event.preventDefault(); event.stopPropagation(); setOpen(false); }
           if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) && open) { event.preventDefault(); setActiveIndex(index => event.key === 'Home' ? 0 : event.key === 'End' ? count - 1 : index < 0 ? event.key === 'ArrowDown' ? 0 : count - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + count) % count); }
@@ -84,7 +88,7 @@ export default function PlaceInput({ label, letter, value, onChange, onPick, act
             if (index === 0) locate(); else if (index === 1) pick(); else if (canSelect && places[index - 2]) select(places[index - 2]);
           }
         }} />
-      {query && <button type="button" className="icon-button small" title={t(`Clear ${label.toLowerCase()}`)} aria-label={t(`Clear ${label.toLowerCase()}`)} onClick={() => { locationSequence.current++; setLocating(false); editing.current = false; setQuery(''); onChange(null); input.current?.focus(); }}><X size={15} /></button>}
+      {query && <button type="button" className="icon-button small" title={t(`Clear ${label.toLowerCase()}`)} aria-label={t(`Clear ${label.toLowerCase()}`)} onClick={() => { cancelPendingLocation(); editing.current = false; setQuery(''); onChange(null); input.current?.focus(); }}><X size={15} /></button>}
       <button type="button" className={`icon-button pick-button ${active ? 'selected' : ''}`} title={t(`Choose ${label.toLowerCase()} on map`)} aria-label={t(`Choose ${label.toLowerCase()} on map`)} aria-pressed={active} onClick={pick}><Crosshair size={19} /></button>
     </div>
     {locationError && <p className="place-location-error" role="alert">{t(locationError)}</p>}

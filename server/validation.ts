@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { MAX_CLOSURE_PHOTOS, MAX_CLOSURE_PHOTO_CHARACTERS } from '../shared/closures.js';
+import { distanceMeters, drawingToPolygon } from './geometry.js';
 
 export const coordinateSchema = z.tuple([z.number().finite().min(-180).max(180), z.number().finite().min(-90).max(90)]);
 export const instantSchema = z.string().datetime({ offset: true }).transform(value => new Date(value).toISOString());
@@ -62,9 +64,25 @@ export const closureDraftSchema = z.object({
   title: z.string().trim().min(1).max(180), description: z.string().trim().max(4000),
   reason: z.enum(['protest', 'vip', 'construction', 'accident', 'other']),
   startsAt: instantSchema, endsAt: instantSchema.nullable(), status: z.enum(['published', 'draft', 'cancelled']),
-  geometry: polygonSchema, drawing: drawingSchema.optional(), sourceUrl: webUrl.or(z.literal('')).optional(), photos: z.array(photoSchema).max(2).optional(),
+  restrictionType: z.enum(['road_closure', 'blockade']).optional(),
+  geometry: polygonSchema, drawing: drawingSchema.optional(), sourceUrl: webUrl.or(z.literal('')).optional(),
+  photos: z.array(photoSchema).max(MAX_CLOSURE_PHOTOS).refine(photos => photos.reduce((total, photo) => total + photo.length, 0) <= MAX_CLOSURE_PHOTO_CHARACTERS, 'Closure photos are too large. Use smaller images.').optional(),
 }).superRefine((value, ctx) => {
   if (value.endsAt && Date.parse(value.endsAt) <= Date.parse(value.startsAt)) ctx.addIssue({ code: 'custom', path: ['endsAt'], message: 'End must be after start.' });
+  // Legacy imports may contain only an area. New explicit editor contracts
+  // carry a drawing and must not submit a larger/different routing area.
+  if (!value.restrictionType) return;
+  if (!value.drawing) { ctx.addIssue({ code:'custom',path:['drawing'],message:'Select the affected road or blockade line.' }); return; }
+  if (value.restrictionType === 'blockade') {
+    if (value.drawing.kind !== 'line' || value.drawing.coordinates.length !== 2 || value.drawing.widthMeters !== 4) {
+      ctx.addIssue({ code:'custom',path:['drawing'],message:'A blockade requires two points and a four-metre line width.' }); return;
+    }
+    const length = distanceMeters(value.drawing.coordinates[0],value.drawing.coordinates[1]);
+    if (length < 2 || length > 80) ctx.addIssue({ code:'custom',path:['drawing'],message:'A blockade must be between 2 and 80 metres long.' });
+  }
+  try {
+    if (JSON.stringify(drawingToPolygon(value.drawing)) !== JSON.stringify(value.geometry)) ctx.addIssue({ code:'custom',path:['geometry'],message:'The restriction area must match the selected drawing.' });
+  } catch { ctx.addIssue({code:'custom',path:['drawing'],message:'The selected drawing does not produce a valid restriction area.'}); }
 });
 export const closureUpdateSchema = closureDraftSchema.and(z.object({ revision: z.number().int().positive() }));
 export const planSchema = z.object({ origin: placeSchema, destination: placeSchema, waypoints: z.array(placeSchema).max(5, 'Add at most five intermediate stops.').optional(), departureAt: instantSchema, compareDepartures: z.boolean().optional() });

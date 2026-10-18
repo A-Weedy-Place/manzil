@@ -7,6 +7,7 @@ import { readConfig } from '../server/config';
 import { Store } from '../server/store';
 import { AgentService } from '../server/agent';
 import { agentConfig } from '../server/gemini';
+import { SourceService } from '../server/source';
 const cleanup: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const action of cleanup.splice(0).reverse()) await action(); vi.restoreAllMocks(); });
 const origin = 'https://manzil-source-worker-abc-as.a.run.app';
@@ -52,13 +53,17 @@ it('restricts the API workload identity to analysis jobs and keeps scheduler/for
   const verify=vi.spyOn(OAuth2Client.prototype,'verifyIdToken').mockImplementation(async()=>({getPayload:()=>({email,email_verified:true})}) as any);
   const fixture = new Store(':memory:'); cleanup.push(()=>fixture.close());
   const agent=new AgentService(fixture,{...agentConfig({}),enabled:false}); const run=vi.spyOn(agent,'run').mockResolvedValue({processed:0});
+  const collect=vi.fn(async()=>({posts:[],state:'partial' as const,message:'Offline source fixture.',observedCount:0}));
+  const source=new SourceService(fixture,collect);
   const {request}=await server({config:readConfig({...env,MANZIL_SERVICE_ROLE:'worker',WORKER_AUDIENCE:origin,
-    WORKER_SERVICE_ACCOUNT_EMAIL:'scheduler@manzil-fixture.iam.gserviceaccount.com',WORKER_MANUAL_SERVICE_ACCOUNT_EMAIL:email,WORKER_ALLOWED_JOBS:'source,agent'}),agent});
+    WORKER_SERVICE_ACCOUNT_EMAIL:'scheduler@manzil-fixture.iam.gserviceaccount.com',WORKER_MANUAL_SERVICE_ACCOUNT_EMAIL:email,WORKER_ALLOWED_JOBS:'source,agent'}),agent,source});
   expect((await request('/internal/tick','workload-token',{job:'source'})).status).toBe(403);
+  expect(collect).not.toHaveBeenCalled();
   expect((await request('/internal/tick','workload-token',{job:'agent'})).status).toBe(200); expect(run).toHaveBeenCalledOnce();
   expect(verify).toHaveBeenCalledWith({idToken:'workload-token',audience:origin});
   email='foreign@manzil-fixture.iam.gserviceaccount.com';
   expect((await request('/internal/tick','workload-token',{job:'agent'})).status).toBe(403);
   email='scheduler@manzil-fixture.iam.gserviceaccount.com';
   expect((await request('/internal/tick','workload-token',{job:'source'})).status).toBe(200);
+  expect(collect).toHaveBeenCalledOnce();
 });

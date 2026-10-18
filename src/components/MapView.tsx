@@ -11,6 +11,7 @@ import { closureMarkerCoordinate, closureRoadKey, exclusiveBaselineSegments, pre
 import { preserveMapOverlays, updateSourceIfChanged } from '../lib/mapSourceUpdates';
 import { tripTraceSections, usableTracePoints } from '../lib/tripTrace';
 import { transitOverlayFeatures, type TransitMapState } from '../lib/transitMap';
+import { locationAccuracyArea } from '../lib/locationAccuracy';
 import './trip-history.css';
 
 setWorkerUrl(workerUrl);
@@ -28,23 +29,43 @@ export interface MapViewProps {
   routeOptions?: RouteOption[]; onRouteSelect?: (id: string) => void;
   baselineSelected?: boolean; onBaselineSelect?: () => void; baselineConflictIds?: string[];
   onRoadSelection?: (selection: { roadNames: string[]; distanceMeters: number }) => void;
+  onRoadPick?: (coordinate: Coordinate) => void;
+  onRoadStroke?: (from: Coordinate, to: Coordinate) => void;
+  closurePickType?: 'road_closure' | 'blockade';
+  roadSelection?: { anchors: Coordinate[]; busy: boolean; error: string; distanceMeters: number | null };
   drawing: Drawing | null; departureAt: string; focus: MapFocus | null;
   showClosures: boolean; showBaseline: boolean; recordedPoints: RecordedPoint[];
   theme?: MapTheme; mapDetail?: MapDetail; mapStyle?: MapStyleId;
-  navigationPosition?: Coordinate | null; followPosition?: boolean;
+  navigationPosition?: Coordinate | null; navigationAccuracy?: number | null; followPosition?: boolean;
   onPick: (coordinate: Coordinate) => void; onDraw: (drawing: Drawing) => void;
   onEndpointMove: (letter: 'A' | 'B', coordinate: Coordinate) => void;
   onWaypointMove?: (index: number, coordinate: Coordinate) => void;
   onClosureSelect: (id: string) => void; onReady?: () => void;
 }
 
-const SOURCE_IDS = ['transit', 'transit-stops', 'transit-journey', 'baseline', 'routes', 'connectors', 'closure-roads', 'upcoming-roads', 'drawing', 'trace', 'trace-end'] as const;
+const SOURCE_IDS = ['location-accuracy', 'transit', 'transit-stops', 'transit-journey', 'baseline', 'routes', 'connectors', 'closure-roads', 'upcoming-roads', 'pending-review', 'drawing', 'trace', 'trace-end'] as const;
 const sid = (id: typeof SOURCE_IDS[number]) => `manzil-${id}`;
 const emptyFeatures = (): FeatureCollection => ({ type: 'FeatureCollection', features: [] });
 const feature = (geometry: Geometry, properties: Record<string, unknown> = {}): Feature => ({ type: 'Feature', geometry, properties });
 const collection = (features: Feature[]): FeatureCollection => ({ type: 'FeatureCollection', features });
 const validCoordinate = (p: number[]): p is Coordinate => p.length >= 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]) && Math.abs(p[0]) <= 180 && Math.abs(p[1]) <= 90;
 const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/** Road closures paint matched road lengths. Physical blockades paint their
+ * narrow cross-road stroke instead; a longitudinal road clip hides that shape.
+ * These are presentation features only and never change routing geometry. */
+function displayedRestrictions(roads: ClosureRoads, closures: Closure[], at: string, upcomingId: string | null = null): FeatureCollection {
+  const blockadeIds = new Set(closures.filter(closure => closure.restrictionType === 'blockade').map(closure => closure.id));
+  const features: Feature[] = roads.features.filter(item => !blockadeIds.has(item.properties.closureId));
+  for (const closure of closures) {
+    if (closure.restrictionType !== 'blockade' || closure.status !== 'published' || closure.moderation === 'pending' || closure.moderation === 'rejected') continue;
+    const state = closureState(closure, at), drawing = closure.drawing;
+    if (upcomingId ? state !== 'scheduled' || closure.id !== upcomingId : state !== 'active') continue;
+    if (drawing?.kind !== 'line' || drawing.coordinates.length !== 2 || drawing.widthMeters !== 4 || !drawing.coordinates.every(validCoordinate)) continue;
+    features.push(feature({ type: 'LineString', coordinates: drawing.coordinates }, { closureId: closure.id, title: closure.title, blockade: true }));
+  }
+  return collection(features);
+}
 
 function updateSource(map: LibreMap, name: typeof SOURCE_IDS[number], data: FeatureCollection) {
   const source = map.getSource(sid(name)) as GeoJSONSource | undefined;
@@ -54,17 +75,17 @@ function updateSource(map: LibreMap, name: typeof SOURCE_IDS[number], data: Feat
 function installOverlays(map: LibreMap) {
   for (const id of SOURCE_IDS) if (!map.getSource(sid(id))) map.addSource(sid(id), { type: 'geojson', data: emptyFeatures() });
   const addLayer = (layer: Parameters<LibreMap['addLayer']>[0]) => { if (!map.getLayer(layer.id)) map.addLayer(layer); };
-  addLayer({ id: 'manzil-transit-casing', type: 'line', source: sid('transit'), filter: ['==', ['get', 'schematic'], false], layout: { 'line-cap': 'round', 'line-join': 'round', 'line-sort-key': ['get', 'order'] }, paint: { 'line-color': '#18394b', 'line-width': ['case', ['get', 'selected'], 10, 6], 'line-opacity': ['case', ['get', 'selected'], .35, .16] } });
-  addLayer({ id: 'manzil-transit-line', type: 'line', source: sid('transit'), filter: ['==', ['get', 'schematic'], false], layout: { 'line-cap': 'round', 'line-join': 'round', 'line-sort-key': ['get', 'order'] }, paint: { 'line-color': ['get', 'color'], 'line-width': ['case', ['get', 'selected'], 7.8, 4.5], 'line-opacity': ['case', ['get', 'selected'], 1, .96] } });
-  addLayer({ id: 'manzil-transit-schematic', type: 'line', source: sid('transit'), filter: ['==', ['get', 'schematic'], true], layout: { 'line-cap': 'round', 'line-join': 'round', 'line-sort-key': ['get', 'order'] }, paint: { 'line-color': ['get', 'color'], 'line-width': ['case', ['get', 'selected'], 7.4, 4.4], 'line-dasharray': [2, 1.8], 'line-opacity': ['case', ['get', 'selected'], 1, .96] } });
+  addLayer({ id: 'manzil-location-accuracy-fill', type: 'fill', source: sid('location-accuracy'), paint: { 'fill-color': '#367cf5', 'fill-opacity': .12 } });
+  addLayer({ id: 'manzil-location-accuracy-line', type: 'line', source: sid('location-accuracy'), paint: { 'line-color': '#367cf5', 'line-width': 1.3, 'line-opacity': .65 } });
+  addLayer({ id: 'manzil-transit-casing', type: 'line', source: sid('transit'), filter: ['==', ['get', 'schematic'], false], layout: { 'line-cap': 'round', 'line-join': 'round', 'line-sort-key': ['get', 'order'] }, paint: { 'line-color': '#18394b', 'line-width': ['case', ['get', 'muted'], 3.6, ['get', 'selected'], 10, 6], 'line-opacity': ['case', ['get', 'muted'], .025, ['get', 'selected'], .35, ['get', 'focused'], .07, .16] } });
+  addLayer({ id: 'manzil-transit-line', type: 'line', source: sid('transit'), filter: ['==', ['get', 'schematic'], false], layout: { 'line-cap': 'round', 'line-join': 'round', 'line-sort-key': ['get', 'order'] }, paint: { 'line-color': ['get', 'color'], 'line-width': ['case', ['get', 'muted'], 2.6, ['get', 'selected'], 7.8, 4.5], 'line-opacity': ['case', ['get', 'muted'], .18, ['get', 'selected'], 1, ['get', 'focused'], .45, .96] } });
   addLayer({ id: 'manzil-transit-hit', type: 'line', source: sid('transit'), paint: { 'line-color': '#376edb', 'line-width': 17, 'line-opacity': .01 } });
   addLayer({ id: 'manzil-transit-journey-casing', type: 'line', source: sid('transit-journey'), filter: ['all', ['==', ['get', 'kind'], 'ride'], ['==', ['get', 'schematic'], false]], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': 10.8, 'line-opacity': .82 } });
   addLayer({ id: 'manzil-transit-journey-line', type: 'line', source: sid('transit-journey'), filter: ['all', ['==', ['get', 'kind'], 'ride'], ['==', ['get', 'schematic'], false]], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': 8.8 } });
-  addLayer({ id: 'manzil-transit-journey-schematic', type: 'line', source: sid('transit-journey'), filter: ['all', ['==', ['get', 'kind'], 'ride'], ['==', ['get', 'schematic'], true]], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': 8.2, 'line-dasharray': [2, 1.8] } });
   addLayer({ id: 'manzil-transit-walk-line', type: 'line', source: sid('transit-journey'), filter: ['==', ['get', 'kind'], 'walk'], layout: { 'line-cap': 'round' }, paint: { 'line-color': '#526a7f', 'line-width': 4, 'line-dasharray': [1, 1.4] } });
   // Dots remain visible at city overview. Their radius and opacity shrink only
   // toward regional zooms, while selected/ridden stops retain their emphasis.
-  addLayer({ id: 'manzil-transit-stops', type: 'circle', source: sid('transit-stops'), paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, ['case', ['get', 'selected'], 5.2, .8], 10.5, ['case', ['get', 'selected'], 5.2, 1.6], 11.4, ['case', ['get', 'selected'], 5.2, 2.25], 13, ['case', ['get', 'selected'], 5.2, 2.8], 16, ['case', ['get', 'selected'], 5.2, 3.6]], 'circle-color': '#f8fcff', 'circle-stroke-color': ['case', ['get', 'selected'], '#224a68', '#395e74'], 'circle-stroke-width': ['case', ['get', 'selected'], 2.2, 1.3], 'circle-opacity': ['interpolate', ['linear'], ['zoom'], 9, ['case', ['get', 'selected'], 1, .15], 10.5, ['case', ['get', 'selected'], 1, .7], 11.3, ['case', ['get', 'selected'], 1, .96], 15, 1], 'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'], 9, ['case', ['get', 'selected'], 1, .15], 10.5, ['case', ['get', 'selected'], 1, .7], 11.3, ['case', ['get', 'selected'], 1, .96], 15, 1] } });
+  addLayer({ id: 'manzil-transit-stops', type: 'circle', source: sid('transit-stops'), paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, ['case', ['get', 'selected'], 5.2, .8], 10.5, ['case', ['get', 'selected'], 5.2, ['get', 'muted'], 1.2, 1.6], 11.4, ['case', ['get', 'selected'], 5.2, ['get', 'muted'], 1.4, 2.25], 13, ['case', ['get', 'selected'], 5.2, ['get', 'muted'], 1.6, 2.8], 16, ['case', ['get', 'selected'], 5.2, ['get', 'muted'], 1.8, 3.6]], 'circle-color': '#f8fcff', 'circle-stroke-color': ['case', ['get', 'muted'], '#8c979d', ['get', 'selected'], '#224a68', '#395e74'], 'circle-stroke-width': ['case', ['get', 'selected'], 2.2, 1.3], 'circle-opacity': ['interpolate', ['linear'], ['zoom'], 9, ['case', ['get', 'selected'], 1, ['get', 'muted'], .08, .15], 10.5, ['case', ['get', 'selected'], 1, ['get', 'muted'], .14, .7], 11.3, ['case', ['get', 'selected'], 1, ['get', 'muted'], .18, .96], 15, ['case', ['get', 'muted'], .18, 1]], 'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'], 9, ['case', ['get', 'selected'], 1, ['get', 'muted'], .08, .15], 10.5, ['case', ['get', 'selected'], 1, ['get', 'muted'], .14, .7], 11.3, ['case', ['get', 'selected'], 1, ['get', 'muted'], .18, .96], 15, ['case', ['get', 'muted'], .18, 1]] } });
   addLayer({ id: 'manzil-transit-stop-labels', type: 'symbol', source: sid('transit-stops'), minzoom: 12.6, filter: ['==', ['get', 'selected'], true], layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Regular'], 'text-size': 11, 'text-anchor': 'left', 'text-offset': [.9, 0], 'text-max-width': 14 }, paint: { 'text-color': '#263c48', 'text-halo-color': '#ffffff', 'text-halo-width': 2 } });
   addLayer({ id: 'manzil-baseline-casing', type: 'line', source: sid('baseline'), layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#fff7f8', 'line-width': 12, 'line-opacity': .95 } });
   addLayer({ id: 'manzil-baseline-line', type: 'line', source: sid('baseline'), layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#f3a0ad', 'line-width': ['case', ['boolean', ['get', 'inspected'], false], 11, 8], 'line-opacity': .9 } });
@@ -77,11 +98,18 @@ function installOverlays(map: LibreMap) {
   addLayer({ id: 'manzil-connectors-line', type: 'line', source: sid('connectors'), paint: { 'line-color': '#2563eb', 'line-width': 2, 'line-dasharray': [1, 2], 'line-opacity': .75 } });
   addLayer({ id: 'manzil-upcoming-roads-casing', type: 'line', source: sid('upcoming-roads'), layout: { 'line-cap': 'butt', 'line-join': 'round' }, paint: { 'line-color': '#fff9dd', 'line-width': 16, 'line-opacity': .98 } });
   addLayer({ id: 'manzil-upcoming-roads-line', type: 'line', source: sid('upcoming-roads'), layout: { 'line-cap': 'butt', 'line-join': 'round' }, paint: { 'line-color': '#ffbf18', 'line-width': 11, 'line-opacity': 1 } });
+  // A selected private report is a review preview, never a published red
+  // restriction or input to the routing/closed-road overlays.
+  addLayer({ id: 'manzil-pending-review-fill', type: 'fill', source: sid('pending-review'), filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': '#ffbf18', 'fill-opacity': .16 } });
+  addLayer({ id: 'manzil-pending-review-casing', type: 'line', source: sid('pending-review'), filter: ['==', ['geometry-type'], 'LineString'], layout: { 'line-cap': 'butt', 'line-join': 'round' }, paint: { 'line-color': '#fff9dd', 'line-width': 13 } });
+  addLayer({ id: 'manzil-pending-review-line', type: 'line', source: sid('pending-review'), filter: ['!=', ['geometry-type'], 'Point'], layout: { 'line-cap': 'butt', 'line-join': 'round' }, paint: { 'line-color': '#d99500', 'line-width': ['case', ['==', ['geometry-type'], 'LineString'], 8, 2] } });
+  addLayer({ id: 'manzil-pending-review-point', type: 'circle', source: sid('pending-review'), filter: ['==', ['geometry-type'], 'Point'], paint: { 'circle-color': '#ffbf18', 'circle-radius': 8, 'circle-stroke-color': '#fff9dd', 'circle-stroke-width': 3 } });
   // Active red restrictions take precedence if an upcoming preview shares a road.
   addLayer({ id: 'manzil-closure-roads-casing', type: 'line', source: sid('closure-roads'), layout: { 'line-cap': 'butt', 'line-join': 'round' }, paint: { 'line-color': '#fff6f8', 'line-width': 16, 'line-opacity': .98 } });
   addLayer({ id: 'manzil-closure-roads-line', type: 'line', source: sid('closure-roads'), layout: { 'line-cap': 'butt', 'line-join': 'round' }, paint: { 'line-color': '#ff163a', 'line-width': 11, 'line-opacity': 1 } });
   addLayer({ id: 'manzil-drawing-fill', type: 'fill', source: sid('drawing'), filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': '#ed353b', 'fill-opacity': .16 } });
-  addLayer({ id: 'manzil-drawing-line', type: 'line', source: sid('drawing'), filter: ['!=', ['geometry-type'], 'Point'], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#e32632', 'line-width': 3, 'line-dasharray': [2, 1.5] } });
+  addLayer({ id: 'manzil-drawing-road-casing', type: 'line', source: sid('drawing'), filter: ['==', ['get', 'road'], true], layout: { 'line-join': 'round', 'line-cap': 'butt' }, paint: { 'line-color': '#fff6f8', 'line-width': ['case', ['boolean', ['get', 'blockade'], false], 10, 14], 'line-opacity': .98 } });
+  addLayer({ id: 'manzil-drawing-line', type: 'line', source: sid('drawing'), filter: ['!=', ['geometry-type'], 'Point'], layout: { 'line-join': 'round', 'line-cap': 'butt' }, paint: { 'line-color': '#ff163a', 'line-width': ['case', ['boolean', ['get', 'blockade'], false], 6, ['boolean', ['get', 'road'], false], 10, 3] } });
   addLayer({ id: 'manzil-drawing-point', type: 'circle', source: sid('drawing'), filter: ['==', ['geometry-type'], 'Point'], paint: { 'circle-radius': 5, 'circle-color': '#e32632', 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } });
   addLayer({ id: 'manzil-trace-casing', type: 'line', source: sid('trace'), layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': 14, 'line-opacity': .98 } });
   addLayer({ id: 'manzil-trace-line', type: 'line', source: sid('trace'), layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#12bd78', 'line-width': 9, 'line-opacity': 1 } });
@@ -166,9 +194,8 @@ export default function MapView(props: MapViewProps) {
   const [styleLoading, setStyleLoading] = useState(true);
   const [preview, setPreview] = useState<{ drawing: Drawing; geometry: Polygon } | null>(null);
   const [previewError, setPreviewError] = useState(false);
-  const roadStart = useRef<Coordinate | null>(null);
-  const roadRequest = useRef<{ controller: AbortController; drawing: Drawing | null } | null>(null);
-  const [roadStatus, setRoadStatus] = useState('');
+  const [roadStroke, setRoadStroke] = useState<{ from: Coordinate; to: Coordinate } | null>(null);
+  const suppressRoadClickUntil = useRef(0);
   const [closureRoads, setClosureRoads] = useState<{ key: string; data: ClosureRoads } | null>(null);
   const roadCache = useRef(new Map<string, ClosureRoads>());
   const [closureRoadError, setClosureRoadError] = useState('');
@@ -182,36 +209,6 @@ export default function MapView(props: MapViewProps) {
   // Keep the basemap identity independent of app theme, route selection and
   // polling; retired palette aliases must not trigger an equivalent style swap.
   const mapStyle = normalizeMapStyleId(props.mapStyle), theme = mapStyle === 'night' ? 'dark' : 'light', detail = props.mapDetail ?? 'clean';
-
-  function pickRoad(coordinate: Coordinate) {
-    const p = current.current;
-    roadRequest.current?.controller.abort(); roadRequest.current = null;
-    if (!roadStart.current) {
-      roadStart.current = coordinate;
-      p.onDraw({ kind: 'line', coordinates: [coordinate], widthMeters: 14 });
-      setRoadStatus('Choose the other end on the same road.'); return;
-    }
-    const controller = new AbortController(), request = { controller, drawing: p.drawing };
-    roadRequest.current = request; setRoadStatus('Selecting road section…');
-    const timeout = setTimeout(() => {
-      if (roadRequest.current !== request) return;
-      controller.abort(); roadRequest.current = null; setRoadStatus('Road selection timed out. Try again.');
-    }, 10000);
-    api<{ drawing: Drawing; roadNames: string[]; distanceMeters: number }>('/roads/section', { method: 'POST', body: JSON.stringify({ from: roadStart.current, to: coordinate }), signal: controller.signal })
-      .then(section => {
-        if (controller.signal.aborted || roadRequest.current !== request || current.current.mode !== 'road' || current.current.drawing !== request.drawing) return;
-        roadRequest.current = null; roadStart.current = null; setRoadStatus('');
-        current.current.onDraw(section.drawing); current.current.onRoadSelection?.(section);
-      }).catch(error => { if (!controller.signal.aborted && roadRequest.current === request) { roadRequest.current = null; setRoadStatus(error instanceof Error ? error.message : 'Road selection unavailable.'); } })
-      .finally(() => clearTimeout(timeout));
-  }
-
-  useEffect(() => {
-    if (props.mode !== 'road' || (roadRequest.current && roadRequest.current.drawing !== props.drawing)) {
-      roadRequest.current?.controller.abort(); roadRequest.current = null; roadStart.current = null; setRoadStatus('');
-    }
-  }, [props.mode, props.drawing]);
-  useEffect(() => () => { roadRequest.current?.controller.abort(); }, []);
 
   useEffect(() => {
     if (!container.current) return;
@@ -238,7 +235,7 @@ export default function MapView(props: MapViewProps) {
       setUpcomingInspection({ hovered: null, focused: null, pinned: null, dismissed: false });
       const p = current.current, coordinate: Coordinate = [event.lngLat.lng, event.lngLat.lat];
       if (p.mode === 'origin' || p.mode === 'destination' || p.mode === 'waypoint') { p.onPick(coordinate); return; }
-      if (p.mode === 'road') { pickRoad(coordinate); return; }
+      if (p.mode === 'road') { if (performance.now() >= suppressRoadClickUntil.current) p.onRoadPick?.(coordinate); return; }
       if (p.mode === 'point' || p.mode === 'line' || p.mode === 'polygon') {
         const coordinates = p.mode === 'point' ? [coordinate] : [...(p.drawing?.kind === p.mode ? p.drawing.coordinates : []), coordinate];
         p.onDraw({ kind: p.mode, coordinates, widthMeters: p.drawing?.widthMeters ?? 35 }); return;
@@ -264,6 +261,51 @@ export default function MapView(props: MapViewProps) {
   }, [retry]);
 
   useEffect(() => {
+    const map = mapRef.current;
+    if (!map || props.mode !== 'road' || props.closurePickType !== 'blockade') return;
+    const element = map.getContainer(), canvas = map.getCanvas();
+    const panWasEnabled = map.dragPan.isEnabled(), previousTouchAction = canvas.style.touchAction;
+    map.dragPan.disable(); canvas.style.touchAction = 'none';
+    let pointer: { id: number; x: number; y: number; from: Coordinate } | null = null;
+    const coordinate = (event: PointerEvent): Coordinate => {
+      const bounds = element.getBoundingClientRect(), point = map.unproject([event.clientX - bounds.left, event.clientY - bounds.top]);
+      return [point.lng, point.lat];
+    };
+    const clear = () => {
+      const active = pointer; pointer = null; setRoadStroke(null);
+      if (active) { suppressRoadClickUntil.current = performance.now() + 500; try { element.releasePointerCapture(active.id); } catch { /* Already released/cancelled by the browser. */ } }
+    };
+    const down = (event: PointerEvent) => {
+      if (pointer && event.pointerId !== pointer.id) { clear(); return; }
+      if (event.isPrimary === false || event.button !== 0 || pointer || event.target instanceof Element && event.target.closest('button,a,input,select,textarea,[role="button"],.maplibregl-marker')) return;
+      pointer = { id: event.pointerId, x: event.clientX, y: event.clientY, from: coordinate(event) };
+      try { element.setPointerCapture(event.pointerId); } catch { /* Two-click picking remains available without pointer capture. */ }
+      event.preventDefault(); event.stopPropagation();
+    };
+    const move = (event: PointerEvent) => {
+      if (!pointer || pointer.id !== event.pointerId) return;
+      if (Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) >= 6) setRoadStroke({ from: pointer.from, to: coordinate(event) });
+      event.preventDefault(); event.stopPropagation();
+    };
+    const up = (event: PointerEvent) => {
+      if (!pointer || pointer.id !== event.pointerId) return;
+      const active = pointer, destination = coordinate(event), dragged = Math.hypot(event.clientX - active.x, event.clientY - active.y) >= 6;
+      clear(); event.preventDefault(); event.stopPropagation();
+      if (dragged) current.current.onRoadStroke?.(active.from, destination);
+      else current.current.onRoadPick?.(destination);
+    };
+    const cancel = (event: PointerEvent) => { if (pointer?.id === event.pointerId) clear(); };
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') clear(); };
+    element.addEventListener('pointerdown', down, true); element.addEventListener('pointermove', move, true); element.addEventListener('pointerup', up, true);
+    element.addEventListener('pointercancel', cancel, true); element.addEventListener('lostpointercapture', cancel, true); document.addEventListener('keydown', escape);
+    return () => {
+      clear(); element.removeEventListener('pointerdown', down, true); element.removeEventListener('pointermove', move, true); element.removeEventListener('pointerup', up, true);
+      element.removeEventListener('pointercancel', cancel, true); element.removeEventListener('lostpointercapture', cancel, true); document.removeEventListener('keydown', escape);
+      canvas.style.touchAction = previousTouchAction; if (panWasEnabled) map.dragPan.enable();
+    };
+  }, [props.mode, props.closurePickType, props.drawing, retry]);
+
+  useEffect(() => {
     const map = mapRef.current; if (!map) return;
     const controller = new AbortController(); let cancelled = false;
     setStyleLoading(true); setTileError('');
@@ -279,6 +321,7 @@ export default function MapView(props: MapViewProps) {
   useEffect(() => {
     setPreview(null); setPreviewError(false);
     const drawing = props.drawing;
+    if (drawing?.kind === 'line' && (props.roadSelection || props.mode === 'road')) return;
     if (!drawing || drawing.coordinates.length < (drawing.kind === 'point' ? 1 : drawing.kind === 'line' ? 2 : 3)) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
@@ -287,7 +330,7 @@ export default function MapView(props: MapViewProps) {
         .catch(() => { if (!controller.signal.aborted) setPreviewError(true); });
     }, 180);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [props.drawing]);
+  }, [props.drawing, Boolean(props.roadSelection), props.mode === 'road']);
 
   useEffect(() => {
     setClosureRoadError('');
@@ -365,7 +408,7 @@ export default function MapView(props: MapViewProps) {
     const map = mapRef.current; if (!map) return;
     const transit = transitOverlayFeatures(props.transit);
     updateSource(map, 'transit', transit.lines); updateSource(map, 'transit-stops', transit.stops); updateSource(map, 'transit-journey', transit.journey);
-  }, [props.transit, styleVersion, retry]);
+  }, [props.transit?.network, props.transit?.selectedPatternId, props.transit?.journey, props.transit?.stale, styleVersion, retry]);
 
   useEffect(() => {
     const map = mapRef.current; if (!map) return;
@@ -472,31 +515,52 @@ export default function MapView(props: MapViewProps) {
       if (previous.lng !== coordinate[0] || previous.lat !== coordinate[1]) marker.setLngLat(coordinate);
     }
     for (const [id, marker] of closureMarkers.current) if (!retained.has(id)) { marker.remove(); closureMarkers.current.delete(id); }
-    updateSource(map, 'closure-roads', props.showClosures ? visibleClosureRoads(snapshotRoads, roadKey, props.closures, props.departureAt) : emptyFeatures());
-    updateSource(map, 'upcoming-roads', props.showClosures ? previewClosureRoads(snapshotRoads, roadKey, props.closures, props.departureAt, upcomingPreviewId) : emptyFeatures());
+    updateSource(map, 'closure-roads', props.showClosures ? displayedRestrictions(visibleClosureRoads(snapshotRoads, roadKey, props.closures, props.departureAt), props.closures, props.departureAt) : emptyFeatures());
+    const upcomingRoads = previewClosureRoads(snapshotRoads, roadKey, props.closures, props.departureAt, upcomingPreviewId);
+    updateSource(map, 'upcoming-roads', props.showClosures && upcomingPreviewId ? displayedRestrictions(upcomingRoads, props.closures, props.departureAt, upcomingPreviewId) : emptyFeatures());
   }, [props.closures, props.selectedClosureId, props.showClosures, props.departureAt, closureRoads, roadKey, upcomingPreviewId, upcomingInspection.pinned, language, styleVersion, retry]);
 
   useEffect(() => {
     const map = mapRef.current; if (!map) return;
+    const selected = !props.drawing && !props.roadSelection && props.closures.find(closure => closure.id === props.selectedClosureId && closure.status === 'draft' && closure.moderation === 'pending');
+    if (!selected) { updateSource(map, 'pending-review', emptyFeatures()); return; }
+    const drawing = selected.drawing;
+    const geometry: Geometry = drawing?.kind === 'line' && drawing.coordinates.length > 1 ? { type: 'LineString', coordinates: drawing.coordinates }
+      : drawing?.kind === 'point' && drawing.coordinates.length ? { type: 'Point', coordinates: drawing.coordinates[0] } : selected.geometry;
+    updateSource(map, 'pending-review', collection([feature(geometry, { closureId: selected.id, moderation: 'pending' })]));
+    const coordinate = geometry.type === 'LineString' ? pointAlong(geometry.coordinates as Coordinate[], .5)
+      : geometry.type === 'Point' ? geometry.coordinates as Coordinate : polygonCentre(selected.geometry);
+    const element = button('map-route-label', `${selected.title} — ${t('Pending review')}`, t('Pending review'));
+    const marker = new Marker({ element, anchor: 'center', offset: [0, -24] }).setLngLat(coordinate).addTo(map);
+    return () => { marker.remove(); };
+  }, [props.closures, props.selectedClosureId, props.drawing, Boolean(props.roadSelection), language, styleVersion, retry]);
+
+  useEffect(() => {
+    const map = mapRef.current; if (!map) return;
     const drawing = props.drawing, features: Feature[] = [], markers: Marker[] = [];
-    if (drawing?.coordinates.length) {
-      if (preview?.drawing === drawing) features.push(feature(preview.geometry));
+    const roadDrawing = drawing?.kind === 'line' && (props.roadSelection != null || props.mode === 'road');
+    if (roadStroke) features.push(feature({ type: 'LineString', coordinates: [roadStroke.from, roadStroke.to] }, { road: true, blockade: true }));
+    else if (drawing?.coordinates.length) {
+      if (roadDrawing && drawing.coordinates.length > 1) features.push(feature({ type: 'LineString', coordinates: drawing.coordinates }, { road: true, ...(props.closurePickType === 'blockade' ? { blockade: true } : {}) }));
+      else if (preview?.drawing === drawing) features.push(feature(preview.geometry));
       else if (drawing.kind === 'polygon' && drawing.coordinates.length > 2) features.push(feature({ type: 'Polygon', coordinates: [[...drawing.coordinates, drawing.coordinates[0]]] }));
       else if (drawing.coordinates.length > 1) features.push(feature({ type: 'LineString', coordinates: drawing.coordinates }));
       else features.push(feature({ type: 'Point', coordinates: drawing.coordinates[0] }));
-      drawing.coordinates.forEach((point, index) => {
-        if (props.mode === 'road' && index !== 0 && index !== drawing.coordinates.length - 1) return;
-        const element = button('map-vertex', props.mode === 'road' ? `${index === 0 ? 'Start' : 'End'} of selected road section` : `Restriction point ${index + 1}. Drag, use arrow keys, or edit coordinates in the panel.`, String(props.mode === 'road' ? index === 0 ? 1 : 2 : index + 1));
-        const marker = new Marker({ element, draggable: props.mode !== 'road', anchor: 'center' }).setLngLat(point).addTo(map);
+      const markerCoordinates = roadDrawing ? props.roadSelection?.anchors ?? [] : drawing.coordinates;
+      markerCoordinates.forEach((point, index) => {
+        const element = button('map-vertex', roadDrawing ? `${index === 0 ? 'Start' : 'End'} of selected road section` : `Restriction point ${index + 1}. Drag, use arrow keys, or edit coordinates in the panel.`, String(index + 1));
+        const marker = new Marker({ element, draggable: !roadDrawing, anchor: 'center' }).setLngLat(point).addTo(map);
         const move = (next: Coordinate) => { const latest = current.current.drawing; if (latest) current.current.onDraw({ ...latest, coordinates: latest.coordinates.map((p, i) => i === index ? next : p) }); };
-        marker.on('dragend', () => { const p = marker.getLngLat(); move([p.lng, p.lat]); });
-        if (props.mode !== 'road') nudgeOnKeys(element, map, () => [marker.getLngLat().lng, marker.getLngLat().lat], move);
+        if (!roadDrawing) {
+          marker.on('dragend', () => { const p = marker.getLngLat(); move([p.lng, p.lat]); });
+          nudgeOnKeys(element, map, () => [marker.getLngLat().lng, marker.getLngLat().lat], move);
+        }
         markers.push(marker);
       });
     }
     updateSource(map, 'drawing', collection(features));
     return () => markers.forEach(marker => marker.remove());
-  }, [props.drawing, props.mode, preview, styleVersion, retry]);
+  }, [props.drawing, props.mode, props.closurePickType, props.roadSelection?.anchors, roadStroke, preview, styleVersion, retry]);
 
   useEffect(() => {
     const map = mapRef.current; if (!map) return;
@@ -531,13 +595,15 @@ export default function MapView(props: MapViewProps) {
 
   useEffect(() => {
     const map = mapRef.current, position = props.navigationPosition;
+    if (map) updateSource(map, 'location-accuracy', locationAccuracyArea(position, props.navigationAccuracy));
     if (!map || !position || !validCoordinate(position)) { navigationMarker.current?.remove(); navigationMarker.current = null; return; }
     if (!navigationMarker.current) {
-      const element = document.createElement('div'); element.className = 'map-navigation-marker'; element.setAttribute('role', 'img'); element.setAttribute('aria-label', t('Navigation'));
+      const element = document.createElement('div'); element.className = 'map-navigation-marker'; element.setAttribute('role', 'img'); element.setAttribute('aria-label', t('Current location'));
       navigationMarker.current = new Marker({ element, anchor: 'center' }).setLngLat(position).addTo(map);
     } else navigationMarker.current.setLngLat(position);
-    if (props.followPosition) map.easeTo({ center: position, zoom: Math.max(map.getZoom(), 15), pitch: 0, bearing: 0, duration: reducedMotion() ? 0 : 180 });
-  }, [props.navigationPosition, props.followPosition, retry]);
+    navigationMarker.current.getElement().setAttribute('aria-label', props.navigationAccuracy != null ? `${t('Current location')} · ±${Math.ceil(props.navigationAccuracy)} m` : t('Current location'));
+    if (props.followPosition) map.easeTo({ center: position, zoom: props.navigationAccuracy != null && props.navigationAccuracy > 60 ? 14 : Math.max(map.getZoom(), 15), pitch: 0, bearing: 0, duration: reducedMotion() ? 0 : 180 });
+  }, [props.navigationPosition, props.navigationAccuracy, props.followPosition, styleVersion, retry]);
   useEffect(() => () => { navigationMarker.current?.remove(); navigationMarker.current = null; for (const marker of closureMarkers.current.values()) marker.remove(); closureMarkers.current.clear(); }, [retry]);
 
   return <>
@@ -545,7 +611,8 @@ export default function MapView(props: MapViewProps) {
     {mapError ? <div className="map-status map-status-error" role="alert"><span>{t(mapError)}</span><button type="button" onClick={() => setRetry(value => value + 1)}>{t("Restart map")}</button><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">{t("© OpenStreetMap contributors")}</a></div>
       : tileError ? <div className="map-status map-status-error" role="status">{t(tileError)}</div>
       : styleLoading ? <div className="map-status" role="status">{t("Loading the map…")}</div>
-      : roadStatus ? <div className="map-status" role="status">{t(roadStatus)}</div>
+      : props.roadSelection?.error ? <div className="map-status map-status-error" role="status">{t(props.roadSelection.error)}</div>
+      : props.roadSelection?.busy ? <div className="map-status" role="status">{t('Selecting road…')}</div>
       : previewError ? <div className="map-status map-status-error" role="status">{t("Restriction preview unavailable.")}</div>
       : closureRoadError ? <div className="map-status map-status-error" role="status">{t(closureRoadError)}</div> : null}
   </>;

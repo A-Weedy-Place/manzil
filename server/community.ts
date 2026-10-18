@@ -8,6 +8,19 @@ export interface DirectoryUser { uid: string; email?: string; displayName?: stri
 export interface UserDirectory {
   listUsers(maxResults: number, pageToken?: string): Promise<{ users: DirectoryUser[]; pageToken?: string }>;
   getUser(uid: string): Promise<DirectoryUser>;
+  setCustomUserClaims(uid: string, customClaims: Record<string, unknown> | null): Promise<void>;
+}
+export interface TokenAuthority {
+  verifyIdToken(token: string, checkRevoked: boolean): Promise<{ uid: string; name?: unknown }>;
+  getUser(uid: string): Promise<DirectoryUser>;
+}
+/** Claims in an already-issued token can outlive an administrator's role change. */
+export async function authenticateToken(authority: TokenAuthority, token: string): Promise<TokenUser> {
+  const decoded = await authority.verifyIdToken(token, true);
+  const account = await authority.getUser(decoded.uid);
+  if (account.disabled) throw new Error('Account disabled.');
+  return { uid: decoded.uid, admin: account.customClaims?.admin === true,
+    ...(account.displayName ? { name: account.displayName } : typeof decoded.name === 'string' ? { name: decoded.name } : {}) };
 }
 const memberKey = (uid: string) => `community:member:${uid}`;
 export async function membershipFor(root: Repository, user: TokenUser | null, local = false): Promise<Membership | null> {

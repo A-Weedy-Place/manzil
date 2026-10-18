@@ -26,7 +26,8 @@ it('prefills the prepared reason, exact PKT times, source, notes and existing ma
   expect((screen.getByLabelText('Starts · Pakistan time') as HTMLInputElement).value).toBe('2026-10-17T17:00');
   expect((screen.getByLabelText('Ends · Pakistan time') as HTMLInputElement).value).toBe('2026-10-17T19:00');
   expect((screen.getByLabelText(/Source link/) as HTMLInputElement).value).toBe(notice().url);
-  expect(screen.getByLabelText('Point 1 latitude')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Change road' })).toBeTruthy();
+  expect(screen.queryByLabelText('Point 1 latitude')).toBeNull();
   fireEvent.submit(ui.container.querySelector('form')!);
   await waitFor(() => expect(save).toHaveBeenCalledOnce());
   expect(save.mock.calls[0]).toEqual([expect.objectContaining({ reason: 'vip', startsAt: '2026-10-17T12:00:00.000Z', endsAt: '2026-10-17T14:00:00.000Z', status: 'published', drawing: location().drawing })]);

@@ -10,6 +10,7 @@ import { getRoutingGraph, planJourney } from '../server/routing/index';
 import { demoCatalogue, toggleDemo } from '../server/demos';
 import type { RoutingGraph } from '../server/routing/graph';
 import { LocalRouter } from '../server/routing/engine';
+import { drawingToPolygon } from '../server/geometry';
 import type { DemoCatalogue } from '../server/demos';
 
 const cleanup: (() => void | Promise<void>)[] = [];
@@ -39,6 +40,27 @@ async function setup(roadGraph: RoutingGraph = graph) {
 }
 
 describe('active road display and independently toggled demos', () => {
+  it('retains a typed selected road across the offline graph boundary and without an offline graph', () => {
+    const drawing = { kind: 'line' as const, coordinates: [[73.019, 33.69], [73.025, 33.69], [73.026, 33.691]] as Coordinate[], widthMeters: 14 };
+    const closure: Closure = { ...draft, restrictionType: 'road_closure', drawing, geometry: drawingToPolygon(drawing), id: 'cross-boundary', revision: 1, moderation: 'approved', createdAt: at, updatedAt: at };
+    for (const available of [graph, null]) {
+      const result = activeClosureRoads(available, [closure], at);
+      expect(result.features).toEqual([{ type: 'Feature', properties: { closureId: closure.id, title: closure.title, unverifiedDrawing: true }, geometry: { type: 'LineString', coordinates: drawing.coordinates } }]);
+      expect(activeClosureRoads(available, [{ ...closure, moderation: 'pending' }], at).features).toEqual([]);
+      expect(activeClosureRoads(available, [{ ...closure, moderation: 'rejected' }], at).features).toEqual([]);
+      expect(activeClosureRoads(available, [closure], closure.endsAt!).features).toEqual([]);
+    }
+  });
+  it('does not render an outside drawing that escapes its actual closure footprint', () => {
+    const drawing = { kind: 'line' as const, coordinates: [[74.019, 32.69], [74.025, 32.69]] as Coordinate[], widthMeters: 14 };
+    const closure: Closure = { ...draft, restrictionType: 'road_closure', drawing, id: 'mismatched', revision: 1, createdAt: at, updatedAt: at };
+    expect(activeClosureRoads(null, [closure], at).features).toEqual([]);
+  });
+  it('does not treat a typed client line as proof of a road inside mapped coverage', () => {
+    const drawing = { kind: 'line' as const, coordinates: [[73.003, 33.695], [73.008, 33.695]] as Coordinate[], widthMeters: 14 };
+    const closure: Closure = { ...draft, restrictionType: 'road_closure', drawing, geometry: drawingToPolygon(drawing), id: 'off-road-type', revision: 1, createdAt: at, updatedAt: at };
+    expect(activeClosureRoads(graph, [closure], at).features).toEqual([]);
+  });
   it('coats only the affected part of a road edge, deduplicates reverse direction, and retains exact routing fractions', async () => {
     const closure: Closure = { ...draft, id: 'test', revision: 1, createdAt: at, updatedAt: at };
     const roads = activeClosureRoads(graph, [closure], at);

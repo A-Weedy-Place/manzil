@@ -22,6 +22,12 @@
 .closure-period small { font-size:11px; color:var(--muted); }
 .closure-period>svg { color:var(--muted); }
 .closure-expanded { border-top:1px solid var(--border); padding:14px; }
+.closure-detail-actions { display:flex; gap:8px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:12px; }
+.closure-detail-actions>.text-button { min-height:44px; }
+.closure-reason { color:var(--muted); font-size:12px; }
+.closure-evidence-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,140px),1fr)); gap:9px; margin-bottom:12px; }
+.closure-evidence-grid>.closure-evidence { height:160px; margin-bottom:0; border:1px solid var(--border); }
+.closure-load-error { margin-bottom:12px; }
 .closure-reporter { display:flex; gap:9px; align-items:center; margin-bottom:12px; color:var(--ink); font-weight:550; }
 .closure-reporter small { display:block; font-size:11px; color:var(--muted); font-weight:400; }
 .closure-description { color:var(--muted); font-size:13px; white-space:pre-wrap; overflow-wrap:anywhere; }
@@ -34,6 +40,32 @@
 .photo-upload { display:inline-flex; align-items:center; gap:8px; position:relative; cursor:pointer; }
 .photo-upload input { position:absolute; width:100%; height:100%; opacity:0; inset:0; cursor:pointer; }
 .photo-upload:focus-within { outline:3px solid var(--blue); outline-offset:3px; }
+.closure-simple-editor>.section-heading { margin-bottom:18px; }
+.closure-type-field { border:0; padding:0; margin:0 0 16px; min-width:0; }
+.closure-type-field legend { color:var(--muted); font-size:12px; margin-bottom:8px; }
+.closure-type-options { display:flex; gap:5px; }
+.closure-type-options button { display:flex; align-items:center; justify-content:center; gap:8px; flex:1; min-height:46px; }
+.closure-road-picker { padding:15px; margin-bottom:19px; border:1px solid var(--border); border-radius:15px; background:var(--surface); }
+.closure-road-picker.has-road { border-color:var(--green); }
+.closure-road-selection { display:flex; align-items:center; gap:11px; min-width:0; }
+.closure-road-selection>div { flex:1; min-width:0; }
+.closure-road-selection strong { display:block; font-size:14px; overflow-wrap:anywhere; }
+.closure-road-selection small { display:block; color:var(--muted); margin-top:5px; }
+.closure-road-icon { display:grid; place-items:center; width:40px; height:40px; flex-shrink:0; border-radius:12px; color:var(--green); background:var(--green-soft); }
+.closure-road-selection>svg { color:var(--green); }
+.closure-road-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+.closure-road-actions button { min-height:44px; }
+.closure-coordinate-input { margin-top:8px; border-top:1px solid var(--border); padding-top:10px; }
+.closure-coordinate-input summary { color:var(--muted); font-size:12px; min-height:32px; cursor:pointer; }
+.closure-coordinate-input input { direction:ltr; text-align:start; }
+.closure-end-time { margin-bottom:16px; }
+.closure-end-time .field-label { margin-bottom:8px; }
+.closure-agent-review { padding:13px; border:1px solid var(--border); border-radius:13px; margin-bottom:16px; }
+.closure-agent-review h2 { font-size:15px; margin:0 0 8px; }
+.closure-agent-review summary,.closure-agent-review li { font-size:12px; color:var(--muted); }
+.admin-member>.admin-member-actions { display:flex; flex:1 0 100%; flex-wrap:wrap; gap:8px; }
+.admin-member-actions button { min-height:44px; }
+.admin-member>.admin-role-confirm { flex:1 0 100%; display:flex; flex-direction:column; gap:10px; padding:14px; border:1px solid var(--border); border-radius:13px; background:var(--surface); }
 .review-note { display:flex; gap:8px; align-items:flex-start; color:var(--muted); background:var(--surface); border:1px solid var(--border); padding:12px; border-radius:10px; font-size:13px; }
 .admin-stats { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:18px 0; }
 .admin-stats>div { padding:14px; border:1px solid var(--border); border-radius:13px; background:var(--surface); }

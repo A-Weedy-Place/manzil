@@ -158,12 +158,13 @@ export function closureEdgeFractions(graph: RoutingGraph, geometry: Polygon, dea
 
 export type ClosureRoadProperties = { closureId: string; title: string; unverifiedDrawing?: true };
 /** Outside local coverage, retain a contained user-drawn line without claiming a matched road. */
-function outsideGraphDrawing(graph: RoutingGraph, closure: Closure): Coordinate[] | null {
+function outsideGraphDrawing(graph: RoutingGraph | null, closure: Closure): Coordinate[] | null {
   const drawing = drawingSchema.safeParse(closure.drawing);
   if (!drawing.success || drawing.data.kind !== 'line') return null;
-  const points = closure.geometry.coordinates.flat(), [west, south, east, north] = graph.bounds;
+  const points = closure.geometry.coordinates.flat();
   if (!points.length || points.some(point => point.length !== 2 || !point.every(Number.isFinite))) return null;
-  const outside = Math.max(...points.map(point => point[0])) < west || Math.min(...points.map(point => point[0])) > east
+  const [west, south, east, north] = graph?.bounds ?? [0, 0, 0, 0];
+  const outside = !graph || Math.max(...points.map(point => point[0])) < west || Math.min(...points.map(point => point[0])) > east
     || Math.max(...points.map(point => point[1])) < south || Math.min(...points.map(point => point[1])) > north;
   if (!outside) return null;
   const coordinates = drawing.data.coordinates;
@@ -174,12 +175,22 @@ function outsideGraphDrawing(graph: RoutingGraph, closure: Closure): Coordinate[
   return structuredClone(coordinates);
 }
 /** Display geometry only. Including upcoming events does not activate them in routing. */
-export function activeClosureRoads(graph: RoutingGraph, closures: Closure[], at: string, includeUpcoming = false): FeatureCollection<LineString, ClosureRoadProperties> {
+export function activeClosureRoads(graph: RoutingGraph | null, closures: Closure[], at: string, includeUpcoming = false): FeatureCollection<LineString, ClosureRoadProperties> {
   const instant = Date.parse(at), features: FeatureCollection<LineString, ClosureRoadProperties>['features'] = [];
   for (const closure of closures) {
-    if (closure.status !== 'published' || (!includeUpcoming && Date.parse(closure.startsAt) > instant) || (closure.endsAt !== null && Date.parse(closure.endsAt) <= instant)) continue;
+    if (closure.status !== 'published' || closure.moderation === 'pending' || closure.moderation === 'rejected' || (!includeUpcoming && Date.parse(closure.startsAt) > instant) || (closure.endsAt !== null && Date.parse(closure.endsAt) <= instant)) continue;
+    // Preserve the chosen full line across the offline edge without treating a
+    // client-supplied type as persisted proof of road matching. Inside coverage,
+    // road intervals still clip against actual graph roads. Blockades retain
+    // their separately validated transverse geometry.
+    const beyondGraph = !graph || closure.drawing?.coordinates.some(point => point[0] < graph.bounds[0] || point[0] > graph.bounds[2] || point[1] < graph.bounds[1] || point[1] > graph.bounds[3]);
+    if (closure.restrictionType === 'blockade' || closure.restrictionType === 'road_closure' && beyondGraph) {
+      const coordinates = outsideGraphDrawing(null, closure);
+      if (coordinates) { features.push({ type: 'Feature', properties: { closureId: closure.id, title: closure.title, ...(closure.restrictionType === 'road_closure' ? { unverifiedDrawing: true as const } : {}) }, geometry: { type: 'LineString', coordinates } }); continue; }
+    }
     const seen = new Set<string>();
-    for (const [index, intervals] of geometryFractions(graph, closure.geometry).display) {
+    for (const [index, intervals] of graph ? geometryFractions(graph, closure.geometry).display : []) {
+      if (!graph) break;
       const edge = graph.edges[index], key = [edge.from, edge.to].sort((a, b) => a - b).join(':');
       if (seen.has(key)) continue;
       seen.add(key);

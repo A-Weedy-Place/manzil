@@ -5,7 +5,7 @@ import type { TransitPattern, TransitStop } from '../../shared/transit.js';
 import { distanceMeters } from '../geometry.js';
 
 export const lineDistance = (line: LineString) => line.coordinates.slice(1).reduce((sum,p,i) => sum + distanceMeters(line.coordinates[i] as Coordinate,p as Coordinate),0);
-export function hasGap(pattern: TransitPattern, from: number, to: number): boolean { return !!pattern.breakAfterStopIndexes?.some(index => index >= from && index < to); }
+export function hasGap(pattern: TransitPattern, from: number, to: number): boolean { return !!pattern.breakAfterStopIndexes?.some(index => index >= from && index < to) || !!pattern.roadSegments?.slice(from,to).some(line=>line===null); }
 /** Locate ordered stops monotonically along a supplied shape, preserving curved geometry. */
 export function stopDistances(pattern: TransitPattern, stops: Map<string,TransitStop>): number[] {
   if (pattern.stopDistancesMeters?.length === pattern.stopIds.length && pattern.stopDistancesMeters.every((d,i,a) => Number.isFinite(d) && d >= 0 && (!i || d >= a[i-1]))) return pattern.stopDistancesMeters;
@@ -26,6 +26,17 @@ export function stopDistances(pattern: TransitPattern, stops: Map<string,Transit
   });
 }
 export function sliceShape(pattern:TransitPattern, distances:number[], from:number,to:number, stops:Map<string,TransitStop>):LineString {
+  if(pattern.roadSegments){
+    if(hasGap(pattern,from,to))throw new Error('An unresolved transit road gap cannot be drawn or ridden.');
+    const coordinates:number[][]=[];
+    for(const segment of pattern.roadSegments.slice(from,to)){
+      if(!segment)throw new Error('An unresolved transit road gap cannot be drawn or ridden.');
+      if(coordinates.length&&distanceMeters(coordinates.at(-1)! as Coordinate,segment.coordinates[0] as Coordinate)>.2)throw new Error('Transit road segments are not connected.');
+      coordinates.push(...(coordinates.length?segment.coordinates.slice(1):segment.coordinates));
+    }
+    if(coordinates.length<2)throw new Error('No aligned transit road section is available.');
+    return{type:'LineString',coordinates};
+  }
   if(pattern.geometryQuality==='stops-only') return {type:'LineString',coordinates:pattern.stopIds.slice(from,to+1).map(id=>stops.get(id)!.coordinate)};
   const start=distances[from],end=distances[to],coordinates=pattern.geometry.coordinates as Coordinate[],output:Coordinate[]=[];let offset=0;
   for(let i=1;i<coordinates.length;i++){
@@ -33,7 +44,8 @@ export function sliceShape(pattern:TransitPattern, distances:number[], from:numb
     if(next>=start && offset<=end && length>0){const low=Math.max(0,(start-offset)/length),high=Math.min(1,(end-offset)/length); if(low<=high){const lerp=(t:number):Coordinate=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];if(!output.length)output.push(lerp(low));output.push(lerp(high));}}
     offset=next;if(offset>end)break;
   }
-  return {type:'LineString',coordinates:output.length>=2?output:[stops.get(pattern.stopIds[from])!.coordinate,stops.get(pattern.stopIds[to])!.coordinate]};
+  if(output.length<2)throw new Error('No supplied road geometry is available for this transit section.');
+  return {type:'LineString',coordinates:output};
 }
 export function publishedClosures(closures:Closure[]):Closure[]{return closures.filter(closure=>closure.status==='published'&&(!closure.moderation||closure.moderation==='approved'));}
 export function overlap(startsAt:string,endsAt:string|null,from:number,to=from):boolean{return Date.parse(startsAt)<=to&&(!endsAt||Date.parse(endsAt)>from);}

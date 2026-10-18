@@ -3,6 +3,8 @@ import type { TransitJourney, TransitNetwork, TransitPattern } from '../../share
 import type { Coordinate } from '../../shared/types';
 import { transitColorScheme, TRANSIT_FALLBACK_COLOR, TRANSIT_UNCERTAIN_COLOR } from './transitColors';
 export { transitColor, TRANSIT_FALLBACK_COLOR, TRANSIT_UNCERTAIN_COLOR } from './transitColors';
+/** Muted context is a display choice, independent of service availability. */
+export const TRANSIT_CONTEXT_COLOR = '#8c979d';
 
 export interface TransitMapState {
   network: TransitNetwork;
@@ -37,14 +39,22 @@ export function transitOverlayFeatures(state?: TransitMapState | null): { lines:
   const statuses = new Map(network.statuses.map(status => [status.patternId, status]));
   const patterns = new Map(network.patterns.map(pattern => [pattern.id, pattern]));
   const visibleStops = new Set(network.patterns.flatMap(pattern => pattern.stopIds));
-  const journeyStops = stale ? [] : (state.journey?.legs ?? []).flatMap(leg => leg.kind === 'ride' ? [leg.from.id, ...leg.stops.map(stop => stop.id), leg.to.id] : []);
-  const selectedStops = new Set([...(patterns.get(selectedPatternId ?? '')?.stopIds ?? []), ...journeyStops]);
+  const activeJourney = stale ? null : state.journey;
+  const journeyPatterns = new Set((activeJourney?.legs ?? []).flatMap(leg => leg.kind === 'ride' ? [leg.patternId] : []));
+  const journeyStops = (activeJourney?.legs ?? []).flatMap(leg => leg.kind === 'ride' ? [leg.from.id, ...leg.stops.map(stop => stop.id), leg.to.id] : []);
+  // A previously browsed line must not leave all its stops highlighted after
+  // choosing a journey. Emphasize only stops on the actual ridden intervals.
+  const selectedStops = new Set(activeJourney ? journeyStops : patterns.get(selectedPatternId ?? '')?.stopIds ?? []);
   const lines = network.patterns.flatMap(pattern => {
-    const status = statuses.get(pattern.id), selected = pattern.id === selectedPatternId;
+    // Stop locations alone do not establish a road alignment. Keep their dots,
+    // but never turn the old schematic chords into purported solid bus routes.
+    if (pattern.geometryQuality === 'stops-only') return [];
+    const status = statuses.get(pattern.id), selected = !activeJourney && pattern.id === selectedPatternId;
+    const focused = !!activeJourney && journeyPatterns.has(pattern.id), muted = !!activeJourney && !focused;
     const availability = stale ? 'uncertain' : status?.availability ?? 'uncertain';
-    return (pattern.geometrySegments ?? [pattern.geometry]).filter(segment => segment.coordinates.length > 1).map(geometry => ({ type: 'Feature' as const, geometry, properties: { patternId: pattern.id, routeId: pattern.routeId, selected, order: selected ? 1 : 0, schematic: pattern.geometryQuality === 'stops-only', color: availability === 'available' ? colors.get(pattern.routeId) ?? TRANSIT_FALLBACK_COLOR : TRANSIT_UNCERTAIN_COLOR, availability } }));
+    return (pattern.geometrySegments ?? [pattern.geometry]).filter(segment => segment.coordinates.length > 1).map(geometry => ({ type: 'Feature' as const, geometry, properties: { patternId: pattern.id, routeId: pattern.routeId, selected, focused, muted, order: selected ? 2 : focused ? 1 : 0, schematic: pattern.geometryQuality === 'stops-only', color: muted ? TRANSIT_CONTEXT_COLOR : availability === 'available' ? colors.get(pattern.routeId) ?? TRANSIT_FALLBACK_COLOR : TRANSIT_UNCERTAIN_COLOR, availability } }));
   });
-  const stops = network.stops.filter(stop => visibleStops.has(stop.id)).map(stop => ({ type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: stop.coordinate }, properties: { stopId: stop.id, name: stop.name, selected: selectedStops.has(stop.id) } }));
-  const journey = stale ? [] : (state.journey?.legs ?? []).filter(leg => leg.geometry.coordinates.length > 1).map((leg, index) => ({ type: 'Feature' as const, geometry: leg.geometry, properties: { index, kind: leg.kind, schematic: leg.kind === 'ride' && leg.geometryQuality === 'stops-only', color: leg.kind === 'ride' ? leg.availability === 'available' ? colors.get(leg.routeId) ?? TRANSIT_FALLBACK_COLOR : TRANSIT_UNCERTAIN_COLOR : '#526a7f' } }));
+  const stops = network.stops.filter(stop => visibleStops.has(stop.id)).map(stop => ({ type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: stop.coordinate }, properties: { stopId: stop.id, name: stop.name, selected: selectedStops.has(stop.id), muted: !!activeJourney && !selectedStops.has(stop.id) } }));
+  const journey = stale ? [] : (state.journey?.legs ?? []).filter(leg => leg.geometry.coordinates.length > 1 && (leg.kind !== 'ride' || leg.geometryQuality !== 'stops-only')).map((leg, index) => ({ type: 'Feature' as const, geometry: leg.geometry, properties: { index, kind: leg.kind, schematic: false, color: leg.kind === 'ride' ? leg.availability === 'available' ? colors.get(leg.routeId) ?? TRANSIT_FALLBACK_COLOR : TRANSIT_UNCERTAIN_COLOR : '#526a7f' } }));
   return { lines: collection(lines), stops: collection(stops), journey: collection(journey) };
 }

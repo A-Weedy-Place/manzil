@@ -55,8 +55,26 @@
 .transit-source-details small { display:block; font-size:10px; }
 .transit-source-details ul { padding-inline-start:18px; margin:8px 0 12px; }
 .transit-source-details li { margin:5px 0; }
-.transit-loading,.transit-inline-status { display:flex; align-items:center; gap:9px; color:var(--muted); padding:12px 0; font-size:12px; }
-.transit-loading { justify-content:center; min-height:90px; }
+.transit-inline-status { display:flex; align-items:center; gap:9px; color:var(--muted); padding:12px 0; font-size:12px; }
+.transit-loading { padding:17px; margin:0 0 18px; border:1px solid var(--border); border-radius:17px; background:var(--surface); }
+.transit-loading-title { display:flex; align-items:center; gap:12px; color:var(--green); }
+.transit-loading-title>span { width:44px; height:44px; display:grid; place-items:center; border-radius:12px; background:var(--green-soft); flex-shrink:0; }
+.transit-loading-title>div { display:grid; gap:4px; flex:1; min-width:0; }
+.transit-loading-title strong { color:var(--ink); font-size:15px; line-height:1.4; }
+.transit-loading-title small { color:var(--muted); font-size:12px; }
+.transit-loading-title>svg { flex-shrink:0; }
+.transit-loading-skeleton { display:grid; gap:10px; margin-top:18px; }
+.transit-loading-skeleton>div { display:flex; align-items:center; gap:12px; min-height:52px; padding:9px; border:1px solid var(--border); border-radius:11px; }
+.transit-loading-skeleton i,.transit-loading-skeleton b { display:block; border-radius:5px; background:var(--border); animation:transit-loading-pulse 1.6s ease-in-out infinite; }
+.transit-loading-skeleton i { width:42px; height:28px; flex-shrink:0; }
+.transit-loading-skeleton span { flex:1; display:grid; gap:7px; }
+.transit-loading-skeleton b { height:7px; width:85%; }
+.transit-loading-skeleton b:last-child { width:52%; height:5px; }
+.transit-network-error { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.transit-network-error>span { flex:1; min-width:130px; }
+.transit-network-error>.text-button { min-height:44px; flex-shrink:0; }
+@keyframes transit-loading-pulse { 0%,100% { opacity:.45; } 50% { opacity:.9; } }
+@media(prefers-reduced-motion:reduce) { .transit-loading .spin,.transit-inline-status .spin,.transit-loading-skeleton i,.transit-loading-skeleton b { animation:none; } }
 .transit-journeys { display:grid; gap:10px; }
 .transit-journey-card { padding:13px; border:1px solid var(--border); border-radius:14px; background:var(--surface); text-align:start; color:var(--ink); display:grid; gap:10px; }
 .transit-journey-card.is-selected { border-color:var(--green); background:var(--green-soft); }

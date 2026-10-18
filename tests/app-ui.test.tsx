@@ -66,7 +66,7 @@ it('offers departure comparisons only in Plan ahead and never requests them for 
 });
 it('recentres My location without editing endpoints, stops, route geometry or planned time', async () => {
   let locateSuccess!: PositionCallback;
-  const getPosition = vi.fn((success: PositionCallback) => { locateSuccess = success; });
+  const getPosition = vi.fn((success: PositionCallback, _failure?: PositionErrorCallback, _options?: PositionOptions) => { locateSuccess = success; });
   Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition: getPosition, watchPosition: vi.fn() } });
   const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
     if (url === '/api/plan') { const request = JSON.parse(init!.body as string); return new Response(JSON.stringify({ options: [{ ...option, departureAt: request.departureAt }], baseline: null, conflicts: [], warnings: [], evaluatedAt: date, graphVersion: 'test', eventRevision: 0, source: 'local-osm' })); }
@@ -83,8 +83,10 @@ it('recentres My location without editing endpoints, stops, route geometry or pl
   expect(getPosition).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'My location' }));
   expect(screen.getByRole('button', { name: 'My location' }).matches(':disabled')).toBe(true);
-  act(() => locateSuccess({ coords: { longitude: 73.123, latitude: 33.678 } } as GeolocationPosition));
+  act(() => locateSuccess({ timestamp: Date.now(), coords: { longitude: 73.123, latitude: 33.678, accuracy: 12 } } as GeolocationPosition));
   expect(capture.props!.focus?.coordinates).toEqual([[73.123, 33.678]]);
+  expect(getPosition.mock.calls[0][2]).toEqual({ enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
+  expect(screen.getByText('GPS estimate · reported accuracy about 12 m')).toBeTruthy();
   expect(capture.props!.origin).toEqual(before.origin); expect(capture.props!.destination).toEqual(before.destination); expect(capture.props!.waypoints).toEqual(before.waypoints);
   expect(capture.props!.selectedRoute).toEqual(before.selectedRoute); expect(capture.props!.departureAt).toBe(before.departureAt);
   expect(fetcher.mock.calls.filter(([url]) => url === '/api/plan')).toHaveLength(1);
@@ -98,13 +100,67 @@ it('ignores an old-account location response and keeps a declined request editab
   fireEvent.click(screen.getByRole('button', { name: 'My location' }));
   act(() => failure({ code: 1 } as GeolocationPositionError));
   expect(screen.getByRole('button', { name: 'My location' }).matches(':disabled')).toBe(false);
-  expect(screen.getByText('Location is unavailable or permission was declined. You can still select any point on the map.')).toBeTruthy();
+  expect(screen.getByText('Location permission was declined. You can still select a point on the map.')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'My location' }));
   fireEvent.click(screen.getByRole('button', { name: 'Open profile' }));
   fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
   await screen.findByRole('dialog', { name: 'Manzil' });
-  act(() => success({ coords: { longitude: 73.123, latitude: 33.678 } } as GeolocationPosition));
+  act(() => success({ timestamp: Date.now(), coords: { longitude: 73.123, latitude: 33.678, accuracy: 12 } } as GeolocationPosition));
   expect(capture.props!.focus?.coordinates).not.toEqual([[73.123, 33.678]]);
+});
+it('reports a coarse browser location honestly without moving route endpoints or requesting a plan', async () => {
+  let success!: PositionCallback;
+  Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition: (ok: PositionCallback) => { success = ok; } } });
+  const fetcher = vi.fn(async (url: string) => responseFor(url)); vi.stubGlobal('fetch', fetcher);
+  render(<App />); await screen.findByRole('button', { name: 'Find routes' });
+  fireEvent.click(screen.getByRole('button', { name: 'My location' }));
+  act(() => success({ timestamp: Date.now(), coords: { longitude: 73.05, latitude: 33.7, accuracy: 500 } } as GeolocationPosition));
+  expect(screen.getByText('GPS estimate · reported accuracy about 500 m')).toBeTruthy();
+  expect(capture.props!.focus?.coordinates).toEqual([[73.05, 33.7]]);
+  expect(capture.props!.origin).toBeNull(); expect(capture.props!.destination).toBeNull();
+  expect(capture.props!.navigationPosition).toEqual([73.05, 33.7]);
+  expect(fetcher.mock.calls.some(([url]) => url === '/api/plan')).toBe(false);
+});
+it('recentres the navigation-owned position without starting a competing map lookup', async () => {
+  let receive!: PositionCallback;
+  const getPosition = vi.fn(), watch = vi.fn((ok: PositionCallback) => { receive = ok; return 6; });
+  Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition: getPosition, watchPosition: watch, clearWatch: vi.fn() } });
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === '/api/plan') { const request = JSON.parse(String(init?.body)); return new Response(JSON.stringify({ options: [{ ...option, departureAt: request.departureAt }], baseline: null, conflicts: [], warnings: [], evaluatedAt: request.departureAt, graphVersion: 'test', eventRevision: 0, source: 'local-osm' })); }
+    return responseFor(url);
+  }));
+  render(<App />); await screen.findByRole('button', { name: 'Find routes' }); await chooseEndpoints();
+  fireEvent.click(screen.getByRole('button', { name: 'Find routes' })); fireEvent.click(await screen.findByRole('button', { name: 'Navigate' }));
+  expect(screen.getByRole('button', { name: 'My location' }).matches(':disabled')).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Start GPS guidance' }));
+  await act(async () => receive({ timestamp: Date.now(), coords: { longitude: 73, latitude: 33.7, accuracy: 8 } } as GeolocationPosition));
+  expect(capture.props!.navigationPosition).toEqual([73, 33.7]); expect(capture.props!.navigationAccuracy).toBe(8);
+  const myLocation = screen.getByRole('button', { name: 'My location' }); expect(myLocation.matches(':disabled')).toBe(false); fireEvent.click(myLocation);
+  expect(getPosition).not.toHaveBeenCalled(); expect(watch).toHaveBeenCalledOnce(); expect(capture.props!.focus?.coordinates).toEqual([[73, 33.7]]);
+  expect(capture.props!.navigationPosition).toEqual([73, 33.7]); expect(capture.props!.navigationAccuracy).toBe(8);
+});
+it('cancels a pending map refinement on entering navigation so late coarse callbacks cannot replace its fix', async () => {
+  let first!: PositionCallback; const watches: PositionCallback[] = [], clear = vi.fn();
+  const getPosition = vi.fn((ok: PositionCallback) => { first = ok; }), watch = vi.fn((ok: PositionCallback) => { watches.push(ok); return watches.length + 40; });
+  Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition: getPosition, watchPosition: watch, clearWatch: clear } });
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === '/api/plan') { const request = JSON.parse(String(init?.body)); return new Response(JSON.stringify({ options: [{ ...option, departureAt: request.departureAt }], baseline: null, conflicts: [], warnings: [], evaluatedAt: request.departureAt, graphVersion: 'test', eventRevision: 0, source: 'local-osm' })); }
+    return responseFor(url);
+  }));
+  render(<App />); await screen.findByRole('button', { name: 'Find routes' }); await chooseEndpoints();
+  fireEvent.click(screen.getByRole('button', { name: 'Find routes' })); const navigate = await screen.findByRole('button', { name: 'Navigate' });
+  fireEvent.click(screen.getByRole('button', { name: 'My location' }));
+  act(() => first({ timestamp: Date.now(), coords: { longitude: 74, latitude: 31, accuracy: 500 } } as GeolocationPosition));
+  expect(watches).toHaveLength(1); fireEvent.click(navigate); expect(clear).toHaveBeenCalledWith(41);
+  fireEvent.click(screen.getByRole('button', { name: 'Start GPS guidance' })); expect(watches).toHaveLength(2);
+  await act(async () => watches[1]({ timestamp: Date.now(), coords: { longitude: 73, latitude: 33.7, accuracy: 8 } } as GeolocationPosition));
+  const before = capture.props!.focus;
+  act(() => {
+    watches[0]({ timestamp: Date.now(), coords: { longitude: 74, latitude: 31, accuracy: 500 } } as GeolocationPosition);
+    first({ timestamp: Date.now(), coords: { longitude: 74, latitude: 31, accuracy: 20 } } as GeolocationPosition);
+  });
+  expect(capture.props!.navigationPosition).toEqual([73, 33.7]); expect(capture.props!.navigationAccuracy).toBe(8); expect(capture.props!.focus).toBe(before);
+  expect(getPosition).toHaveBeenCalledOnce();
 });
 it.each([false, true])('persists the header appearance toggle independently of the map style (signed in: %s)', async signedIn => {
   if (signedIn) signInDevelopment('user@manzil.test', 'ManzilUser123!');
@@ -163,7 +219,7 @@ it('takes an administrator from sign-in to the control centre', async () => {
   fireEvent.click(screen.getByRole('button', { name: /Admin user/ }));
   fireEvent.submit(screen.getByRole('form', { name: 'Sign in' }));
   expect(await screen.findByRole('heading', { name: 'Control centre' })).toBeTruthy();
-  expect(screen.getByRole('tab', { name: 'People' })).toBeTruthy();
+  expect(screen.getByRole('tab', { name: 'Users' })).toBeTruthy();
 });
 it('opens an agent proposal with its map drawing and populated fields, then approves through the protected proposal endpoint', async () => {
   signInDevelopment('admin@manzil.test', 'ManzilAdmin123!');
@@ -312,7 +368,7 @@ it('clears a private report editor, its evidence and map selection when signing 
   fireEvent.click(screen.getByRole('button', { name: /Private service road/ }));
   expect(await screen.findByRole('img', { name: 'Closure photo 1' })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
-  expect(await screen.findByRole('heading', { name: 'Edit restriction' })).toBeTruthy();
+  expect(await screen.findByRole('heading', { name: 'Edit closure' })).toBeTruthy();
   expect(screen.getByRole('textbox', { name: 'Road / place' }).getAttribute('value')).toBe(privateReport.title);
   expect(capture.props?.drawing).toEqual(privateReport.drawing); expect(capture.props?.selectedClosureId).toBe(privateReport.id);
   fireEvent.click(screen.getByRole('button', { name: 'Open profile' }));
@@ -322,7 +378,7 @@ it('clears a private report editor, its evidence and map selection when signing 
   await screen.findByRole('button', { name: 'Skip tour' }); fireEvent.click(screen.getByRole('button', { name: 'Skip tour' }));
   fireEvent.click(screen.getByRole('button', { name: 'Closures' }));
   expect(screen.getByRole('heading', { name: 'Road closures' })).toBeTruthy();
-  expect(screen.queryByRole('heading', { name: 'Edit restriction' })).toBeNull();
+  expect(screen.queryByRole('heading', { name: 'Edit closure' })).toBeNull();
   expect(screen.queryByDisplayValue(privateReport.title)).toBeNull(); expect(screen.queryByText(privateReport.description)).toBeNull();
   expect(screen.queryByRole('img', { name: 'Closure photo 1' })).toBeNull();
   expect(capture.props?.drawing).toBeNull(); expect(capture.props?.selectedClosureId).toBeNull(); expect(capture.props?.closures).toEqual([]);
@@ -348,6 +404,36 @@ it('starts the tour on explicit guest entry, gates guest reports and resumes wit
   first.unmount(); render(<App />);
   await screen.findByRole('button', { name: 'Find routes' });
   expect(screen.queryByRole('dialog', { name: 'Welcome to Manzil' })).toBeNull();
+});
+
+it.each(['close', 'escape', 'guest'] as const)('dismisses guest closure sign-in with %s while retaining the selected map and routes', async action => {
+  const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === '/api/plan') {
+      const request = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify({ options: [{ ...option, departureAt: request.departureAt }], baseline: null, conflicts: [], warnings: [], evaluatedAt: date, graphVersion: 'test', eventRevision: 0, source: 'local-osm' }));
+    }
+    return responseFor(url);
+  });
+  vi.stubGlobal('fetch', fetcher); render(<App />);
+  await screen.findByRole('button', { name: 'Find routes' }); await chooseEndpoints();
+  fireEvent.click(screen.getByRole('button', { name: 'Find routes' }));
+  await waitFor(() => expect(capture.props?.routeOptions).toHaveLength(1));
+  const before = capture.props!, mounts = capture.mounts;
+  fireEvent.click(screen.getByRole('button', { name: 'Closures' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Add closure' }));
+  expect(screen.getByRole('form', { name: 'Sign in' })).toBeTruthy();
+  if (action === 'close') fireEvent.click(screen.getByRole('button', { name: 'Close sign in' }));
+  else if (action === 'escape') fireEvent.keyDown(document, { key: 'Escape' });
+  else fireEvent.click(screen.getByRole('button', { name: 'Continue as guest' }));
+  expect(screen.queryByRole('form', { name: 'Sign in' })).toBeNull();
+  expect(screen.queryByRole('dialog', { name: 'Welcome to Manzil' })).toBeNull();
+  expect(screen.getByRole('heading', { name: 'Road closures' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Closures' }).getAttribute('aria-current')).toBe('page');
+  expect(capture.props!.origin).toEqual(before.origin); expect(capture.props!.destination).toEqual(before.destination);
+  expect(capture.props!.selectedRoute).toEqual(before.selectedRoute); expect(capture.props!.routeOptions).toEqual(before.routeOptions);
+  expect(capture.mounts).toBe(mounts); expect(getAuthSession().user).toBeNull();
+  expect(sessionStorage.getItem('manzil-entry-guest')).toBe('yes');
+  expect(fetcher.mock.calls.filter(([url]) => url === '/api/plan')).toHaveLength(1);
 });
 
 it('loads demo endpoints into ordinary planning, clears existing stops and requests the usual plan API', async () => {
