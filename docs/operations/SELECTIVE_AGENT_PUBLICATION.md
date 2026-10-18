@@ -1,6 +1,6 @@
 # Automatic road and Metro lifecycle
 
-Owner-approved integration, 18 October 2026. Implementation is being validated; this document alone does not establish a new deployment. See [implementation status](../IMPLEMENTATION_STATUS.md).
+Owner-approved integration, 18 October 2026. Deployed through main merge 33b5af5 with frontend correction f4a1460; see the exact API/worker/Hosting evidence in implementation status. See [implementation status](../IMPLEMENTATION_STATUS.md).
 
 ## Collection, interpretation and publication
 
@@ -28,7 +28,7 @@ Scheduled suspensions take effect at their stated start, expire at their source/
 
 ## Review and saved work
 
-Admin ? Pipelines shows original post, analysis, per-event decisions and committed map/service outcomes. Automatic decisions are labelled separately from administrator approvals. Review queue counts individual unresolved road/service proposals plus community reports; a partially applied post can still need review. Published roads have View on map; Metro outcomes identify the effect on Local.
+Admin > Pipelines shows original post, analysis, per-event decisions and committed map/service outcomes. Automatic decisions are labelled separately from administrator approvals. Review queue counts individual unresolved road/service proposals plus community reports; a partially applied post can still need review. Published roads have View on map; Metro outcomes identify the effect on Local.
 
 Saved current pending interpretations are reassessed using the same policy and map tools without another Gemini call: at most one saved post per idle sweep, every 15 minutes, up to three reassessments for policy version 2. Approved/rejected decisions are retained exactly; source edits, archived posts and concurrent decisions invalidate stale work. Older legacy service proposals are converted rather than approved as car-road blockades. Policy retries do not add model usage; fresh model analysis retains the existing 20-attempt/day cap, two-post batch, cooldowns and worker-only Free-tier key. No paid fallback or account rotation is added.
 

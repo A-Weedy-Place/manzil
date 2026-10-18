@@ -6,7 +6,7 @@
 <a href="https://manzil-app-v1.web.app">Live deployment</a> · <a href="https://github.com/A-Weedy-Place/manzil/releases/tag/v0.1.0">Release v0.1.0</a> · <a href="docs/README.md">Documentation</a> · <a href="ARCHITECTURE.md">Architecture</a> · <a href="CONTRIBUTING.md">Contributing</a> · <a href="docs/IMPLEMENTATION_STATUS.md">Status</a>
 </p>
 
-Manzil helps commuters plan around current and scheduled road restrictions. It combines a clear 2D map, closure-aware driving routes, local bus journeys, community reports and administrator-reviewed interpretations of traffic notices. It began in Islamabad/Rawalpindi; road reporting now supports mapped roads beyond that initial area.
+Manzil helps commuters plan around current and scheduled road restrictions. It combines a clear 2D map, closure-aware driving routes, local bus journeys, community reports and automatically validated traffic updates with administrator review for unclear cases. It began in Islamabad/Rawalpindi; road reporting now supports mapped roads beyond that initial area.
 
 > **This README describes this checkout.** The hosted app is released separately and may have an older feature set. A GitHub push does not deploy under the tracked workflow. See [status and release boundaries](docs/IMPLEMENTATION_STATUS.md).
 
@@ -23,9 +23,9 @@ Manzil helps commuters plan around current and scheduled road restrictions. It c
 | Accounts and database | Firebase Authentication email/password and Firestore |
 | Images and secrets | Private Cloud Storage source evidence; Secret Manager model key on the worker |
 | Cloud Run region | `asia-southeast1` — Singapore |
-| Deployed application source | [`8702fb9`](https://github.com/A-Weedy-Place/manzil/commit/8702fb9d0b5262b5d40953d5ed0dfab464343567), recorded 18 October 2026 |
+| Deployed application source | Main merge [33b5af5](https://github.com/A-Weedy-Place/manzil/commit/33b5af5d6d857ca411b3ac916f202cd97ed828d7), final frontend f4a1460, 18 October 2026 |
 
-The hosted frontend fingerprint matches the teammate's release record, and its public health endpoint responded successfully. The recorded release enables daily PSO checks, English/Urdu cloud speech and selective high-confidence agent publication; **this integration preserves the deployed services and extends selective publication with two-day provisional expiry and early reopening**. The table does not claim those two source versions are identical. Exact revision evidence, licensing supplements and release instructions are in [Releases](docs/operations/RELEASES.md); independent deployment instructions are in the [runbook](docs/operations/DEPLOYMENT.md).
+Feature PR #4 and the automatic road/Metro lifecycle are deployed. Unknown source end uses a labelled two-day provisional expiry; later matching reopening evidence ends it earlier. Metro notices update Local availability. Daily PSO, cloud English/Urdu speech and labelled shared demos are retained. [Exact release and focused checks](docs/IMPLEMENTATION_STATUS.md); [deployment runbook](docs/operations/DEPLOYMENT.md).
 
 ## Features
 

@@ -1,5 +1,9 @@
 # Hosted releases and source publication
 
+## Current integrated release - 18 October 2026
+
+PR #4 is merged at 33b5af5; final frontend correction f4a1460 is deployed. API 00016-zll, worker 00013-2g6, Hosting a55c56530ffd0f97 and pin fh-5a3d9adde787598e. [Current release evidence](../IMPLEMENTATION_STATUS.md) records image digest, focused tests, live checks and limitations. The v0.1.0 tag below remains immutable and identifies its older source; it was not moved to this release.
+
 A GitHub release records an exact source snapshot and links to the hosted app. It does not deploy a frontend/backend, synchronize branches or change repository visibility.
 
 ## v0.1.0 — Hosted MVP

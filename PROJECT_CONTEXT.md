@@ -1,5 +1,7 @@
 # Manzil product context
 
+**Latest deployed release:** PR #4 merged at 33b5af5; frontend Urdu correction f4a1460. API 00016-zll, private worker 00013-2g6, Hosting a55c56530ffd0f97 with API pin fh-5a3d9adde787598e. Clear road/Metro closures auto-publish; unknown expiry is 48 hours and a matching reopening ends it early. Metro updates Local services. 195 relevant tests + 11 focused emulator cases, cloud build and focused live checks pass. Real live-alert publication was not observed in this release check. See implementation status for precise evidence.
+
 **Approved current integration (18 October):** preserve feature PR #4 admin/fare/password recovery and documentation/licensing work alongside main fuel/cloud voices and shared labelled demos. Explicit, precisely resolved road and Metro closures publish automatically; unresolved scope remains in review. Unknown expiry is provisionally **two days**, ending earlier on matching reopening evidence. Metro notices update Local service availability. Reassess pending saved work without new model calls; preserve admin overrides. No bundled/offline Urdu voice pack. Run only relevant tests. See [current policy](docs/operations/SELECTIVE_AGENT_PUBLICATION.md) and implementation status for actual validation/deployment.
 
 **Manzil (منزل)** means destination. The product helps commuters anticipate restrictions, choose clear routes and understand how closures affect local transport. Two developers coordinate feature development and deployment/integration through Git.

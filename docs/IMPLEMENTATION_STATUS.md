@@ -1,20 +1,39 @@
 # Implementation status
 
-## Agent lifecycle / PR #4 integration ? locally validated
+## Road/Metro lifecycle and feature PR #4 deployed - 18 October 2026
 
-Combines main `2c893e2` with feature `a53519b`, retaining admin UI, fares, password recovery, licensing/docs and existing cloud voice/fuel/shared demos. Explicit road and Metro closures publish after validation at confidence >=0.85; source end or labelled 48-hour provisional expiry; newer matching reopening cancels early. Metro writes shared Local disruption records. Saved pending work is reassessed without a new model call, with bounded retries and decision/concurrency protection. **194 relevant tests across 18 files, 11 focused Auth/Firestore emulator tests (20 unrelated cases skipped), TypeScript/cloud frontend/server build and documentation checks pass.** Only affected checks were run; this is not a claim that the full suite ran. Upload manifest: 432 files, private/runtime exclusions verified. Expired proposals are labelled and excluded from review counts. **GitHub merge/deployment pending at this checkpoint**; prior deployment remains API `00015-7cr`, worker `00012-t2z`, Hosting `fh-208bbe9aa098303b`. [Policy](operations/SELECTIVE_AGENT_PUBLICATION.md).
+[PR #4](https://github.com/A-Weedy-Place/manzil/pull/4) merged into main at **33b5af5**, integrating validated application tree **ec7345f**. Final frontend correction **f4a1460** fixes the new Urdu labels/timeline separators and adds a rendered Urdu regression check. Backend source is unchanged by that correction.
 
-**Reviewed: 18 October 2026.** Current capabilities through application checkpoint **`94a48c7`**, plus the documentation/licensing and hosted-release metadata updates described below. The [full historical implementation log](archive/releases/IMPLEMENTATION_LOG_THROUGH_2026-10-18.md) retains detailed verification and releases.
+| Resource | Verified release |
+| --- | --- |
+| Public API | manzil-api-00016-zll |
+| Private source/Gemini/fuel worker | manzil-source-worker-00013-2g6 |
+| Immutable backend image | sha256:465067e66f287dbe6d609bb0fc901a7ecf4e4915c331ed614e4e7cc41de41a99 |
+| Final Hosting version | a55c56530ffd0f97, released 2026-10-18T15:03:12.752Z |
+| Hosting API pin | fh-5a3d9adde787598e (reused for the same API revision) |
+| Frontend | index-CGwen6uy.js; hosted bytes match the final cloud build |
+
+Clear source-grounded, mapped road closures/blockades and identified Metro restrictions publish automatically at confidence >=0.85 with independent evidence, scope and timing checks. Unknown source expiry uses **48 hours from the established start**, labelled provisional; a newer matching reopening ends it sooner. Fresh evidence can update a matching incident; repeating the same post never renews expiry. Metro changes persist in shared transit:disruptions, updating Local line availability and journey planning. Expired proposals are excluded from awaiting-review counts. Unresolved locations, directions, service identities or access claims remain reviewable. Saved pending work is reconsidered without another model call under bounded idle sweeps, retaining admin decisions and concurrency protection. [Current policy](operations/SELECTIVE_AGENT_PUBLICATION.md).
+
+Incoming admin workspace, dedicated transit review, fares, password recovery, moderation/directory changes, MIT/third-party notices and reorganized documentation are retained. All ten labelled shared demo closures remain visible; personal User 123/GPS data were not migrated. The offline Urdu pack stays excluded. Existing English/Urdu cloud voices, shared 100,000-character monthly allowance and nightly 01:00 PKT PSO job remain.
+
+Verification: **195 relevant tests across 18 files**, **11 focused real Auth/Firestore emulator cases** (20 unrelated cases skipped), TypeScript/Vite/server cloud build, Markdown links/anchors and staged whitespace checks pass. This is a focused selection, not a full-suite claim. Includes real graph geometry and durable SQLite/Firestore transaction tests with synthetic source/model inputs; early reopening, 48-hour expiry, deduplication, saved-work reassessment, competing publication and admin rejection races, Local suspension/restoration and Urdu UI are covered. Upload manifest checked: 432 files, private/runtime paths excluded. Live checks: **14 direct API + 21 hosted checks**, followed by **7 final frontend checks** after the Urdu correction. Ten demos, 37 routes/1,210 stops, guest isolation and protected agent actions were verified. These live checks invoked Gemini **zero times** and made no successful application writes.
+
+Read-only worker status after deployment: enabled:true, autoPublish:true, model gemini-3.1-flash-lite, 20 attempts/day, three earlier attempts used, no error; 14:57 UTC tick processed zero new posts and reassessed zero saved posts. **A new genuine live alert was not observed auto-publishing during these release checks.** Scheduled future/saved work still must pass the documented checks; tests are not presented as live traffic evidence. Existing Free-tier key/Secret Manager version 1 and schedules remain; no paid fallback, credential rotation, fixture account or synthetic live alert was created.
+
+Branded recovery page is deployed at /account/action. Firebase email-template action URL was not changed; existing Firebase recovery remains available. To use the branded email destination, configure it as described in [password recovery](guides/AUTH_PASSWORD_RESET.md). Remotion project untouched.
+
+**Updated: 18 October 2026.** Current source combines the deployed main release with feature PR #4. The archived implementation log preserves earlier checkpoints; their test totals and mandatory-review notes are historical.
 
 ## Release boundary
 
 | Item | Interpretation |
 | --- | --- |
-| Feature branch | `codex/feature-development`; application checkpoint `94a48c7` |
+| Feature branch | PR #4 merged; incoming a53519b and main 2c893e2 are preserved |
 | Hosted site | [manzil-app-v1.web.app](https://manzil-app-v1.web.app), released independently |
-| Latest recorded deployment | Application `8702fb9`, documented at `2c893e2`; API `manzil-api-00015-7cr`, worker `manzil-source-worker-00012-t2z`, Hosting `fh-208bbe9aa098303b`. Current public frontend fingerprint and health match; exact cloud settings/revisions are teammate-recorded. [Release evidence](operations/RELEASES.md) |
-| Feature/release divergence | Hosted code incorporates feature work through `aac7ef8` and independent fuel/voice/selective-publication changes. Feature-only `94a48c7` admin/fare/recovery work and current licensing/docs require review/integration; no main merge is performed here |
-| Current task | Scoped MIT licence, source notices, public-project guidance, README deployment information and a GitHub MVP prerelease at the recorded application commit; no deployment, visibility change, main merge, account-role change or data migration |
+| Latest recorded deployment | API 00016-zll, worker 00013-2g6; final frontend f4a1460. Exact evidence above. |
+| Feature/release integration | Completed through PR #4; later frontend Urdu correction is published |
+| Current task | Implementation, conflict resolution, main merge and deployment complete; only the optional Firebase branded-email setting remains |
 
 Remote `main` and the public site may differ from this branch. Check exact commits and use the [release runbook](operations/DEPLOYMENT.md) when authorized.
 
