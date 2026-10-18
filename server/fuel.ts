@@ -5,8 +5,14 @@ import type { Repository } from './repository.js';
 export const FUEL_SOURCE_URL = 'https://psopk.com/fuel-prices/pol/archives';
 export const FUEL_SOURCE_NAME = 'PSO reference prices (excluding outlet freight)';
 const DAY = 86400_000, PKT = 5 * 3600_000;
+const CHECK_HOUR = 3600_000; // Daily refresh boundary: 01:00 Asia/Karachi.
 export const pktDay = (now: number) => new Date(now + PKT).toISOString().slice(0, 10);
 export const nextPktDay = (now: number) => new Date(Date.parse(`${pktDay(now)}T00:00:00+05:00`) + DAY).toISOString();
+export const fuelCheckDay = (now: number) => pktDay(now - CHECK_HOUR);
+export function nextFuelCheck(now: number): string {
+  const today = Date.parse(`${pktDay(now)}T01:00:00+05:00`);
+  return new Date(now < today ? today : today + DAY).toISOString();
+}
 export const emptyFuelStatus = (): FuelPriceStatus => ({ state: 'unavailable', lastCheckedAt: null, lastSuccessAt: null, nextCheckAt: null,
   message: 'Fuel prices have not been checked. Estimates require a vehicle economy and a dated reference price.', records: [] });
 const text = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/&nbsp;|&#160;/gi, ' ').replace(/\s+/g, ' ').trim();
@@ -64,13 +70,16 @@ export async function collectFuelPrices(): Promise<FuelPriceRecord[]> {
   } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
 }
 type Collector = () => Promise<FuelPriceRecord[]>;
-/** One persisted attempt per PKT day across API/worker instances. Never fetches during a route request. */
+/** One persisted attempt per 01:00 PKT cycle across instances. Never fetches during a route request. */
 export class FuelService {
   private running?: Promise<FuelPriceStatus>;
   private timer?: ReturnType<typeof setInterval>;
   constructor(private store: Repository, private collector: Collector = collectFuelPrices, private clock: () => number = Date.now) {}
   async status(): Promise<FuelPriceStatus> {
-    const status = await this.store.meta<FuelPriceStatus>('fuel:status') ?? emptyFuelStatus();
+    const stored = await this.store.meta<FuelPriceStatus>('fuel:status') ?? emptyFuelStatus();
+    const lastChecked = Date.parse(stored.lastCheckedAt ?? '');
+    // Normalize older midnight deadlines without changing saved rates/history.
+    const status = Number.isFinite(lastChecked) ? { ...stored, nextCheckAt: nextFuelCheck(lastChecked) } : stored;
     return status.state === 'fresh' && !!status.nextCheckAt && Date.parse(status.nextCheckAt) <= this.clock()
       ? { ...status, state: 'stale', message: 'The daily check is due. Estimates use the last retrieved reference prices.' } : status;
   }
@@ -78,7 +87,7 @@ export class FuelService {
     if (this.running) return this.running;
     this.running = this.run().finally(() => { this.running = undefined; }); return this.running;
   }
-  async due() { return await this.store.meta<string>('fuel:checkedDay') !== pktDay(this.clock()); }
+  async due() { return await this.store.meta<string>('fuel:checkedDay') !== fuelCheckDay(this.clock()); }
   start() {
     if (this.timer) return;
     this.timer = setInterval(() => { void this.check().catch(() => {}); }, 60_000); this.timer.unref();
@@ -87,9 +96,9 @@ export class FuelService {
   stop() { if (this.timer) clearInterval(this.timer); this.timer = undefined; }
   private async run(): Promise<FuelPriceStatus> {
     const now = this.clock();
-    if (!await this.store.claimFuelCheck(pktDay(now))) return this.status();
+    if (!await this.store.claimFuelCheck(fuelCheckDay(now))) return this.status();
     const previous = await this.status(), checkedAt = new Date(now).toISOString();
-    const pending: FuelPriceStatus = { ...previous, lastCheckedAt: checkedAt, nextCheckAt: nextPktDay(now),
+    const pending: FuelPriceStatus = { ...previous, lastCheckedAt: checkedAt, nextCheckAt: nextFuelCheck(now),
       state: previous.records.length ? 'stale' : 'unavailable', message: 'Checking the daily PSO reference. Outlet freight is excluded.' };
     await this.store.setMeta('fuel:status', pending);
     let status: FuelPriceStatus;

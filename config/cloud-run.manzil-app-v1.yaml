@@ -8,9 +8,11 @@ FIREBASE_PROJECT_ID: "manzil-app-v1"
 ALLOWED_HOSTS: "manzil-api-488497279747.asia-southeast1.run.app,manzil-api-ld6lwscfya-as.a.run.app,manzil-app-v1.web.app,manzil-app-v1.firebaseapp.com"
 FIREBASE_HOSTING_SERVICE_HOST: "manzil-api-ld6lwscfya-as.a.run.app"
 ALLOWED_ORIGINS: "https://manzil-app-v1.web.app,https://manzil-app-v1.firebaseapp.com"
-TTS_ENABLED: "false"
-PUBLIC_CLOUD_SPEECH: "false"
+TTS_ENABLED: "true"
+PUBLIC_CLOUD_SPEECH: "true"
 TTS_MONTHLY_CHARACTER_LIMIT: "100000"
+TTS_ENGLISH_VOICE: "en-GB-Wavenet-A"
+TTS_URDU_VOICE: "ur-IN-Wavenet-A"
 # Initial default only; persisted source settings enable the private-worker pilot.
 # The API never starts a production polling timer.
 X_SCRAPER_ENABLED: "false"

@@ -10,7 +10,7 @@
 
 For local normal/admin credentials, login-first guest entry and the spotlight tour, see [Development accounts and tour](DEV_ACCOUNTS_AND_TOUR.md). This feature branch implements a **Control centre** with blockade review/correction, contributor verification and source-pipeline status. The earlier [admin proposal](ADMIN_INTERFACE_PROPOSAL.md) remains historical context; its full audit/override system and automatic Gemini publication are still separate work. The other developer handles integration/release; pushing the branch does not update the live app.
 
-English/Urdu controls, guest account screens, onboarding and automatic GPS recovery are described in [Bilingual navigation and Cloud speech](BILINGUAL_NAVIGATION_AND_CLOUD.md). Local planning still needs no Cloud credentials. Optional cloud speech uses server-side ADC and `TTS_ENABLED=true`; it is disabled in the first hosted release. Firebase authentication/storage are configured for hosted use. In PowerShell, use `npm.cmd` if execution policy blocks `npm.ps1`.
+English/Urdu controls, guest account screens, onboarding and automatic GPS recovery are described in [Bilingual navigation and Cloud speech](BILINGUAL_NAVIGATION_AND_CLOUD.md). Local planning still needs no Cloud credentials. Optional local cloud speech uses server-side ADC, `TTS_ENABLED=true` and explicit `ALLOW_PAID_SERVICES=true`; emulator defaults stay disabled. Production guest/signed-in cloud voices and the 01:00 PKT fuel schedule are documented in [fuel/voice operations](FUEL_AND_VOICE.md). In PowerShell, use `npm.cmd` if execution policy blocks `npm.ps1`.
 
 ## Start
 

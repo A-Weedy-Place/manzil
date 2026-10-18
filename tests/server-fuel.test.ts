@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { FuelService, FUEL_SOURCE_URL, parsePsoArchive, travelStatistics, pktDay, nextPktDay, collectFuelPrices } from '../server/fuel';
+import { FuelService, FUEL_SOURCE_URL, parsePsoArchive, travelStatistics, pktDay, nextPktDay, nextFuelCheck, fuelCheckDay, collectFuelPrices } from '../server/fuel';
 import { Store } from '../server/store';
 import { estimateRouteFuel } from '../shared/fuel';
 import type { FuelPriceRecord, Trip, VehicleProfile } from '../shared/types';
@@ -48,8 +48,10 @@ describe('PSO dated source parser and durable daily cache', () => {
     const a = new FuelService(store, collector, () => now), b = new FuelService(store, collector, () => now);
     expect((await a.status()).state).toBe('unavailable');
     await Promise.all([a.check(), a.check(), b.check()]); expect(collector).toHaveBeenCalledTimes(1);
-    expect(await a.status()).toMatchObject({ state: 'fresh', lastCheckedAt: checked, lastSuccessAt: checked, nextCheckAt: '2026-10-17T19:00:00.000Z' });
-    now = Date.parse('2026-10-17T19:00:00Z'); expect((await a.status()).state).toBe('stale');
+    expect(await a.status()).toMatchObject({ state: 'fresh', lastCheckedAt: checked, lastSuccessAt: checked, nextCheckAt: '2026-10-17T20:00:00.000Z' });
+    now = Date.parse('2026-10-17T19:30:00Z'); expect((await a.status()).state).toBe('fresh');
+    expect(await b.due()).toBe(false); await b.check(); expect(collector).toHaveBeenCalledTimes(1);
+    now = Date.parse('2026-10-17T20:00:00Z'); expect((await a.status()).state).toBe('stale');
     collector.mockRejectedValue(new Error('Offline fixture failure'));
     expect((await b.check()).state).toBe('error'); await a.check(); expect(collector).toHaveBeenCalledTimes(2);
     expect((await a.status()).records).toEqual([record]); expect((await a.status()).lastSuccessAt).toBe(checked);
@@ -69,6 +71,27 @@ describe('PSO dated source parser and durable daily cache', () => {
     const next = new Store(path); cleanup.push(() => next.close());
     expect((await new FuelService(next, collector, () => Date.parse(checked)).check()).records).toEqual([record]);
     expect(collector).toHaveBeenCalledTimes(1);
+  });
+  it('uses the 01:00 PKT boundary so a midnight check cannot consume the coming scheduled check', async () => {
+    let now = Date.parse('2026-10-17T19:30:00Z'); // October 18, 00:30 PKT.
+    const store = database(), collector = vi.fn(async () => [record]);
+    const service = new FuelService(store, collector, () => now);
+    expect(fuelCheckDay(now)).toBe('2026-10-17');
+    expect(nextFuelCheck(now)).toBe('2026-10-17T20:00:00.000Z');
+    await service.check();
+    now = Date.parse('2026-10-17T20:00:00Z');
+    expect(fuelCheckDay(now)).toBe('2026-10-18');
+    expect(await service.due()).toBe(true);
+    await Promise.all([service.check(), new FuelService(store, collector, () => now).check()]);
+    expect(collector).toHaveBeenCalledTimes(2);
+    expect((await service.status()).nextCheckAt).toBe('2026-10-18T20:00:00.000Z');
+  });
+  it('normalizes a saved midnight refresh deadline to 01:00 without rewriting its rate history', async () => {
+    const store = database();
+    store.setMeta('fuel:status', { state: 'fresh', records: [record], lastCheckedAt: checked, lastSuccessAt: checked, nextCheckAt: '2026-10-17T19:00:00Z', message: 'Saved reference' });
+    const service = new FuelService(store, vi.fn(), () => Date.parse('2026-10-17T19:30:00Z'));
+    expect(await service.status()).toMatchObject({ state: 'fresh', records: [record], nextCheckAt: '2026-10-17T20:00:00.000Z' });
+    expect(store.meta<{nextCheckAt: string}>('fuel:status')?.nextCheckAt).toBe('2026-10-17T19:00:00Z');
   });
   it('does not bridge an unobserved archive gap after a long offline period', async () => {
     const store = database();

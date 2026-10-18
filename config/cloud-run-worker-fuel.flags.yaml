@@ -1,0 +1,4 @@
+# A flags file preserves commas on Windows without shell-specific escaping.
+# Merge this variable; never replace worker secrets or the other runtime settings.
+--update-env-vars:
+  WORKER_ALLOWED_JOBS: "source,agent,fuel"

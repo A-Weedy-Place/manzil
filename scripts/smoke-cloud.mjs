@@ -4,6 +4,7 @@ const expectedProject = process.argv[3] ?? 'manzil-app-v1';
 const national = process.argv.slice(4).includes('--national');
 const collectionEnabled = process.argv.slice(4).includes('--collection-enabled');
 const gemini = process.argv.slice(4).includes('--gemini');
+const publicSpeech = process.argv.includes('--public-speech');
 if (base.protocol !== 'https:' || base.pathname !== '/' || base.search || base.hash || base.username || base.password)
   throw new Error('Provide an HTTPS origin without a path, query or credentials.');
 const websiteOrigin = `https://${expectedProject}.web.app`;
@@ -28,7 +29,8 @@ for (const key of ['commutes', 'alerts', 'trips', 'notices']) assert(Array.isArr
 assert(state.sourceStatus.enabled === collectionEnabled, 'Source collection does not match the expected deployment state');
 if (collectionEnabled) assert(state.sourceStatus.intervalMinutes === 5, 'Expected five-minute collection interval');
 const speech = await request('/api/speech/status');
-assert(speech.enabled === false, 'Cloud speech must stay disabled for the first deployment');
+const expectCloudSpeech = process.argv.includes('--speech-enabled');
+assert(speech.enabled === expectCloudSpeech, `Cloud speech enabled must be ${expectCloudSpeech}; use --speech-enabled for the voice-enabled release`);
 const plan = await request('/api/plan', { body: {
   origin: { name: 'Faisal Mosque approach (deployment smoke)', coordinate: [73.0376503, 33.7314163] },
   destination: { name: 'Centaurus road approach (deployment smoke)', coordinate: [73.0492744, 33.7081776] },
@@ -41,7 +43,8 @@ await request('/api/trips', { status: 401 });
 await request('/api/closures', { body: {}, status: 401 });
 await request('/api/source/check', { body: {}, status: 401 });
 await request('/api/COMMUTES/', { status: 401 });
-await request('/api/SpEeCh/', { body: { language: 'en', prompt: { kind: 'test' } }, status: 401 });
+// For the guest-enabled voice release, reject malformed input without synthesizing.
+await request('/api/SpEeCh/', { body: publicSpeech ? { language: 'en', text: 'unsupported free text' } : { language: 'en', prompt: { kind: 'test' } }, status: publicSpeech ? 400 : 401 });
 await request('/api/PrOfIlE/', { method: 'PATCH', body: { displayName: 'Rejected smoke request' }, status: 401 });
 await request('/api/CLOSURES/', { body: {}, status: 401 });
 await request('/api/NoTiCeS/', { status: 401 });

@@ -1,5 +1,7 @@
 # Manzil API
 
+**18 October fuel/voice release deployed:** API `manzil-api-00013-sqx`, private worker `manzil-source-worker-00010-86j`, Hosting pin `fh-968013a274e235e9`. Nightly PSO fuel checks run at **01:00 Asia/Karachi** through `manzil-fuel-daily`. English/Urdu Google Cloud WaveNet voices support guests and signed-in users under a shared **100,000-character UTC-month cap**, with durable caching and device fallback. **811 standard + 24 Firebase emulator tests (835 total)**, production build, 31 direct API/34 hosted smoke checks and real bilingual guest MP3/cache checks pass. The Scheduler test returned HTTP 200 and correctly reused today's previously successful fuel check. Gemini Free tier/model/limits and mandatory admin approval remain unchanged; commute scheduling stays inactive. Earlier disabled-service statements below describe historical releases. [Operations and costs](FUEL_AND_VOICE.md).
+
 **18 October pipeline:** production Run Gemini now is supported through the authenticated API/private worker boundary; unified review counts include Gemini proposals. See [manual dispatch, progress, limits and review](AGENT_MAP_REVIEW.md#visible-pipeline-and-manual-analysis---18-october). Older scheduled-only descriptions below are historical.
 
 **Current admin map-review contract (17 October):** agent interpretations now prepare private per-event map proposals. Every agent map change requires administrator approval; this supersedes automatic-publication descriptions below. [Complete workflow, persistence and limits](AGENT_MAP_REVIEW.md).
@@ -61,7 +63,7 @@ Public **`GET /api/weather?at=<ISO instant>`** returns the city-level `WeatherRe
 | Method and path | Access | Response |
 | --- | --- | --- |
 | `GET /api/fuel/prices` | Public | Cached `FuelPriceStatus`: state, last check/success/next daily date, message and dated PSO petrol/diesel records. No external request is triggered. `/state` includes the same object as `fuel`. |
-| `POST /api/fuel/check` with `{}` | Admin | Daily bounded source check or the existing result if already attempted on this PKT date. No arbitrary source URL or client-supplied prices are accepted. |
+| `POST /api/fuel/check` with `{}` | Admin | Bounded source check or the existing result if attempted in this 01:00-PKT daily cycle. Scheduled execution uses the private worker; no arbitrary source URL or client-supplied prices are accepted. |
 | `GET /api/trips/statistics` | Signed-in personal | `{week,month,all}` aggregates over up to 5,000 private retained summaries, independent of the latest-50 display list. Includes distance/time, estimated PKR/litres, priced/unpriced counts, unpriced distance and `complete`. Week/month responses also include private `daily` aggregate series for charts. |
 
 Periods use Monday-start weeks and calendar months in Asia/Karachi, grouped by trip departure. Profile presents **weekly and monthly** statistics, a daily distance chart and a separate cached PSO fuel-price trend. Activity presents the same week/month trip, distance, time and estimated-cost summary cards without graphs. `all` remains available as retained history (up to 90 days); `complete:false` identifies the bounded partial result. No raw points are read or returned for these aggregates. Trips starting or ending after the evaluation instant are excluded.
@@ -83,7 +85,7 @@ Responses are the domain objects in [`shared/types.ts`](../shared/types.ts), wit
 | Method and path | Request | Response |
 | --- | --- | --- |
 | `GET /api/speech/status` | — | Configuration flag, UTC-month reserved character count and application limit; enabled does not assert credentials work |
-| `POST /api/speech` | `{language: "en" or "ur", prompt: SpeechPrompt}` | Binary `audio/mpeg`; 400 invalid prompt, 429 busy/limit, 503 disabled/provider unavailable. No arbitrary text/SSML. [Speech guide](BILINGUAL_NAVIGATION_AND_CLOUD.md). |
+| `POST /api/speech` | `{language: "en" or "ur", prompt: SpeechPrompt}` | Binary `audio/mpeg`; production explicitly permits guests and signed-in users under one shared 100,000-character UTC-month cap. Cached prompts reuse audio. 400 invalid prompt, 429 busy/limit, 503 disabled/provider unavailable. No arbitrary text/SSML. [Speech operations](FUEL_AND_VOICE.md). |
 | `GET /api/health` | — | Storage and graph readiness; no private content or queue counts |
 | `GET /api/state` | — | `AppState`: role-filtered closure summaries, private commutes/alerts/trip summaries, admin-only notices, source/graph state, event revision and optional current `membership`; inline closure photos omitted |
 | `GET /api/profile` | — | Standalone shared profile, signed-in user's profile, or guest defaults depending on mode |
