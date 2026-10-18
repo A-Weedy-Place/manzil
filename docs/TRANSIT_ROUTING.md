@@ -1,5 +1,7 @@
 # Local buses: network, journeys and service restrictions
 
+**Merged release deployed, 18 October:** application commit `1f196c3` combines GitHub feature merge `49762d0` with the deployed Gemini checkpoint `9b16416`. Live API `manzil-api-00012-g9q`, private worker `manzil-source-worker-00009-6bf`, Hosting pin `fh-84ad6494196d6945`. New UI/profile/transit/weather features and mandatory Gemini admin review are retained. **809 standard + 24 Auth/Firestore emulator tests (833 total)**, production build, three local browser flows, two hosted entry checks and **34 live checks per origin** pass. Weather is fresh; the live bundled transit network has 37 routes/1,210 stops and returned three journey options. Model limits/schedules and worker-only secret remain unchanged. GitHub main contains both histories; original checkout is synchronized and prior local edits are retained in a named backup stash. Earlier localhost-only, uncommitted and deployment-pending entries below are historical.
+
 The **Local** workspace displays the public Islamabad/Rawalpindi bus catalogue, available stop locations and route geometry. It is an offline imported network, not a live vehicle tracker or a copy of Safar's code/data. Source research and licensing are recorded in [TRANSIT_SOURCES.md](TRANSIT_SOURCES.md); coverage gaps and reproducible public-data import are in [TRANSIT_DATA.md](TRANSIT_DATA.md). Source archives stay ignored. Only the normalized public derivative in `assets/transit/islamabad.json.gz` is bundled.
 
 ## What the planner actually knows

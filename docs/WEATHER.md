@@ -1,3 +1,7 @@
+# Islamabad weather
+
+**Merged release deployed, 18 October:** application commit `1f196c3` combines GitHub feature merge `49762d0` with the deployed Gemini checkpoint `9b16416`. Live API `manzil-api-00012-g9q`, private worker `manzil-source-worker-00009-6bf`, Hosting pin `fh-84ad6494196d6945`. New UI/profile/transit/weather features and mandatory Gemini admin review are retained. **809 standard + 24 Auth/Firestore emulator tests (833 total)**, production build, three local browser flows, two hosted entry checks and **34 live checks per origin** pass. Weather is fresh; the live bundled transit network has 37 routes/1,210 stops and returned three journey options. Model limits/schedules and worker-only secret remain unchanged. GitHub main contains both histories; original checkout is synchronized and prior local edits are retained in a named backup stash. Earlier localhost-only, uncommitted and deployment-pending entries below are historical.
+
 **18 October deployment integration:** production weather requests finish any due bounded refresh and shared-cache persistence before responding, so request-based Cloud Run does not depend on post-response work. Local warm-cache reads keep their existing nonblocking behavior. No separate weather Scheduler is added.
 
 # Islamabad hourly weather

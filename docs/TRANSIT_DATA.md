@@ -1,5 +1,7 @@
 # Local transit dataset and refresh
 
+**Merged release deployed, 18 October:** application commit `1f196c3` combines GitHub feature merge `49762d0` with the deployed Gemini checkpoint `9b16416`. Live API `manzil-api-00012-g9q`, private worker `manzil-source-worker-00009-6bf`, Hosting pin `fh-84ad6494196d6945`. New UI/profile/transit/weather features and mandatory Gemini admin review are retained. **809 standard + 24 Auth/Firestore emulator tests (833 total)**, production build, three local browser flows, two hosted entry checks and **34 live checks per origin** pass. Weather is fresh; the live bundled transit network has 37 routes/1,210 stops and returned three journey options. Model limits/schedules and worker-only secret remain unchanged. GitHub main contains both histories; original checkout is synchronized and prior local edits are retained in a named backup stash. Earlier localhost-only, uncommitted and deployment-pending entries below are historical.
+
 Manzil **Local** uses a compact, source-attributed Islamabad–Rawalpindi snapshot rather than inventing buses, stop locations or timetables. Read [source research and licensing](TRANSIT_SOURCES.md) and [planner/API behavior](TRANSIT_ROUTING.md) alongside this guide. This is localhost feature work; no deployment or scheduled production source collector has been activated.
 
 ## Included data
