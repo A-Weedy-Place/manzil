@@ -1,4 +1,4 @@
-# Combined source/Gemini worker. Agent map changes require administrator approval.
+# Combined source/Gemini worker. Publish only validated restrictions; uncertain cases require review.
 # Requires a verified working Free tier key injected from Secret Manager separately.
 NODE_ENV: "production"
 MANZIL_MODE: "production"

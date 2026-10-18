@@ -36,7 +36,7 @@ try {
       $result = (Read-AgentMeta "sourceAgentResult:$($notice.id)").value
       if ($result) { @{ sourceId = $notice.sourceId; noticeRevision = $result.noticeRevision; state = $result.state;
         summary = $result.extraction.summary; category = $result.extraction.category; events = $result.extraction.events;
-        issues = $result.issues; proposals = $result.proposals; imageCount = $result.imageCount; closureIds = $result.closureIds; usage = $result.usage; errorCode = $result.errorCode } }
+        issues = $result.issues; proposals = $result.proposals; imageCount = $result.imageCount; closureIds = $result.closureIds; transitIds = $result.transitIds; usage = $result.usage; errorCode = $result.errorCode } }
     })
     $report.resultsListingPartial = [bool]$notices.nextPageToken
   }

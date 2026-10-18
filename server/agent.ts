@@ -28,7 +28,7 @@ export class AgentService {
     if (!result.proposals) return this.prepareNotice(noticeId, revision);
     const eligible = result.proposals.filter(proposal => {
       const location = result.extraction!.events[proposal.index]?.location;
-      return proposal.state === 'pending' && proposal.mapping === 'unresolved' && (proposal.mappingAttempts ?? 1) < 3 &&
+      return proposal.kind !== 'transit' && proposal.state === 'pending' && proposal.mapping === 'unresolved' && (proposal.mappingAttempts ?? 1) < 3 &&
         (proposal.mappingRetryAt ?? 0) <= Date.now() && location && (location.point || location.road && location.from && location.to);
     });
     if (!eligible.length) return result;
@@ -50,7 +50,7 @@ export class AgentService {
       if (!result?.extraction || result.noticeRevision !== notice.revision || result.state !== 'review' || notice.status === 'dismissed') continue;
       if (!result.proposals) { await this.prepareNotice(notice.id, notice.revision); return 1; }
       if (result.proposals.some(proposal => { const location = result.extraction!.events[proposal.index]?.location;
-        return proposal.state === 'pending' && proposal.mapping === 'unresolved' && (proposal.mappingAttempts ?? 1) < 3 &&
+        return proposal.kind !== 'transit' && proposal.state === 'pending' && proposal.mapping === 'unresolved' && (proposal.mappingAttempts ?? 1) < 3 &&
           (proposal.mappingRetryAt ?? 0) <= Date.now() && location && (location.point || location.road && location.from && location.to);
       })) { await this.refineNotice(notice.id, notice.revision); return 1; }
     }

@@ -60,12 +60,13 @@ describe('source-grounded Metro notices',()=>{
     expect(result.changes[0].draft).toMatchObject({routeId:'r1',startsAt:'2026-10-18T19:00:00+05:00',endsAt:'2026-10-18T20:00:00+05:00'});
     expect(sourceSupportsInstant(metro().events[0].quote,'2026-10-18T19:00:00+05:00',metroNotice().publishedAt!)).toBe(true);
   });
-  it.each(['ambiguous_service','no_end','invented_time','unknown_scope','uncertain','tentative','image','false_city','wrong_date'])('retains %s in review',kind=>{
+  it.each(['ambiguous_service','no_end','invented_time','unknown_scope','omitted_partial_extent','uncertain','tentative','image','false_city','wrong_date'])('retains %s in review',kind=>{
     const value=metro(),post=metroNotice(),event=value.events[0];
     if(kind==='ambiguous_service'){event.transit!.service='Metro';post.text=event.quote='18/10/26 Islamabad Metro service suspended from 7 to 8 pm.';}
     if(kind==='no_end')event.endsAt=null;
     if(kind==='invented_time')event.endsAt='2026-10-18T21:00:00+05:00';
     if(kind==='unknown_scope')event.transit!.scope='unknown';
+    if(kind==='omitted_partial_extent')post.text=event.quote='18/10/26 Islamabad Blue Line service suspended between Alpha and Bravo from 7 pm to 8 pm.';
     if(kind==='uncertain')event.confidence=.94;
     if(kind==='tentative')post.text=event.quote='18/10/26 Islamabad Blue Line may be suspended from 7 to 8 pm.';
     if(kind==='image')event.imageIndex=0;
@@ -103,5 +104,22 @@ describe('source-grounded Metro notices',()=>{
     const request={origin:{name:'Alpha',coordinate:dataset.stops[0].coordinate},destination:{name:'Charlie',coordinate:dataset.stops[2].coordinate},departureAt:'2026-10-18T03:00:00Z'};
     expect(planTransit(dataset,request,[],[alert],0,1).options.length).toBeGreaterThan(0);
     alert.startsAt='2026-10-18T03:00:00Z';alert.endsAt='2026-10-18T04:00:00Z';expect(planTransit(dataset,request,[],[alert],0,1).options).toEqual([]);
+  });
+  it('restores only a matched service at a past evidenced reopening time and blocks future or mismatched manual decisions',()=>{
+    const state=applyTransitChanges({revision:0,records:[]},transitPlan().changes),value=metro(),event=value.events[0];
+    vi.useFakeTimers({toFake:['Date']});vi.setSystemTime(Date.parse('2026-10-18T14:30:00Z'));
+    Object.assign(event,{action:'reopening',impact:'unknown',startsAt:'2026-10-18T19:15:00+05:00',endsAt:null,quote:'18/10/26 Islamabad Blue Line service now restored at 7:15 pm.'});
+    const source=notice({sourceId:'restore-source',text:event.quote,publishedAt:'2026-10-18T14:15:00Z'});
+    expect(planTransitNotices(source,value,state,{autoPublish:true,data:data()}).changes[0].draft.status).toBe('cancelled');
+    const plan=planTransitNotices(source,value,state,{autoPublish:false,data:data()}),proposal=plan.proposals[0];
+    expect(proposal.transitDraft?.startsAt).toBe(event.startsAt);
+    const store=db(),{id,revision,status,receivedAt,...input}=source,post=store.upsertNotice(input).notice,claim=store.claimAgentWork(claimInput(post))!;
+    store.setMeta('transit:disruptions',state);store.completeAgentWork({noticeId:post.id,revision:1,claimId:claim.claimId,changes:[],result:{...finished(claim),extraction:value,proposals:plan.proposals}});
+    const transitDraft={routeId:'r1',title:event.title,description:'Reviewed restoration',startsAt:event.startsAt!,endsAt:state.records[0].endsAt,status:'cancelled' as const};
+    const review={noticeId:post.id,noticeRevision:1,index:0,version:proposal.version,decision:'approve' as const,reviewer:{uid:'fixture-admin',displayName:'Fixture',role:'admin' as const},transitDraft};
+    expect(()=>store.reviewAgentProposal({...review,transitDraft:{...transitDraft,startsAt:'2026-10-18T14:45:00Z'}})).toThrow(/future/);
+    expect(()=>store.reviewAgentProposal({...review,transitDraft:{...transitDraft,routeId:'other-service'}})).toThrow(/unchanged service/);
+    const decision=store.reviewAgentProposal(review);expect(decision.transit).toMatchObject({status:'cancelled',startsAt:state.records[0].startsAt,agent:{overridden:true,locationKey:'transit:r1:*:*:*'}});
+    event.startsAt=null;expect(planTransitNotices(source,value,state,{autoPublish:false,data:data()}).proposals[0].transitDraft?.startsAt).toBeUndefined();
   });
 });

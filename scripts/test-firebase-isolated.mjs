@@ -14,6 +14,6 @@ await writeFile(filename, JSON.stringify(config));
 await Promise.all(listeners.map(server=>new Promise(resolve=>server.close(resolve))));
 try {
   const command = `"${process.execPath}" node_modules/vitest/vitest.mjs run tests/firebase-integration.test.ts`;
-  const child = spawn(process.execPath, ['node_modules/firebase-tools/lib/bin/firebase.js','emulators:exec','--config',filename,'--project','demo-manzil-test','--only','auth,firestore',command], {stdio:'inherit'});
+  const child = spawn(process.execPath, ['node_modules/firebase-tools/lib/bin/firebase.js','emulators:exec','--config',filename,'--project','demo-manzil-test','--only','auth,firestore',command], {stdio:'inherit',env:{...process.env,DEBUG:''}});
   process.exitCode = await new Promise((resolve,reject)=>{child.once('error',reject);child.once('exit',code=>resolve(code??1));});
 } finally { await rm(filename,{force:true}); }

@@ -33,7 +33,7 @@ Admin edits/cancellation in Blockades keep the existing override flag. Already d
 
 ## Operations
 
-The live persisted setting was switched to `enabled:true, autoPublish:false` before this implementation. The new worker/service enforces review-only behavior even if a legacy environment or metadata value requests automatic publication. `PATCH /agent/settings` rejects `autoPublish:true`; the operator helper now supports Status, EnableReview and Disable. Do not roll back to an older worker while re-enabling legacy auto-publication settings.
+The earlier deployment used `enabled:true, autoPublish:false`. The current service supports selective publication with true and mandatory review with false. The operator helper supports Status, EnableValidated, EnableReview and Disable. Before rolling back to an older worker, switch to EnableReview and let active work finish. See SELECTIVE_AGENT_PUBLICATION.md for the current checks and Metro review contract.
 
 The Gemini key remains worker-only. Preparing old results uses bounded existing geocoding and Firestore operations, not additional Gemini generation. The existing model request/token/image/backoff/allowance controls and source partial-coverage limitations remain in effect. See [model operations](GEMINI_INTEGRATION.md) and [current release evidence](IMPLEMENTATION_STATUS.md).
 

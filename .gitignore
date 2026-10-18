@@ -16,6 +16,7 @@ Thumbs.db
 data/
 .playwright/
 test-results/
+firebase.isolated-*.test.json
 .firebase/
 .local-tools/
 *-debug.log

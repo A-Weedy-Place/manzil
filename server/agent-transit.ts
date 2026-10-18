@@ -26,6 +26,8 @@ export function resolveTransitNotice(event: Event, data: TransitDataset | null):
   // Orange main/airport services have different coverage; require a precise catalogue name.
   if (!routes.length || routes.length > 1 && !red.includes(service)) throw new Error('The announced service does not uniquely match the loaded local network.');
   if (input.scope === 'unknown') throw new Error('Confirm whether the whole service or a stop segment is suspended.');
+  if (input.scope === 'whole_service' && /\b(?:between(?!\s*\d)|towards?|direction|stations?|stops?)\b|اسٹیشن|اسٹاپ|کی طرف/i.test(event.quote))
+    throw new Error('The quote contains stop/direction qualifiers; confirm the affected segment instead of suspending the whole service.');
   if (input.scope === 'whole_service' && (input.fromStop || input.toStop) || input.scope === 'segment' && (!input.fromStop || !input.toStop)) throw new Error('The announced extent needs review; do not suspend a whole line for an unclear segment.');
   if (routes.length > 1 && (input.direction || input.scope !== 'whole_service')) throw new Error('Select an exact Red Line route/direction for a partial suspension.');
   const route = routes.find(item => item.shortName === 'RLRT01') ?? routes[0];
@@ -89,7 +91,7 @@ export function planTransitNotices(notice: SourceNotice, extraction: AgentExtrac
       agent: { noticeId: notice.id, sourceId: notice.sourceId, sourceRevision: notice.revision, evidenceAt: evidenceAt!, locationKey: key } });
     proposals.push({ index, version: randomUUID(), kind: 'transit', state: automatic ? 'approved' : 'pending', ...(automatic ? { decisionMode: 'automatic', closureId: targetId } : {}),
       action: event.action, impact: event.impact, mapping: mapped.routeId ? 'existing' : 'unresolved', locationKey: key, targetId, targetRevision: previous?.revision ?? null,
-      draft: { title: event.title }, transitDraft: event.action === 'reopening' && target ? { ...target, status: 'cancelled' } : draft, issues: uniqueIssues,
+      draft: { title: event.title }, transitDraft: event.action === 'reopening' && target ? { ...target, startsAt: event.startsAt ?? undefined, status: 'cancelled' } : draft, issues: uniqueIssues,
       steps: [{ tool: 'resolve_service', state: mapped.routeId ? 'done' : 'blocked', detail: mapped.routeId ? 'Matched a service in the local network.' : 'Service needs administrator selection.' },
         { tool: 'publication_policy', state: automatic ? 'done' : 'needs_review', detail: automatic ? 'Source, service and time checks passed; automatic publication.' : 'Review the listed uncertainties before publishing.' }] });
   }

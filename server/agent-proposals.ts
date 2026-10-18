@@ -1,4 +1,5 @@
 import type { TransitDisruption, TransitDisruptionState } from '../shared/transit.js';
+import { transitLocationKey } from './agent-transit.js';
 import { createHash, randomUUID } from 'node:crypto';
 import type { AgentExtraction, AgentProposal, AgentProposalDecision, AgentProposalReview, AgentResult } from '../shared/agent.js';
 import type { Closure, Place, SourceNotice } from '../shared/types.js';
@@ -36,7 +37,7 @@ export async function prepareAgentProposals(notice: SourceNotice, extraction: Ag
     if (event.kind === 'transit' || event.transit) continue;
     const steps: NonNullable<AgentProposal['steps']> = [{ tool: 'interpret_source', state: 'done', detail: 'Gemini interpretation is available.' }];
     const issues = [...extraction.warnings, ...event.uncertainties];
-    if (event.action === 'disruption' || event.impact !== 'closed') issues.push('This reports disruption or uncertain road access. Confirm an actual road restriction before approving.');
+    if (event.action !== 'reopening' && (event.action === 'disruption' || event.impact !== 'closed')) issues.push('This reports disruption or uncertain road access. Confirm an actual road restriction before approving.');
     if (event.imageIndex !== null) issues.push('Check the original image evidence.');
     if (!notice.text.includes(event.quote)) issues.push('The quoted evidence could not be matched to the saved post.');
     if (notice.contentState === 'possibly_truncated') issues.push('The collected post may be incomplete.');
@@ -93,7 +94,7 @@ export async function prepareAgentProposals(notice: SourceNotice, extraction: Ag
     proposals.push({ index, version: randomUUID(), state: 'pending', action: event.action, impact: event.impact,
       mapping, locationKey: resolved?.key ?? '', targetId, targetRevision: existing?.revision ?? null,
       preparedAt: new Date(options.now ?? Date.now()).toISOString(), mappingAttempts: 1, mappingRetryAt: (options.now ?? Date.now()) + 15 * 60_000,
-      steps: [...steps, { tool: 'prepare_draft', state: 'done', detail: 'Saved a private proposal. Administrator approval is required for map changes.' }],
+      steps: [...steps, { tool: 'prepare_draft', state: 'done', detail: 'Prepared a map proposal for validation or administrator review.' }],
       draft: { title: event.title, description: `${extraction.summary}\n\n${notice.text}`.slice(0, 4000), reason: event.reason,
         ...(startsAt ? { startsAt } : {}), endsAt, status: 'draft', ...(notice.url ? { sourceUrl: notice.url } : {}),
         ...(resolved ? { geometry: resolved.geometry, drawing: resolved.drawing, ...(resolved.restrictionType ? { restrictionType: resolved.restrictionType } : {}) } : {}) }, issues: [...new Set(issues)] });
@@ -122,11 +123,14 @@ export function decideAgentProposal(input: AgentProposalReview, notice: SourceNo
     if ((prior?.revision ?? null) !== original.targetRevision) throw new HttpError(409, 'Service notice changed; refresh before reviewing.');
     if (!input.transitDraft) throw new HttpError(400, 'Complete the service and time window before approving.');
     if (!prior && transitState.records.length >= 100) throw new HttpError(409, 'Service notice store is full.');
-    if (original.action === 'reopening' && (!prior?.agent || prior.status !== 'published' || prior.agent.overridden || !original.transitDraft?.startsAt || Date.parse(original.transitDraft.startsAt) > Date.now())) throw new HttpError(409, 'A current unchanged service notice is required for restoration.');
+    if (original.action === 'reopening' && (!prior?.agent || prior.status !== 'published' || prior.agent.overridden ||
+      Date.parse(input.transitDraft.startsAt) > Date.now() || Date.parse(input.transitDraft.startsAt) < Date.parse(prior.startsAt) ||
+      Date.parse(input.transitDraft.startsAt) >= Date.parse(prior.endsAt) || transitLocationKey(input.transitDraft) !== transitLocationKey(prior)))
+      throw new HttpError(409, 'Restoration must identify the unchanged service and a confirmed reopening time inside its active window, not a future time.');
     const draft = original.action === 'reopening' ? { ...prior!, status: 'cancelled' as const } : input.transitDraft;
     if (original.action !== 'reopening' && draft.status !== 'published') throw new HttpError(400, 'Approval must explicitly publish the suspension.');
     transit = { ...draft, id: original.targetId, revision: (prior?.revision ?? 0)+1, author: prior?.author ?? { uid: 'system:gemini', displayName: 'Gemini ? reviewed service notice', role: 'verified' }, createdAt: prior?.createdAt ?? now, updatedAt: now,
-      agent: { noticeId: notice!.id, sourceId: notice!.sourceId, sourceRevision: notice!.revision, evidenceAt: notice!.sourceTimestamp?.at ?? notice!.publishedAt ?? now, locationKey: original.locationKey, overridden: true } };
+      agent: { noticeId: notice!.id, sourceId: notice!.sourceId, sourceRevision: notice!.revision, evidenceAt: notice!.sourceTimestamp?.at ?? notice!.publishedAt ?? now, locationKey: transitLocationKey(draft), overridden: true } };
     nextTransit = { revision: transitState.revision+1, records: [...transitState.records.filter(record=>record.id!==transit!.id), transit] };
   }
   if (input.decision === 'approve' && original.kind !== 'transit') {
