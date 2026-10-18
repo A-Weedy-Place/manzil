@@ -13,9 +13,20 @@
 .fuel-price-details > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer; font-size: 13px; font-weight: 600; min-height: 28px; }
 .fuel-price-details p { line-height: 1.5; overflow-wrap: anywhere; margin: 9px 0 0; }
 .fuel-price-details a, .trip-fuel-details a { color: var(--green); font-size: 12px; overflow-wrap: anywhere; }
-.fuel-price-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 15px 0; }
-.fuel-price-grid dt { font-size: 12px; color: var(--muted); }
-.fuel-price-grid dd { margin: 4px 0 0; font-size: 14px; font-weight: 600; }
+.fuel-price-content { min-width: 0; }
+.fuel-price-details .fuel-effective-date { display: flex; flex-direction: column; gap: 4px; margin: 18px 0 16px; }
+.fuel-effective-date > span { color: var(--muted); font-size: 12px; }
+.fuel-effective-date > time { color: var(--ink); font-size: 19px; font-weight: 650; line-height: 1.4; }
+.fuel-price-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0 0 16px; }
+.fuel-price-grid > div { min-width: 0; padding: 16px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--paper); }
+.fuel-price-grid dt { color: var(--muted); font-size: 13px; font-weight: 500; }
+.fuel-price-grid dd { display: flex; flex-direction: column; gap: 3px; margin: 9px 0 0; color: var(--ink); font-size: clamp(16px, 1.4vw, 20px); font-weight: 650; line-height: 1.4; }
+.fuel-price-grid dd > span { align-self: flex-start; white-space: nowrap; }
+.fuel-price-grid dd > small { color: var(--muted); font-size: 12px; font-weight: 400; }
+.fuel-price-details .fuel-reference-link { display: inline-flex; align-items: center; min-height: 44px; text-underline-offset: 3px; }
+.fuel-price-details .fuel-price-warning { color: var(--muted); padding-block: 8px; border-block-start: 1px solid var(--border); }
+.fuel-price-details .fuel-last-checked { margin-block-start: 16px; padding-block-start: 12px; border-block-start: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+@media (max-width: 360px) { .fuel-price-grid { gap: 8px; } .fuel-price-grid > div { padding: 12px 8px; } .fuel-price-grid dd { font-size: 15px; } }
 .route-fuel { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin-top: 9px; font-size: 12px; color: var(--muted); }
 .route-fuel strong { font-size: 14px; color: var(--green); font-weight: 600; }
 .activity-period { margin-top: 18px; }

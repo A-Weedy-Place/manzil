@@ -1,62 +1,131 @@
 // @vitest-environment jsdom
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import AccountPanel from '../src/components/AccountPanel';
 import { setLanguage } from '../src/lib/language';
-const calls = vi.hoisted(() => ({ signIn: vi.fn(), signup: vi.fn(), reset: vi.fn() }));
-vi.mock('../src/lib/auth', () => ({ DEV_AUTH_ENABLED: false, FIREBASE_AUTH_ENABLED: true, EMULATOR_AUTH_ENABLED: false,
-  DEV_ACCOUNTS: [], signInAccount: calls.signIn, createAccount: calls.signup, resetPassword: calls.reset }));
-beforeEach(() => { setLanguage('en'); calls.signIn.mockReset(); calls.signup.mockReset(); calls.reset.mockReset(); });
+
+const auth = vi.hoisted(() => ({ create: vi.fn(), signIn: vi.fn(), reset: vi.fn() }));
+vi.mock('../src/lib/auth', () => ({
+  DEV_ACCOUNTS: [], DEV_AUTH_ENABLED: false, EMULATOR_AUTH_ENABLED: false, FIREBASE_AUTH_ENABLED: true,
+  createAccount: auth.create, signInAccount: auth.signIn, resetPassword: auth.reset,
+}));
+
+beforeEach(() => { vi.resetAllMocks(); setLanguage('en'); auth.create.mockResolvedValue('created-user'); });
 afterEach(() => { cleanup(); setLanguage('en'); });
-function fill() {
-  fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'owner@example.test' } });
-  fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'SyntheticTestPassword!' } });
-  fireEvent.submit(screen.getByRole('form', { name: 'Sign in' }));
-}
-it('shows the actionable Firebase credential error without hiding it behind a generic HTTP message', async () => {
-  calls.signIn.mockRejectedValue({ code: 'auth/invalid-credential', message: 'Raw provider details should stay private' });
-  const authenticated = vi.fn(); render(<AccountPanel onClose={vi.fn()} onAuthenticated={authenticated} />); fill();
-  expect(await screen.findByText('Email or password is incorrect. Use your Manzil account password, or choose Forgot password.')).toBeTruthy();
-  expect(screen.getByText('auth/invalid-credential')).toBeTruthy();
-  expect(screen.queryByText('Raw provider details should stay private')).toBeNull();
-  expect(authenticated).not.toHaveBeenCalled(); expect(calls.reset).not.toHaveBeenCalled();
-  expect(screen.getByRole('button', { name: 'Sign in' }).matches(':disabled')).toBe(false);
-});
-it('distinguishes a network failure from a rejected password', async () => {
-  calls.signIn.mockRejectedValue({ code: 'auth/network-request-failed' });
-  render(<AccountPanel onClose={vi.fn()} />); fill();
-  expect(await screen.findByText('Could not reach the account service. Check your connection and try again.')).toBeTruthy();
-});
-it('never displays unknown provider payloads or arbitrary error codes', async () => {
-  calls.signIn.mockRejectedValue({ code: 'auth/private-value-do-not-display', message: 'sensitive-token-or-request-data' });
-  render(<AccountPanel onClose={vi.fn()} />); fill();
-  expect(await screen.findByText('Could not sign in. Check your details and connection, then try again.')).toBeTruthy();
-  expect(screen.queryByText(/private-value-do-not-display|sensitive-token-or-request-data/)).toBeNull();
-});
-it('keeps password recovery user-initiated and clears stale sign-in errors on switching screens', async () => {
-  calls.signIn.mockRejectedValue({ code: 'auth/invalid-credential' }); calls.reset.mockResolvedValue(undefined);
-  render(<AccountPanel onClose={vi.fn()} />); fill(); await screen.findByRole('alert');
-  fireEvent.click(screen.getByRole('button', { name: 'Forgot password?' }));
-  expect(screen.queryByRole('alert')).toBeNull(); expect(calls.reset).not.toHaveBeenCalled();
-  expect((screen.getByLabelText('Email') as HTMLInputElement).value).toBe('owner@example.test');
-  fireEvent.submit(screen.getByRole('form', { name: 'Reset password' }));
-  await waitFor(() => expect(calls.reset).toHaveBeenCalledExactlyOnceWith('owner@example.test'));
-  expect(await screen.findByText('Check your email for password reset instructions.')).toBeTruthy();
-});
-it('preserves successful login and uses the correct password-manager autocomplete mode', async () => {
-  calls.signIn.mockResolvedValue(undefined); const done = vi.fn();
-  render(<AccountPanel onClose={vi.fn()} onAuthenticated={done} />);
-  expect(screen.getByLabelText('Password').getAttribute('autocomplete')).toBe('current-password'); fill();
-  await waitFor(() => expect(done).toHaveBeenCalledOnce());
-  fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
-  expect(screen.getByLabelText('Password').getAttribute('autocomplete')).toBe('new-password');
-});
-it('shows translated guidance while preserving the safe support code', async () => {
-  setLanguage('ur'); calls.signIn.mockRejectedValue({ code: 'auth/invalid-credential' });
-  const ui = render(<AccountPanel onClose={vi.fn()} />);
-  const inputs = ui.baseElement.querySelectorAll('input');
-  fireEvent.change(inputs[0], { target: { value: 'owner@example.test' } }); fireEvent.change(inputs[1], { target: { value: 'SyntheticTestPassword!' } });
-  fireEvent.submit(ui.baseElement.querySelector('form')!);
-  expect(await screen.findByText('auth/invalid-credential')).toBeTruthy();
-  expect(screen.getByRole('alert').textContent).toContain('منزل اکاؤنٹ کا پاس ورڈ');
+
+describe('simplified account entry', () => {
+  it('lets people pause the decorative entry scene without changing the form or entering the app', () => {
+    const close = vi.fn(); render(<AccountPanel entry onClose={close} />);
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'person@manzil.test' } });
+    const scenery = document.querySelector('.entry-doodles');
+    expect(scenery?.getAttribute('aria-hidden')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'Pause background animation' }));
+    expect(scenery?.getAttribute('data-paused')).toBe('true');
+    expect(screen.getByRole('button', { name: 'Play background animation' }).getAttribute('aria-pressed')).toBe('true');
+    expect((screen.getByLabelText('Email') as HTMLInputElement).value).toBe('person@manzil.test');
+    expect(close).not.toHaveBeenCalled(); expect(auth.signIn).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Play background animation' }));
+    expect(scenery?.getAttribute('data-paused')).toBe('false');
+    fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
+    expect(document.querySelector('.entry-doodles')).toBe(scenery);
+    expect(screen.getByRole('dialog', { name: 'Create account' })).toBeTruthy();
+  });
+
+  it('pauses decorative animation when the page is hidden and removes its visibility listener on exit', () => {
+    const remove = vi.spyOn(document, 'removeEventListener');
+    const { unmount } = render(<AccountPanel entry onClose={vi.fn()} />);
+    const visibility = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+    fireEvent(document, new Event('visibilitychange'));
+    expect(document.querySelector('.entry-doodles')?.getAttribute('data-paused')).toBe('true');
+    visibility.mockReturnValue(false);
+    fireEvent(document, new Event('visibilitychange'));
+    expect(document.querySelector('.entry-doodles')?.getAttribute('data-paused')).toBe('false');
+    unmount();
+    expect(remove.mock.calls.some(([event]) => event === 'visibilitychange')).toBe(true);
+    visibility.mockRestore(); remove.mockRestore();
+  });
+
+  it('shows the English brand, an optional guest action and decorative map without environment clutter', () => {
+    const close = vi.fn(); render(<AccountPanel entry onClose={close} />);
+    expect(screen.getByRole('dialog', { name: 'Manzil' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Manzil' })).toBeTruthy();
+    expect(screen.getByRole('complementary', { name: 'Route preview' }).querySelector('img')?.getAttribute('alt')).toBe('');
+    expect(screen.queryByText(/Firebase|emulators|Your journeys, together/)).toBeNull();
+    expect(screen.queryByText('MANZIL · منزل')).toBeNull();
+    expect(screen.getByLabelText('Password').getAttribute('autocomplete')).toBe('current-password');
+    expect(screen.getAllByRole('button', { name: 'Continue as guest' })).toHaveLength(1);
+    const signIn = screen.getByRole('button', { name: 'Sign in' });
+    expect(signIn.querySelector('.lucide-log-in')).toBeTruthy();
+    expect(signIn.querySelector('.lucide-mail')).toBeNull();
+    expect(document.querySelector('.account-modal .modal-close')).toBeNull();
+    fireEvent.click(screen.getByText('Continue as guest', { selector: 'button' }));
+    expect(close).toHaveBeenCalledOnce(); expect(auth.signIn).not.toHaveBeenCalled();
+  });
+
+  it('keeps registration optional, creates the account and supplies its UID before entering the app', async () => {
+    const order: string[] = [], onCreated = vi.fn((uid: string) => order.push(uid)), onAuthenticated = vi.fn(() => order.push('entered'));
+    const close = vi.fn(); render(<AccountPanel entry onClose={close} onAuthenticated={onAuthenticated} onAccountCreated={onCreated} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
+    expect(screen.getByRole('dialog', { name: 'Create account' })).toBeTruthy();
+    expect(screen.getByText('Continue as guest', { selector: 'button' })).toBeTruthy();
+    expect(screen.getByLabelText('Password').getAttribute('autocomplete')).toBe('new-password');
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'new@manzil.test' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'NewPassword123!' } });
+    fireEvent.submit(screen.getByRole('form', { name: 'Create account' }));
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith('created-user'));
+    expect(auth.create).toHaveBeenCalledWith('new@manzil.test', 'NewPassword123!');
+    expect(order).toEqual(['created-user', 'entered']); expect(close).not.toHaveBeenCalled();
+  });
+
+  it('still creates an account when the optional registration callback is omitted', async () => {
+    const close = vi.fn(); render(<AccountPanel onClose={close} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'new@manzil.test' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'NewPassword123!' } });
+    fireEvent.submit(screen.getByRole('form', { name: 'Create account' }));
+    await waitFor(() => expect(auth.create).toHaveBeenCalledOnce());
+    await waitFor(() => expect(close).toHaveBeenCalledOnce());
+  });
+
+  it('retains reset feedback, clears it when changing screens and keeps the in-app dialog compact', async () => {
+    const close = vi.fn(); render(<AccountPanel onClose={close} />);
+    expect(screen.queryByRole('complementary')).toBeNull();
+    expect(document.querySelector('.entry-doodles')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Pause background animation' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Forgot password?' }));
+    expect(screen.queryByLabelText('Password')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'person@manzil.test' } });
+    fireEvent.submit(screen.getByRole('form', { name: 'Reset password' }));
+    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Check your email'));
+    expect(auth.reset).toHaveBeenCalledWith('person@manzil.test'); expect(close).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to sign in' }));
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Manzil' })).toBeTruthy();
+  });
+
+  it('does not enter the app or signal consent setup when account creation fails', async () => {
+    auth.create.mockRejectedValueOnce(new Error('Network error'));
+    const close = vi.fn(), created = vi.fn(); render(<AccountPanel onClose={close} onAccountCreated={created} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
+    fireEvent.submit(screen.getByRole('form', { name: 'Create account' }));
+    await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
+    expect(created).not.toHaveBeenCalled(); expect(close).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Email').matches(':disabled')).toBe(false);
+  });
+
+  it('retains the reset form for retry after a failed request and clears the error on success', async () => {
+    auth.reset.mockRejectedValueOnce(new Error('Network unavailable')).mockResolvedValueOnce(undefined);
+    const close = vi.fn(); render(<AccountPanel onClose={close} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Forgot password?' }));
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'person@manzil.test' } });
+    fireEvent.submit(screen.getByRole('form', { name: 'Reset password' }));
+    await screen.findByRole('alert');
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.getByLabelText('Email')).toHaveProperty('value', 'person@manzil.test');
+    expect(screen.getByRole('button', { name: 'Reset password' }).matches(':disabled')).toBe(false);
+    fireEvent.submit(screen.getByRole('form', { name: 'Reset password' }));
+    await screen.findByRole('status');
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(auth.reset).toHaveBeenCalledTimes(2); expect(close).not.toHaveBeenCalled();
+  });
 });

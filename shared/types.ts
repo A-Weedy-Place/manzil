@@ -1,4 +1,5 @@
 import type { LineString, Polygon } from 'geojson';
+import type { WeatherReading } from './weather.js';
 
 /** All coordinates use GeoJSON order: [longitude, latitude]. */
 export type Coordinate = [number, number];
@@ -90,22 +91,33 @@ export interface FuelEstimate {
   costPkr: number; litres: number; distanceMeters: number; vehicle: VehicleProfile; calculatedAt: string;
   rates: { pricePerLitre: number; effectiveFrom: string; sourceUrl: string; retrievedAt?: string; distanceMeters: number; litres: number; costPkr: number }[];
 }
+/** Private daily aggregates grouped by the trip's departure date in Asia/Karachi. No coordinates. */
+export interface TripStatisticsDay {
+  date: string; tripCount: number; distanceMeters: number; durationSeconds: number;
+  pricedTripCount: number; unpricedTripCount: number; costPkr: number; litres: number;
+}
 export interface TripStatistics {
   period: 'week' | 'month' | 'all'; from: string | null; until: string;
   tripCount: number; distanceMeters: number; durationSeconds: number;
   pricedTripCount: number; unpricedTripCount: number; unpricedDistanceMeters: number;
   costPkr: number; litres: number; complete: boolean;
+  /** Week/month daily series; optional for compatibility with older API responses. */
+  daily?: TripStatisticsDay[];
 }
 export interface TravelStatistics { week: TripStatistics; month: TripStatistics; all: TripStatistics }
 export interface TripDraft {
   name: string; startedAt: string; endedAt: string; points: RecordedPoint[];
   contributeToRoadDiscovery: boolean;
 }
-export interface Trip extends TripDraft { id: string; distanceMeters: number; durationSeconds: number; createdAt: string; gaps: number; pointCount?: number; fuelEstimate?: FuelEstimate }
+export interface Trip extends TripDraft { id: string; distanceMeters: number; durationSeconds: number; createdAt: string; gaps: number; pointCount?: number; fuelEstimate?: FuelEstimate; weather?: WeatherReading; demoData?: boolean }
 export type MapStyleId = 'streets' | 'outdoors' | 'contrast' | 'minimal' | 'night';
 export interface LocalProfile {
   id: 'local'; displayName: string; theme: 'light' | 'dark' | 'system';
   city?: string; location?: string; photoDataUrl?: string; collectTravelData?: boolean;
+  /** Records an explicit Allow/Not now choice; it never grants collection by itself. */
+  travelDataChoiceMade?: boolean;
+  /** Server-owned provenance for the explicitly seeded localhost sample account. */
+  demoData?: boolean;
   vehicle?: VehicleProfile; vehicleUpdatedAt?: string;
   mapDetail: 'clean' | 'standard'; mapStyle: MapStyleId; browserNotifications: boolean;
   inferFrequentRoutes: boolean; transport: 'car'; createdAt: string; updatedAt: string;

@@ -1,42 +1,90 @@
 import { useState } from 'react';
-import { ArrowRight, Mail, ShieldCheck, X } from 'lucide-react';
+import { ArrowRight, ChevronDown, KeyRound, LoaderCircle, LogIn, MapPin, Pause, Play, ShieldCheck, UserPlus } from 'lucide-react';
 import { t } from '../lib/language';
 import Modal from './Modal';
-import { DEV_ACCOUNTS, DEV_AUTH_ENABLED, EMULATOR_AUTH_ENABLED, FIREBASE_AUTH_ENABLED, signInAccount, createAccount, resetPassword } from '../lib/auth';
 import { accountError } from '../lib/accountErrors';
+import EntryDoodles from './EntryDoodles';
+import { DEV_ACCOUNTS, DEV_AUTH_ENABLED, EMULATOR_AUTH_ENABLED, FIREBASE_AUTH_ENABLED, signInAccount, createAccount, resetPassword } from '../lib/auth';
 
-/** Shared account form for explicit local development and Firebase identities. */
-export default function AccountPanel({ onClose, entry = false, onAuthenticated }: { onClose: () => void; entry?: boolean; onAuthenticated?: () => void }) {
-  const [screen, setScreen] = useState<'login' | 'signup' | 'reset'>('login');
+type AccountScreen = 'login' | 'signup' | 'reset';
+
+export default function AccountPanel({ onClose, entry = false, onAuthenticated, onAccountCreated }: {
+  onClose: () => void;
+  entry?: boolean;
+  onAuthenticated?: () => void;
+  onAccountCreated?: (uid: string) => void;
+}) {
+  const [screen, setScreen] = useState<AccountScreen>('login');
   const [email, setEmail] = useState(''), [password, setPassword] = useState(''), [error, setError] = useState<{ message: string; code?: string } | null>(null);
   const [busy, setBusy] = useState(false), [message, setMessage] = useState('');
+  const [backgroundPaused, setBackgroundPaused] = useState(false);
+  const action = screen === 'signup' ? 'Create account' : screen === 'reset' ? 'Reset password' : 'Sign in';
+  const ActionIcon = screen === 'signup' ? UserPlus : screen === 'reset' ? KeyRound : LogIn;
+  const unavailable = !(DEV_AUTH_ENABLED || FIREBASE_AUTH_ENABLED) || DEV_AUTH_ENABLED && screen !== 'login';
+
+  function changeScreen(next: AccountScreen) {
+    setScreen(next); setPassword(''); setError(null); setMessage('');
+  }
+
   async function submit(event: React.FormEvent) {
     event.preventDefault(); setError(null);
-    if (busy || !DEV_AUTH_ENABLED && !FIREBASE_AUTH_ENABLED || DEV_AUTH_ENABLED && screen !== 'login') return;
+    if (busy || unavailable) return;
     setBusy(true); setMessage('');
     try {
-      if (screen === 'reset') { await resetPassword(email); setMessage('Check your email for password reset instructions.'); }
-      else { if (screen === 'signup') await createAccount(email, password); else await signInAccount(email, password); setPassword(''); (onAuthenticated ?? onClose)(); }
-    } catch (reason) { setError(accountError(reason, screen)); }
+      if (screen === 'reset') {
+        await resetPassword(email);
+        setMessage('Check your email for password reset instructions.');
+      } else {
+        if (screen === 'signup') {
+          const uid = await createAccount(email, password);
+          onAccountCreated?.(uid);
+        }
+        else await signInAccount(email, password);
+        setPassword(''); (onAuthenticated ?? onClose)();
+      }
+    } catch (reason) { setError(accountError(reason,screen)); }
     finally { setBusy(false); }
   }
-  return <Modal titleId="account-title" onClose={onClose} className={`account-modal${entry ? ' account-entry' : ''}`}>
-    <button className="icon-button modal-close" onClick={onClose} aria-label={t('Continue as guest')}><X size={20} /></button>
-    <img className="account-logo" src="/manzil-logo.png" width="64" height="64" alt="Manzil" />
-    <span className="eyebrow">MANZIL · منزل</span><h1 id="account-title">{t(screen === 'signup' ? 'Create account' : screen === 'reset' ? 'Reset password' : 'Your journeys, together.')}</h1>
-    <p className="muted">{t('Plan a route without an account. Sign in later for personal features.')}</p>
-    <button className="secondary-button full guest-entry-action" onClick={onClose}>{t('Continue as guest')}<ArrowRight size={18} /></button>
-    <div className="notice-box soft"><ShieldCheck size={21} /><div><strong>{t(DEV_AUTH_ENABLED ? 'Development sign-in' : EMULATOR_AUTH_ENABLED ? 'Local Firebase emulators' : FIREBASE_AUTH_ENABLED ? 'Firebase Authentication' : 'Account connection coming soon')}</strong><p>{t(DEV_AUTH_ENABLED ? 'Dummy accounts unlock local testing. They share this local workspace and do not use Firebase.' : EMULATOR_AUTH_ENABLED ? 'Test accounts use local authentication and isolated user records.' : FIREBASE_AUTH_ENABLED ? 'Your account protects saved journeys and personal history.' : 'Firebase sign-in is not configured in this build.')}</p></div></div>
-    <form onSubmit={submit} aria-label={t(screen === 'reset' ? 'Reset password' : 'Sign in')}>
-      <fieldset disabled={busy || !(DEV_AUTH_ENABLED || FIREBASE_AUTH_ENABLED) || DEV_AUTH_ENABLED && screen !== 'login'} className="account-fields"><label className="field-label">{t('Email')}<input type="email" value={email} onChange={event => setEmail(event.target.value)} required autoComplete="email" placeholder="name@example.com" /></label>
-        {screen !== 'reset' && <label className="field-label">{t('Password')}<input type="password" value={password} onChange={event => setPassword(event.target.value)} required autoComplete={screen === 'signup' ? 'new-password' : 'current-password'} placeholder="••••••••" /></label>}
-        <button className="primary-button full" type="submit"><Mail size={18} />{t(screen === 'reset' ? 'Reset password' : screen === 'signup' ? 'Create account' : 'Sign in')}</button>
-      </fieldset>
-    </form>
-    {error && <div className="error-box" role="alert"><p>{t(error.message)}</p>{error.code && <small>{t('Error code')}: <code>{error.code}</code></small>}</div>}
-    {message && <p role="status">{t(message)}</p>}
-    {(DEV_AUTH_ENABLED || EMULATOR_AUTH_ENABLED) && screen === 'login' && <div className="dev-accounts"><span className="field-label">{t('Choose a development account')}</span>{DEV_ACCOUNTS.map(account => <button className="dev-account" key={account.uid} type="button" onClick={() => { setEmail(account.email); setPassword(account.password); setError(null); }}><strong>{t(account.role === 'admin' ? 'Admin user' : 'Normal user')}</strong><code>{account.email}</code><small>{t('Password')}: <bdi>{account.password}</bdi></small></button>)}</div>}
-    <div className="row wrap"><button className="text-button" onClick={() => { setScreen(screen === 'signup' || screen === 'reset' ? 'login' : 'signup'); setError(null); setMessage(''); }}>{t(screen === 'login' ? 'Create account' : 'Back to sign in')}</button>{screen === 'login' && <button className="text-button" onClick={() => { setScreen('reset'); setError(null); setMessage(''); }}>{t('Forgot password?')}</button>}</div>
+
+  return <Modal titleId="account-title" onClose={onClose} className={`account-modal${entry ? ' account-entry' : ''}`} overlay={entry ? <EntryDoodles paused={backgroundPaused} /> : undefined}>
+    <div className="account-layout">
+      <section className="account-form-column">
+        <div className="account-form-inner">
+          <header className="account-brand">
+            <img className="account-logo" src="/manzil-logo.png" width="84" height="84" alt="" />
+            {screen === 'login' ? <h1 id="account-title" className="account-brand-name">Manzil</h1> : <span className="account-brand-name">Manzil</span>}
+          </header>
+          {screen !== 'login' && <h1 id="account-title" className="account-screen-title">{t(action)}</h1>}
+          <button className="primary-button full guest-entry-action" onClick={onClose}>{t('Continue as guest')}<ArrowRight size={20} /></button>
+          <div className="account-divider" aria-hidden="true"><span>{t(action)}</span></div>
+          <form onSubmit={submit} aria-label={t(action)} aria-busy={busy}>
+            <fieldset disabled={busy || unavailable} className="account-fields">
+              <label className="field-label">{t('Email')}<input type="email" value={email} onChange={event => setEmail(event.target.value)} required autoComplete="email" placeholder="name@example.com" dir="ltr" /></label>
+              {screen !== 'reset' && <label className="field-label">{t('Password')}<input type="password" value={password} onChange={event => setPassword(event.target.value)} required minLength={screen === 'signup' ? 6 : undefined} autoComplete={screen === 'signup' ? 'new-password' : 'current-password'} placeholder="••••••••" dir="ltr" /></label>}
+              <button className="secondary-button full account-submit" type="submit">{busy ? <LoaderCircle size={18} className="account-spinner" aria-hidden="true" /> : <ActionIcon size={18} aria-hidden="true" />}{t(action)}</button>
+            </fieldset>
+          </form>
+          {error && <div className="error-box" role="alert"><p>{t(error.message)}</p>{error.code && <small>{t('Error code')}: <code>{error.code}</code></small>}</div>}
+          {message && <p className="account-success" role="status">{t(message)}</p>}
+          {!(DEV_AUTH_ENABLED || FIREBASE_AUTH_ENABLED) && <p className="account-unavailable" role="status">{t('Account connection coming soon')}</p>}
+          <div className="account-links">
+            <button className="text-button" disabled={busy} onClick={() => changeScreen(screen === 'login' ? 'signup' : 'login')}>{t(screen === 'login' ? 'Create account' : 'Back to sign in')}</button>
+            {screen === 'login' && <button className="text-button" disabled={busy} onClick={() => changeScreen('reset')}>{t('Forgot password?')}</button>}
+          </div>
+          {(DEV_AUTH_ENABLED || EMULATOR_AUTH_ENABLED) && screen === 'login' && <details className="account-development">
+            <summary tabIndex={0}><span>{t('Choose a development account')}</span><ChevronDown size={16} aria-hidden="true" /></summary>
+            <div className="dev-accounts">{DEV_ACCOUNTS.map(account => <button className="dev-account" key={account.uid} type="button" disabled={busy} onClick={() => { setEmail(account.email); setPassword(account.password); setError(null); }}><strong>{account.uid === 'dev-user-123' ? account.displayName : t(account.role === 'admin' ? 'Admin user' : 'Normal user')}</strong><code>{account.email}</code><small>{t('Password')}: <bdi>{account.password}</bdi></small></button>)}</div>
+          </details>}
+        </div>
+      </section>
+      {entry && <aside className="account-map-preview" aria-label={t('Route preview')}>
+        <img src="/manzil-route-preview.svg?v=osm-20261018" alt="" className="account-map-art" />
+        <div className="account-preview-city"><MapPin size={18} aria-hidden="true" />{t('Islamabad')}</div>
+        <button type="button" className="entry-motion-control" aria-label={t(backgroundPaused ? 'Play background animation' : 'Pause background animation')} title={t(backgroundPaused ? 'Play background animation' : 'Pause background animation')} aria-pressed={backgroundPaused} onClick={() => setBackgroundPaused(value => !value)}>{backgroundPaused ? <Play size={17} aria-hidden="true" /> : <Pause size={17} aria-hidden="true" />}</button>
+        <div className="account-preview-legend" aria-hidden="true"><span><i className="preview-route-key" />{t('Example route')}</span><span><i className="preview-closed-key" />{t('Illustrative closure')}</span></div>
+        <a className="account-map-credit" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a>
+      </aside>}
+    </div>
   </Modal>;
 }
 

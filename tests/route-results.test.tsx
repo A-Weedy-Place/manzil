@@ -11,6 +11,15 @@ const handlers = () => ({ onSelect: vi.fn(), onSaveCommute: vi.fn(), onNavigate:
 afterEach(cleanup);
 
 describe('blocked route comparison', () => {
+  it('keeps essential access and closure cautions while removing the verbose route-details disclosure', () => {
+    render(<RouteResults plan={{ ...plan, warnings: ['Travel times use ordinary road-speed estimates, not live traffic.', 'Pins snapped to road nodes (50 m at start). Access between each pin and its snapped point is not routed.', 'Only published restrictions known to this app are checked; coverage and road conditions may be incomplete.', 'This departure is in the past; results are a schedule replay.', 'Detours use a bounded search with fixed edge exclusions per candidate; this does not prove the globally best time-dependent route.'] }} selectedId={route.id} {...handlers()} />);
+    expect(screen.queryByText('Route details')).toBeNull();
+    expect(screen.getByText('Check access between your pins and the nearby roads.')).toBeTruthy();
+    expect(screen.getByText('Only reported closures are checked.')).toBeTruthy();
+    expect(screen.getByText('Past dates show a schedule replay.')).toBeTruthy();
+    expect(screen.queryByText(/bounded search/)).toBeNull();
+    expect(screen.getByText('Time estimates use road speeds, without live traffic.')).toBeTruthy();
+  });
   it('opens original time/distance inspection without selecting it as a route', () => {
     const actions = handlers();
     render(<RouteResults plan={plan} selectedId={route.id} {...actions} />);

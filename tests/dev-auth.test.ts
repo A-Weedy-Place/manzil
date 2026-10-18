@@ -19,6 +19,12 @@ it('does not expose working dummy accounts in production mode', async () => {
   expect(auth.DEV_AUTH_ENABLED).toBe(false); expect(auth.DEV_ACCOUNTS).toEqual([]);
   expect(() => auth.signInDevelopment('admin@manzil.test', 'ManzilAdmin123!')).toThrow('unavailable');
 });
+it('accepts the exact User 123 sample credentials only as an ordinary development identity', async () => {
+  const auth = await import('../src/lib/auth');
+  expect(() => auth.signInDevelopment('user123@manzil.test', 'User123')).toThrow('development accounts');
+  auth.signInDevelopment('user123@manzil.test', 'User 123');
+  expect(auth.getAuthSession().user).toMatchObject({ uid: 'dev-user-123', displayName: 'User 123', role: 'user' });
+});
 it('does not enable dummy sign-in on a non-loopback host', async () => {
   vi.stubGlobal('window', { location: { hostname: 'example.org' } }); vi.resetModules();
   const auth = await import('../src/lib/auth');

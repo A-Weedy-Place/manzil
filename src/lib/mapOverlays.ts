@@ -2,7 +2,7 @@ import type { FeatureCollection, LineString, Polygon } from 'geojson';
 import type { Closure, Coordinate, RoutePath } from '../../shared/types';
 import { closureState } from './format';
 
-export type ClosureRoads = FeatureCollection<LineString, { closureId: string; title: string }>;
+export type ClosureRoads = FeatureCollection<LineString, { closureId: string; title: string; unverifiedDrawing?: true }>;
 
 /** Planner choices belong to one snapshot; an in-progress guide keeps its original path. */
 export function routeMatchesMapSnapshot(routeDepartureAt: string, mapAt: string, inProgress = false): boolean {
@@ -11,9 +11,12 @@ export function routeMatchesMapSnapshot(routeDepartureAt: string, mapAt: string,
 }
 
 /** Road geometry changes at active-set/revision boundaries, not on every clock tick. */
-export function closureRoadKey(closures: Closure[], at: string): string {
-  const revisions = closures.filter(closure => closureState(closure, at) === 'active').map(closure => [closure.id, closure.revision]).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
-  return `clipped-v2:${JSON.stringify(revisions)}`;
+export function closureRoadKey(closures: Closure[], at: string, includeUpcoming = false): string {
+  const revisions = closures.filter(closure => {
+    const state = closureState(closure, at);
+    return state === 'active' || (includeUpcoming && state === 'scheduled');
+  }).map(closure => [closure.id, closure.revision]).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  return `clipped-v3:${includeUpcoming ? 'upcoming:' : ''}${JSON.stringify(revisions)}`;
 }
 
 export function activeClosurePolygons(closures: Closure[], at: string, selectedId: string | null): FeatureCollection<Polygon> {
@@ -27,6 +30,36 @@ export function activeClosurePolygons(closures: Closure[], at: string, selectedI
 export function visibleClosureRoads(response: { key: string; data: ClosureRoads } | null, key: string, closures: Closure[], at: string): ClosureRoads {
   const activeIds = new Set(closures.filter(closure => closureState(closure, at) === 'active').map(closure => closure.id));
   return { type: 'FeatureCollection', features: response?.key === key ? response.data.features.filter(feature => activeIds.has(feature.properties.closureId)) : [] };
+}
+
+/** Future geometry is only a temporary inspection overlay, never a routing closure. */
+export function previewClosureRoads(response: { key: string; data: ClosureRoads } | null, key: string, closures: Closure[], at: string, previewId: string | null): ClosureRoads {
+  const closure = closures.find(item => item.id === previewId);
+  return { type: 'FeatureCollection', features: response?.key === key && closure && closureState(closure, at) === 'scheduled'
+    ? response.data.features.filter(item => item.properties.closureId === closure.id) : [] };
+}
+
+/** Anchor to a real affected line rather than an area centre, which may be off-road.
+ * Coordinate-based placement lets MapLibre perform the same projection at every zoom. */
+export function closureMarkerCoordinate(closure: Closure, response: { key: string; data: ClosureRoads } | null, key: string): Coordinate {
+  const lines = response?.key === key ? response.data.features.filter(item => item.properties.closureId === closure.id).map(item => item.geometry.coordinates as Coordinate[]) : [];
+  if (!lines.length && closure.drawing?.kind === 'line') lines.push(closure.drawing.coordinates);
+  let longest: Coordinate[] | null = null, longestLength = 0;
+  const length = (a: Coordinate, b: Coordinate) => Math.hypot((b[0] - a[0]) * Math.cos((a[1] + b[1]) * Math.PI / 360), b[1] - a[1]);
+  for (const line of lines) {
+    const size = line.slice(1).reduce((sum, point, index) => sum + length(line[index], point), 0);
+    if (size > longestLength) { longestLength = size; longest = line; }
+  }
+  if (longest) {
+    let remaining = longestLength / 2;
+    for (let index = 1; index < longest.length; index++) {
+      const a = longest[index - 1], b = longest[index], size = length(a, b);
+      if (size > 0 && remaining <= size) return [a[0] + (b[0] - a[0]) * remaining / size, a[1] + (b[1] - a[1]) * remaining / size];
+      remaining -= size;
+    }
+  }
+  const ring = closure.geometry.coordinates[0];
+  return [(Math.min(...ring.map(point => point[0])) + Math.max(...ring.map(point => point[0]))) / 2, (Math.min(...ring.map(point => point[1])) + Math.max(...ring.map(point => point[1]))) / 2];
 }
 
 interface IndexedSegment { a: Coordinate; b: Coordinate }

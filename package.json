@@ -24,7 +24,8 @@
     "data:import": "tsx scripts/import-osm.ts",
     "source:check": "tsx scripts/check-source.ts",
     "source:probe": "tsx scripts/probe-source.ts",
-    "agent:probe": "tsx scripts/probe-agent.ts"
+    "agent:probe": "tsx scripts/probe-agent.ts",
+    "art:entry-preview": "tsx scripts/generate-entry-preview.ts"
   },
   "dependencies": {
     "@google-cloud/storage": "^8.4.0",

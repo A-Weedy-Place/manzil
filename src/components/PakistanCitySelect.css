@@ -1,0 +1,26 @@
+.pakistan-city-select { min-width: 0; }
+.pakistan-city-select > .field-label { margin: 0; padding-bottom: 7px; }
+.city-select-field { display: flex; align-items: center; min-width: 0; padding-inline-start: 0; border: 1px solid var(--border); border-radius: 12px; background: var(--paper); transition: border-color 150ms, box-shadow 150ms; }
+.city-select-field:focus-within { border-color: var(--green); box-shadow: inset 0 0 0 1px var(--green); }
+.city-select-field > svg { margin-inline-start: 12px; color: var(--muted); flex-shrink: 0; }
+.pakistan-city-select .city-select-field > input:not([type='checkbox']):not([type='range']) { border: 0; border-radius: 0; background: transparent; color: var(--ink); min-width: 0; width: 100%; margin: 0; outline: none; box-shadow: none; min-height: 46px; padding: 11px 12px; font-size: 16px; }
+.pakistan-city-select .city-select-field > input:focus, .pakistan-city-select .city-select-field > input:focus-visible { outline: none; border: 0; box-shadow: none; }
+.city-select-field button { min-width: 44px; min-height: 44px; display: grid; place-items: center; padding: 8px; flex-shrink: 0; border: 0; border-radius: 10px; background: transparent; color: var(--muted); }
+.city-select-field button:hover { background: var(--surface); color: var(--green); }
+.city-select-field button:focus-visible { outline: 2px solid var(--green); outline-offset: -4px; }
+.city-select-field button:disabled { opacity: .5; cursor: default; }
+.city-select-field.is-open .city-select-toggle > svg { transform: rotate(180deg); }
+.city-select-results { margin-top: 7px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--paper); }
+.city-select-saved { display: flex; gap: 12px; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 12px; }
+.city-select-saved span { color: var(--muted); flex-shrink: 0; }
+.city-select-saved strong { overflow-wrap: anywhere; text-align: end; }
+.city-select-list { max-height: 238px; overflow-y: auto; overscroll-behavior: contain; scroll-padding-block: 4px; padding: 4px; }
+.city-select-list button { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 54px; text-align: start; border: 0; border-radius: 8px; padding: 8px 10px; color: var(--ink); background: transparent; }
+.city-select-list button > span { display: grid; gap: 2px; min-width: 0; }
+.city-select-list button strong { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.city-select-list button small { font-size: 12px; color: var(--muted); }
+.city-select-list button.is-active, .city-select-list button:hover { background: var(--green-soft); }
+.city-select-list button > svg { flex-shrink: 0; color: var(--green); }
+.city-select-message { margin: 0; padding: 14px 10px; color: var(--muted); font-size: 13px; }
+.city-select-count { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); margin: 0; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.city-select-source { display: block; font-size: 12px; text-align: end; color: var(--muted); padding: 6px 12px 9px; }

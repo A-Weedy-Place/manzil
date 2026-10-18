@@ -76,6 +76,25 @@ if (national) {
   nationalResult = { places: places.length, routeOptions: nationalPlan.options.length,
     distanceMeters: nationalPlan.options[0].distanceMeters, durationSeconds: nationalPlan.options[0].durationSeconds, foreignEndpointRejected: true };
 }
-console.log(JSON.stringify({ origin: base.origin, checks, graphReady: true, storage: 'firestore', project: expectedProject,
+let mergedFeatures;
+if (process.argv.includes('--transit-weather')) {
+  const at = new Date().toISOString(), weather = await request('/api/weather?at=' + encodeURIComponent(at));
+  assert(weather.location === 'Islamabad' && ['fresh', 'stale', 'unavailable'].includes(weather.state), 'Invalid weather state');
+  if (weather.reading) assert(weather.reading.coordinate?.[0] === 73.0479 && weather.reading.coordinate?.[1] === 33.6844, 'Unexpected weather location');
+  const network = await request('/api/transit/network?at=' + encodeURIComponent(at));
+  assert(network.routes?.length > 0 && network.stops?.length > 0 && network.patterns?.length > 0 && !network.unavailableReason, 'Bundled transit network unavailable');
+  await request('/api/transit/revision');
+  const disruptions = await request('/api/transit/disruptions');
+  assert(Array.isArray(disruptions.records) && disruptions.records.every(item => item.status === 'published'), 'Guest transit notices expose private records');
+  await request('/api/transit/disruptions', { body: {}, status: 401 });
+  await request('/api/transit/disruptions/smoke', { body: {}, method: 'PUT', status: 401 });
+  const pattern = network.patterns.find(item => item.stopIds?.length > 1), stops = pattern.stopIds.map(id => network.stops.find(stop => stop.id === id)).filter(Boolean);
+  assert(stops.length > 1, 'Transit stops do not match the network');
+  const plan = await request('/api/transit/plan', { body: { origin: { name: stops[0].name, coordinate: stops[0].coordinate },
+    destination: { name: stops.at(-1).name, coordinate: stops.at(-1).coordinate }, departureAt: at } });
+  assert(Array.isArray(plan.options) && plan.datasetVersion === network.version && (plan.options.length > 0 || !!plan.unavailableReason), 'Transit planner did not return an explicit result');
+  mergedFeatures = { weatherState: weather.state, transitRoutes: network.routes.length, transitStops: network.stops.length, transitOptions: plan.options.length, guestTransitWritesDenied: true };
+}
+console.log(JSON.stringify({ origin: base.origin, checks, graphReady: true, storage: 'firestore', project: expectedProject, mergedFeatures,
   routeOptions: plan.options.length, personalAccessDenied: true, guestWritesDenied: true, cloudSpeechEnabled: speech.enabled,
   automaticCollectionEnabled: state.sourceStatus.enabled, geminiEndpointsGuestDenied: gemini || undefined, national: nationalResult }, null, 2));

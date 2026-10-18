@@ -10,3 +10,7 @@
 !assets/
 !assets/routing/
 !assets/routing/**
+!assets/transit/
+!assets/transit/islamabad.json.gz
+!assets/transit/provenance.json
+!assets/transit/supplement.json

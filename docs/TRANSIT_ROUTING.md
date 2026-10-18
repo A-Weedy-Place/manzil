@@ -1,0 +1,73 @@
+# Local buses: network, journeys and service restrictions
+
+The **Local** workspace displays the public Islamabad/Rawalpindi bus catalogue, available stop locations and route geometry. It is an offline imported network, not a live vehicle tracker or a copy of Safar's code/data. Source research and licensing are recorded in [TRANSIT_SOURCES.md](TRANSIT_SOURCES.md); coverage gaps and reproducible public-data import are in [TRANSIT_DATA.md](TRANSIT_DATA.md). Source archives stay ignored. Only the normalized public derivative in `assets/transit/islamabad.json.gz` is bundled.
+
+## What the planner actually knows
+
+- Every coordinate is GeoJSON `[longitude, latitude]`. Calendar/service days use **Asia/Karachi**, including Sunday `0` and GTFS times above `24:00` belonging to the previous service day.
+- A route is a public line; a pattern is one ordered direction/variant. Stop order, boarding/alighting restrictions, source gaps and restricted-access patterns are preserved.
+- **Provided shape** means the source supplies a continuous line. It does not prove a currently running bus or an operator-approved diversion. **Mapped corridor** means a documented OSM road/station derivation, without invented GPS or timetable observations. **Stops only** means dashed schematic connections between source stop locations, never an asserted exact street alignment.
+- Unusable coordinates are excluded and represented as a gap. Known stops on either side remain visible, but the planner never rides across the missing segment. Reference-only lines such as FR-12 may list published stop names without placing or routing through guessed coordinates.
+- Published GTFS trip times are used only on an applicable calendar date, respecting added/removed service exceptions. Intermediate times can be **source-model estimates**; a scheduled result is not a live prediction. A known expired timetable produces no fabricated scheduled service.
+- A pattern with **no timetable at all** may produce an explicitly untimed structural connection: `timing: unknown`, null arrival/duration and null vehicle departure times. It is not silently assigned a bus frequency or a made-up journey ETA. Partial known schedule information does not turn an unknown connection into a timed promise.
+
+## Journey search and limits
+
+`POST /api/transit/plan` accepts strict `{ origin: Place, destination: Place, departureAt: ISO }`. The existing car planner and its road/access validation are unchanged. Local-bus journeys contain ordered walking and riding legs, intermediate stops and the selected route pattern.
+
+Search considers up to **32 nearby source stop IDs**, including distinct IDs at the same physical platform, access/egress walks up to **1 km**, walking transfers up to **250 m**, a **60 second** connection buffer, at most **two transfers**, **90 minutes** maximum scheduled wait and **four hours** maximum internal journey horizon. Walking distance is a straight-line estimate at **1.25 m/s**, not street-validated pedestrian guidance. Overpasses, controlled crossings, inaccessible stations and private entrances may make a geometrically nearby stop unreachable. No walking line is advertised as turn-by-turn navigation.
+
+A bounded heap search retains two labels per stop/ride-count/mode/timing class, with a maximum **1,800 expansions / 2.5 seconds**. Validated completed connections are collected when generated, before unrelated branch expansions can consume the budget. A small uncertainty tie-breaker keeps untimed metro/Orange patterns searchable alongside scheduled feeders; final presentation still prefers scheduled results. Geometry intersections and ride slices are memoized **inside one request's immutable snapshot**, while each trip's temporal checks remain separate. Caches never cross closure revisions/requests. Additional eligible connections can exist beyond these limits; an explicit warning accompanies a truncated search. This is a small MVP planner, not an exhaustive transit optimization engine. It returns up to three distinct pattern sequences; getting off the same bus a stop earlier is not presented as a separate route. Fewer genuine alternatives are returned honestly. Internal untimed ranking uses distance only to compare candidates; its heuristic is never exposed as a vehicle ETA.
+
+Pickup/drop-off restrictions are enforced, including source stops requiring advance arrangements. Restricted-access patterns such as FR-04B are visible for reference but excluded from ordinary journeys. An empty or corrupt dataset returns an unavailable network/plan instead of fixtures. Origin/destination outside the bounded mapped access area returns an explicit unavailable reason.
+
+Patterns can additionally carry a documented **`routingUnavailableReason`**. They remain grey/uncertain for source review but cannot produce journey legs; this does not assert that the operator suspended the service. The official comparison currently applies it to two RLRT03 variants whose IJP/Potohar order contradicts the full Metro corridor. Full RLRT01 is preserved. A route's scoped `officialReview` disclosure carries dates/reference links and distinguishes textual agreement, differences, historical references and unestablished route-level confirmation. Journeys using other difference-reviewed routes retain a reference warning. Old CDA PDFs do not silently replace current mapped sequences, and neither a matching authority record nor the review label certifies current operation or field coordinates. [Evidence and refresh](TRANSIT_DATA.md).
+
+## Local map presentation
+
+Local defaults to the restored pale **Minimal** basemap with a separate browser preference; the driving map retains its own profile style. [Map-style behavior](MAP_STYLES.md). Ordinary mapped bus lines are **4.5 px / 96% opacity**, selected lines **7.8 px / 100%**, and journey ride legs **8.8 px**. A narrow, subtle dark casing replaces the broad white network casing. Schematic lines retain their dashed meaning and gaps; schematic/walking legs have no continuous white underlay. Stop circles remain visible at city overview (around zoom 11–12), shrink/fade at regional zooms, and emphasize selected/ridden stops. Red road overlays remain above transit lines and stops.
+
+`src/lib/transitColors.ts` assigns one presentation colour per route ID across directions, map lines, route cards and ride badges. It builds weighted display-neighbour relationships within **250 m**, sampling supplied segments at about 120 m and deduplicating points in 60 m cells; physical stops also establish proximity. Separate geometry segments and documented gaps are respected. Deterministic saturation/weighted-degree ordering chooses among ten non-red colours using OKLab separation; shared corridors receive priority over brief crossings. Grey (`#697781`) remains reserved for uncertain/suspended/stale service. White route-badge text meets 4.5:1 against the normal and grey palettes. Availability labels, selected stops and dashed schematic lines retain information beyond colour.
+
+The finite palette cannot make every route at a dense interchange unique. Some weak neighbouring contacts reuse a colour, and exactly shared geometry can still overpaint; selecting a route brings it forward. No fictitious lateral offset or road segment is introduced. The current network's twenty strongest neighbour pairs receive different colours; this is a checked snapshot, not a universal graph-colouring guarantee. Publisher colours remain in the canonical source asset; only display colours change, with no import, data hash/version, timetable, geometry or routing/access changes.
+
+Colour schemes are cached by immutable network arrays/version, with an exact-content bounded cache for refreshed geometry arrays. Clock/status/selection changes do not rebuild the spatial graph, and zoom does not run this calculation. On the actual **37-route / 67-pattern / 3,237-vertex** snapshot, observed cold work was **55–145 ms**, 1,000 wrapper updates sharing arrays took **0.28–1 ms total**, and genuinely cloned arrays reused the scheme after an approximately **3.7 ms** content check. These local observations are not a device-performance guarantee; they add no polling, downloads, dependency, worker or map instance.
+
+## Road closures versus bus suspension
+
+**Red remains reserved for road closures.** Bus route colors use other hues. At the selected time, a known published/approved road restriction intersecting a route paints that route direction grey as **uncertain**, rather than asserting that a bus operator has suspended it. Pending/private, draft, rejected, cancelled and ended road reports do not affect the public bus network. Future restrictions do not grey today's network.
+
+The planner checks the ridden part of a bus line at its expected traversal time. For scheduled trips it uses each source stop's arrival/departure interval, including intermediate dwell, rather than stretching the total trip duration uniformly. Unknown-time journeys conservatively consider the four-hour search horizon. Affected legs are excluded; a fixed bus service is never arbitrarily rerouted onto streets as if it were a car.
+
+Schematic stop-to-stop chords can establish only **approximate closure risk**: a crossing is conservatively grey/excluded, while `closureAssessment: unavailable` and a warning retain the limitation that actual road clearance is unknown. A non-crossing chord does not certify the real bus road is clear. Provided shapes/mapped corridors also indicate geometric risk, not a confirmed operator action. Unaffected portions of a partially restricted line can remain eligible for a journey even while the complete network direction is grey.
+
+A reviewed **bus service notice** is separate from a road closure. It identifies a known route, optional direction and optional ordered stop segment, with explicit start/end instants and a source/reference. At its active time, it marks the relevant direction **suspended**. Network geometry remains conservatively grey for the affected direction; the UI labels section-only notices **Partial suspension**, retaining **Service suspended** when any active whole-line/direction notice applies. Journeys exclude only overlapping ridden segments; unrelated directions and unaffected intervals stay eligible. Published future notices are available for planned-time evaluation. Cancelled notices stop affecting planning.
+
+There is **no automatic Champ Alerts/Gemini service-suspension extraction** in this implementation. The existing source inbox can supply review material; a verified contributor/admin publishes the structured bus notice manually. Source posts, guessed operator reroutes or a news headline are never automatically promoted into verified transit operations.
+
+## HTTP API
+
+| Endpoint | Behavior |
+| --- | --- |
+| `GET /api/transit/network?at=ISO` | Public network, ordered stops/patterns, active-time statuses, published service notices, sources/limits; excludes bulk timetable trips and personal data. Missing `at` uses current time. |
+| `GET /api/transit/revision` | Lightweight `{version,eventRevision,disruptionRevision}` for Local-only freshness polling. |
+| `POST /api/transit/plan` | Public strict origin/destination/departure request; ordered journeys or explicit unavailability. |
+| `GET /api/transit/disruptions` | Public published notices; verified/admin reviewers can also see cancelled notices. |
+| `POST /api/transit/disruptions` | Verified contributor/admin publishes or records a cancelled notice; server supplies author, ID, revision and timestamps. |
+| `PUT /api/transit/disruptions/:id` | Strict complete draft plus positive `revision`; author or admin can edit, including cancellation. Stale revisions return `409`. |
+
+Unknown routes/directions, one-sided or reversed stop segments, invalid time zones/end intervals, arbitrary client author fields and non-HTTP(S) source URLs are rejected. The API enforces permissions independently of the UI. Ordinary users and guests can inspect/plan, but cannot publish service notices.
+
+Plans capture the public road-event revision and service-notice revision, then recheck both before responding. A changed restriction returns **409**, preventing a mixed-revision recommendation. The UI separately rejects stale responses and invalidates results after relevant changes. These freshness checks do not promise instant external incident reporting.
+
+## Storage, privacy and release
+
+Service notices are a bounded shared `transit:disruptions` metadata document with a global revision and at most **100 retained records**. SQLite uses `BEGIN IMMEDIATE`; Firestore uses an SDK transaction, so competing writes cannot silently overwrite a newer notice. The Firestore `transit:` prefix points to the shared app root, never a user's private profile. Existing author identity is retained on an edit; no API accepts a forged author. This implementation does not upload personal GPS, copy local SQLite into cloud storage or grant new account permissions.
+
+No worker poll, paid API/key, account credential, Firestore index/rule migration or deployment is required for the bundled network. Localhost feature-branch code remains for the deployment developer to integrate and release. Future data refreshes must rerun/review the public importer and update its coverage manifest; a current fetch date is not proof of current operator service.
+
+## Verification
+
+Focused synthetic planner/API regressions cover schedules and exception days, GTFS midnight rollover, pickup/drop-off restrictions, actual transfers/co-located IDs, minimum transfer time, bounded walks, unknown/expired timetable behavior, source gaps/restricted patterns, geometric closure risk at traversal/dwell time, partial/directional service suspensions, source validation, permission enforcement, atomic conflicting edits, cancellation, future-time statuses and revision-change rejection. Synthetic fixtures live only in tests and are not runtime network fallbacks.
+
+Separate real-data smoke checks load the normalized public catalogue and plan representative EX-16, FR-11, Rawalpindi EV, Green/Blue and Orange corridor journeys without writing notices or changing live local closures. With the seven existing active localhost test closures, observed API runs returned three options for each of these six requests in approximately **82–324 ms** across runs, including untimed Orange/EV connections; these are observations, not a latency guarantee. A full-network Orange regression also prevents scheduled feeder branches from starving an eligible untimed direct service. The source calendars, synthetic closure fixtures, walking limitations and no-live-vehicle state remain explicit.

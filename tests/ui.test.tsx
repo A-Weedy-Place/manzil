@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import AccountPanel from '../src/components/AccountPanel';
-import WelcomeTour, { TOUR_KEY } from '../src/components/WelcomeTour';
+import WelcomeTour, { TOUR_KEY, TOUR_STEPS } from '../src/components/WelcomeTour';
 import NavigationPanel from '../src/components/NavigationPanel';
 import { setLanguage } from '../src/lib/language';
 import { speechText } from '../shared/speech';
@@ -30,6 +30,7 @@ describe('bilingual first-use and account surfaces', () => {
   });
   it('signs in the selected normal/admin dummy account without persisting a password', async () => {
     const close = vi.fn(); render(<AccountPanel onClose={close} />);
+    fireEvent.click(screen.getByText('Choose a development account'));
     fireEvent.click(screen.getByRole('button', { name: /Normal user/ }));
     fireEvent.submit(screen.getByRole('form', { name: 'Sign in' }));
     expect(getAuthSession().user).toMatchObject({ uid: 'dev-user', role: 'user' });
@@ -45,7 +46,7 @@ describe('bilingual first-use and account surfaces', () => {
     setLanguage('ur'); const close = vi.fn(); render(<WelcomeTour onClose={close} />);
     expect(screen.getByRole('heading', { name: 'منزل میں خوش آمدید' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'اگلا' }));
-    expect(screen.getByRole('heading', { name: 'اپنا سفر منتخب کریں' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'روانگی کی جگہ' })).toBeTruthy();
     await userEvent.keyboard('{Escape}');
     expect(localStorage.getItem(TOUR_KEY)).toBe('seen'); expect(close).toHaveBeenCalledOnce(); expect(watchPosition).not.toHaveBeenCalled();
   });
@@ -56,12 +57,30 @@ describe('bilingual first-use and account surfaces', () => {
     legend.getBoundingClientRect = () => ({ left: 39, top: legendTop, right: 319, bottom: legendTop + 50, width: 280, height: 50, x: 39, y: legendTop, toJSON: () => ({}) });
     vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(350);
     render(<WelcomeTour onClose={vi.fn()} />);
-    for (let index = 0; index < 3; index++) fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    for (let index = 0; index < 5; index++) fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     const dialog = screen.getByRole('dialog');
     expect(dialog.querySelector('.tour-shade')).toBeNull(); expect(dialog.parentElement!.querySelector('.tour-shade')).not.toBeNull();
     expect(Number.parseFloat(dialog.style.top) + Number.parseFloat(dialog.style.maxHeight)).toBeLessThan(legendTop);
     const previousTop = dialog.style.top; legendTop = 200; fireEvent(window, new Event('resize'));
     await waitFor(() => expect(dialog.style.top).not.toBe(previousTop)); legend.remove();
+  });
+  it('explains separate journey fields, a bullet map key and all personal workspaces without asking for location', () => {
+    const onViewChange = vi.fn(), close = vi.fn();
+    const getCurrentPosition = vi.fn(), watchPosition = vi.fn();
+    Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition, watchPosition } });
+    render(<WelcomeTour onClose={close} onViewChange={onViewChange} />);
+    const titles: string[] = [];
+    for (let index = 0; index < TOUR_STEPS.length; index++) {
+      titles.push(screen.getByRole('heading', { level: 1 }).textContent!);
+      if (TOUR_STEPS[index].title === 'Read the map') {
+        expect(screen.getAllByRole('listitem').map(item => item.textContent)).toEqual(['Blue lines: your routes', 'Red roads: closed at the map time', 'Yellow markers: upcoming road closures']);
+        expect(screen.queryByText(/amber/i)).toBeNull();
+      }
+      fireEvent.click(screen.getByRole('button', { name: index === TOUR_STEPS.length - 1 ? 'Finish' : 'Next' }));
+    }
+    expect(titles).toContain('Starting point'); expect(titles).toContain('Destination'); expect(titles).toContain('Choose your language'); expect(titles).toContain('Style your map');
+    expect(onViewChange.mock.calls.map(([view]) => view)).toEqual(['journey', 'closures', 'commutes', 'profile', 'journey']);
+    expect(close).toHaveBeenCalledOnce(); expect(getCurrentPosition).not.toHaveBeenCalled(); expect(watchPosition).not.toHaveBeenCalled();
   });
 });
 describe('foreground automatic rerouting', () => {

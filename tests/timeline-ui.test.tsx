@@ -56,8 +56,13 @@ async function openApp(signedIn = false) {
   if (signedIn) signInDevelopment('user@manzil.test', 'ManzilUser123!');
   render(<App />);
   await screen.findByRole('button', { name: 'Find routes' });
-  if (!signedIn) fireEvent.click(await screen.findByRole('button', { name: 'Skip tour' }));
   await screen.findByTestId('map');
+}
+function chooseEndpoints() {
+  act(() => {
+    capture.props!.onEndpointMove('A', [73, 33.7]);
+    capture.props!.onEndpointMove('B', [73, 33.71]);
+  });
 }
 function previewInput(): HTMLInputElement {
   return screen.getByLabelText('Date & time · Pakistan') as HTMLInputElement;
@@ -101,7 +106,7 @@ it('keeps the live header a readout and reserves the date picker for Plan ahead'
 });
 
 it('applies a PKT preview explicitly, returns Map to now and remembers the planned date', async () => {
-  const requests = installApi(); await openApp();
+  const requests = installApi(); await openApp(); chooseEndpoints();
   fireEvent.click(screen.getByRole('button', { name: 'Plan ahead' }));
   const initiallyPreviewed = capture.props!.departureAt;
   fireEvent.change(previewInput(), { target: { value: futureInput } });
@@ -124,7 +129,7 @@ it('applies a PKT preview explicitly, returns Map to now and remembers the plann
 });
 
 it('updates live time while a fixed planned snapshot and its route stay fixed', async () => {
-  const requests = installApi(); await openApp();
+  const requests = installApi(); await openApp(); chooseEndpoints();
   vi.setSystemTime('2026-10-17T10:01:00.000Z');
   await act(async () => intervals.get(60000)!());
   expect(capture.props!.departureAt).toBe('2026-10-17T10:01:00.000Z');
@@ -148,7 +153,7 @@ it('discards a delayed preview response after returning to a freshly planned liv
   const requests = installApi(request => request.departureAt === future
     ? new Promise<Response>(resolve => { resolvePreview = resolve; })
     : planResponse(request.departureAt, [route(request.departureAt, 'live-route')]));
-  await openApp();
+  await openApp(); chooseEndpoints();
   fireEvent.click(screen.getByRole('button', { name: 'Plan ahead' })); preview();
   const submit = screen.getByRole('button', { name: 'Find routes' });
   expect(submit.matches(':disabled')).toBe(false);
@@ -169,7 +174,7 @@ it.each([
   { kind: 'leave_later' as const, label: 'Leave after closure', at: '2026-10-17T11:30:00.000Z', local: '2026-10-17T16:30' },
 ])('opens Plan ahead when choosing the $kind departure option', async ({ kind, label, at, local }) => {
   const requests = installApi(request => planResponse(request.departureAt, [route(request.departureAt), { ...route(at, kind), kind, label }]));
-  await openApp(); fireEvent.click(screen.getByRole('button', { name: 'Find routes' }));
+  await openApp(); chooseEndpoints(); fireEvent.click(screen.getByRole('button', { name: 'Find routes' }));
   await screen.findByRole('heading', { name: 'Choose your route' });
   fireEvent.click(screen.getByText('Compare departure times'));
   fireEvent.click(screen.getByText(label).closest('button')!);
@@ -183,7 +188,7 @@ it.each([
 it('opens a fresh live route instead of starting GPS navigation from a planned snapshot', async () => {
   const watchPosition = vi.fn();
   vi.stubGlobal('navigator', Object.assign(Object.create(navigator), { geolocation: { watchPosition, getCurrentPosition: vi.fn(), clearWatch: vi.fn() } }));
-  const requests = installApi(); await openApp();
+  const requests = installApi(); await openApp(); chooseEndpoints();
   fireEvent.click(screen.getByRole('button', { name: 'Plan ahead' })); preview();
   fireEvent.click(screen.getByRole('button', { name: 'Find routes' }));
   fireEvent.click(await screen.findByRole('button', { name: 'View live route' }));
@@ -196,13 +201,13 @@ it('opens a fresh live route instead of starting GPS navigation from a planned s
 });
 
 it.each(['Profile', 'Alerts'])('restores live closure time and removes future routes on opening %s', async destination => {
-  installApi(); await openApp(true);
+  installApi(); await openApp(true); chooseEndpoints();
   fireEvent.click(screen.getByRole('button', { name: 'Plan ahead' })); preview();
   fireEvent.click(screen.getByRole('button', { name: 'Find routes' }));
   await waitFor(() => expect(capture.props!.routeOptions).toHaveLength(1));
   expect(capture.props!.departureAt).toBe(future);
   fireEvent.click(screen.getByRole('button', { name: destination }));
-  expect(screen.getByRole('heading', { name: destination === 'Profile' ? 'Profile & settings' : 'Journey alerts' })).toBeTruthy();
+  expect(screen.getByRole('heading', { name: destination === 'Profile' ? 'User profile' : 'Journey alerts' })).toBeTruthy();
   expect(capture.props!.departureAt).toBe(now);
   expect(capture.props!.routeOptions).toEqual([]);
   expect(capture.props!.selectedRoute).toBeNull();

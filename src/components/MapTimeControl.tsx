@@ -1,6 +1,7 @@
 import { CalendarClock } from 'lucide-react';
 import { dayDate, time } from '../lib/format';
 import { t } from '../lib/language';
+import MapWeather from './MapWeather';
 
 interface Props {
   at: string;
@@ -18,5 +19,6 @@ export default function MapTimeControl({ at, live }: Props) {
     </span>
     <time className="map-time-status-clock" dateTime={at}>{time(at)} <small>{t('PKT')}</small></time>
     <span className="map-time-status-date">{dayDate(at)}</span>
+    <MapWeather at={at} />
   </div>;
 }

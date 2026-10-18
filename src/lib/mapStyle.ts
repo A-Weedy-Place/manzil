@@ -6,6 +6,7 @@ export type MapDetail = 'clean' | 'standard';
 
 /** Keep existing profile/API ids readable without offering retired palettes. */
 export function normalizeMapStyleId(id: MapStyleId | undefined): MapStyleId {
+  if (id === undefined) return 'outdoors';
   return id === 'minimal' || id === 'night' ? id : 'outdoors';
 }
 

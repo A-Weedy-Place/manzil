@@ -1,0 +1,50 @@
+/* Original SVG scenery, outside the form. No bitmap, canvas, glow or filter. */
+.entry-doodles { --entry-art-paper: #15362d; position: fixed; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; color: #fff; }
+.entry-doodles .entry-doodle { position: absolute; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+/* Match the entry card's 174px minimum gutter and 960px maximum width. */
+.entry-doodles .entry-doodle-left { width: clamp(156px,calc((100vw - 960px)/2 - 28px),320px); height: auto; left: max(92px,calc((100vw - 960px)/4 + 5px)); top: 53%; transform: translate(-50%,-43%); }
+.entry-doodles .entry-doodle-right { width: clamp(156px,calc((100vw - 960px)/2 - 28px),234px); height: auto; right: max(92px,calc((100vw - 960px)/4 + 5px)); top: 50%; transform: translate(50%,-43%); }
+.entry-doodles .entry-doodle-top { width: min(800px,calc(100vw - 48px)); height: 90px; top: 0; left: 50%; transform: translateX(-50%); overflow: visible; }
+.entry-pakistan-cycle { animation: entry-map-cycle 28s ease-in-out infinite; }
+.entry-pakistan-outline { opacity: .56; stroke-width: 2.2; stroke-dasharray: 1; stroke-dashoffset: 1; animation: entry-pakistan-outline 28s ease-in-out infinite; }
+.entry-pakistan-reveal { transform-box: view-box; transform-origin: 0 0; transform: scaleY(0); animation: entry-pakistan-reveal 28s linear infinite; }
+.entry-pakistan-roads { opacity: .52; stroke-width: 1.15; }
+.entry-pakistan-roads circle { fill: var(--entry-art-paper); stroke-width: 1.6; }
+.entry-pakistan-road-local { opacity: .72; stroke-width: 1.1; }
+.entry-pakistan-road-secondary { opacity: .85; stroke-width: 1.5; }
+.entry-pakistan-road-highway { stroke-width: 2.6; }
+.entry-pakistan-scanner { opacity: 0; stroke-width: 2; animation: entry-pakistan-scan 28s linear infinite; }
+.entry-scanner-tail { opacity: .18; stroke-width: 2; }
+.entry-map-compass,.entry-map-sea { opacity: .28; }
+.entry-detour-underlay { opacity: .14; stroke-width: 4; }
+.entry-detour-route { opacity: .4; stroke-width: 2.1; stroke-dasharray: 1; stroke-dashoffset: 1; animation: entry-detour-draw 28s ease-in-out infinite; }
+.entry-detour-blocked { opacity: .2; stroke-dasharray: 4 6; }
+.entry-detour-barricade { opacity: .64; }
+.entry-detour-barricade > path:first-child { fill: var(--entry-art-paper); }
+.entry-doodle-spark { opacity: .6; }
+.entry-detour-endpoints { opacity: .58; fill: var(--entry-art-paper); }
+.entry-route-traveler { opacity: 0; fill: var(--entry-art-paper); stroke-width: 2; offset-path: path('M32 76h102q18 0 18-18V38q0-18 20-18h168q18 0 18 18v34q0 18 18 18h69q19 0 19-18V42q0-20 20-20h136q18 0 18 18v17q0 19 20 19h106'); offset-rotate: 0deg; offset-anchor: 0px 0px; offset-position: 0px 0px; offset-distance: 0%; animation: entry-travel-detour 28s linear infinite; }
+.entry-route-traveler ellipse { fill: currentColor; stroke: none; opacity: .45; }
+.entry-doodles[data-paused='true'] * { animation-play-state: paused; }
+@keyframes entry-map-cycle { 0%,88% { opacity: 1; } 96%,100% { opacity: 0; } }
+@keyframes entry-pakistan-outline { 0%,3% { stroke-dasharray: 1; stroke-dashoffset: 1; } 30% { stroke-dasharray: 1; stroke-dashoffset: 0; } 31%,100% { stroke-dasharray: none; stroke-dashoffset: 0; } }
+@keyframes entry-pakistan-reveal { 0%,30% { transform: scaleY(0); } 73%,100% { transform: scaleY(1); } }
+@keyframes entry-pakistan-scan { 0%,30% { opacity: 0; transform: translateY(0); } 32% { opacity: .45; } 73% { opacity: .45; transform: translateY(284px); } 75%,100% { opacity: 0; transform: translateY(284px); } }
+@keyframes entry-detour-draw { 0%,3% { stroke-dashoffset: 1; } 20%,90% { stroke-dashoffset: 0; opacity: .4; } 98%,100% { stroke-dashoffset: 0; opacity: 0; } }
+@keyframes entry-travel-detour { 0%,4% { opacity: 0; offset-distance: 0%; } 7% { opacity: .82; } 48% { opacity: .82; offset-distance: 100%; } 52%,100% { opacity: 0; offset-distance: 100%; } }
+@media (max-width: 1099px) {
+  .entry-doodles .entry-doodle-left,.entry-doodles .entry-doodle-right { display: none; }
+  .entry-doodles .entry-doodle-top { height: 70px; }
+}
+/* Static scenery on phones: no peripheral movement while reading/signing in. */
+@media (max-width: 680px), (prefers-reduced-motion: reduce) {
+  .entry-doodles * { animation: none !important; }
+  .entry-pakistan-cycle { opacity: .7; }
+  .entry-pakistan-outline,.entry-detour-route { stroke-dashoffset: 0; }
+  .entry-pakistan-outline { stroke-dasharray: none; }
+  .entry-pakistan-reveal { transform: scaleY(1); }
+  .entry-pakistan-scanner { opacity: 0; }
+  .entry-route-traveler { opacity: .65; offset-distance: 38%; }
+  .entry-doodles .entry-doodle-left { top: 65%; }
+  .entry-doodles .entry-doodle-right { top: 70%; }
+}

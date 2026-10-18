@@ -3,6 +3,8 @@ import type { Server } from 'node:http';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
 import { deleteApp } from 'firebase-admin/app';
+import { deleteApp as deleteClientApp, initializeApp as initializeClientApp } from 'firebase/app';
+import { confirmPasswordReset, connectAuthEmulator, createUserWithEmailAndPassword, getAuth, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, verifyPasswordResetCode } from 'firebase/auth';
 import { firebaseServices } from '../server/firebase';
 import { FirestoreStore } from '../server/firestore-store';
 import { createApp } from '../server/app';
@@ -13,6 +15,9 @@ import { agentResultKey, agentUsageKey, proposalFingerprint, type AgentResult } 
 import { claimInput, finished, notice as agentNotice } from './agent-fixtures';
 import { extraction as agentExtraction, location as agentLocation, now as agentNow } from './agent-fixtures';
 import { prepareAgentProposals } from '../server/agent-proposals';
+import { TransitService } from '../server/transit/service';
+import { TRANSIT_AT, transitFixture } from './transit-fixture';
+import type { TransitDisruptionState } from '../shared/transit';
 import type { Planner } from '../server/commutes';
 import type { Alert, Closure, ClosureDraft, Commute, FuelPriceStatus, PlanRequest, PlanResponse, Trip } from '../shared/types';
 
@@ -72,6 +77,53 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
     base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
   }, 30000);
   afterAll(async () => { for (const child of children) child.kill('SIGTERM'); if (server) await new Promise<void>(resolve => { server.closeAllConnections(); server.close(() => resolve()); }); if (services) { await services.db.terminate(); await deleteApp(services.app); } });
+  it('creates a disposable ordinary account and completes its password reset with the real client SDK', async () => {
+    // This suite uses its isolated demo project, never the running development accounts or production email.
+    const emulatorHost = process.env.FIREBASE_AUTH_EMULATOR_HOST;
+    expect(emulatorHost).toMatch(/^127\.0\.0\.1:\d+$/);
+    const client = initializeClientApp({ projectId, apiKey: 'demo', appId: 'isolated-auth-lifecycle-fixture' }, 'isolated-auth-lifecycle-fixture');
+    const clientAuth = getAuth(client);
+    connectAuthEmulator(clientAuth, `http://${emulatorHost}`, { disableWarnings: true });
+    const email = `auth-lifecycle-${crypto.randomUUID()}@manzil.test`;
+    const originalPassword = 'DisposableOriginal123!', changedPassword = 'DisposableChanged123!';
+    let uid: string | undefined;
+    try {
+      const created = await createUserWithEmailAndPassword(clientAuth, email, originalPassword);
+      uid = created.user.uid;
+      expect(created.user.email).toBe(email);
+      expect((await created.user.getIdTokenResult()).claims.admin).not.toBe(true);
+      const token = await created.user.getIdToken();
+      const state = await (await request('/state', token)).json();
+      expect(state.membership.role).toBe('user');
+      expect(state.profile).toMatchObject({ theme: 'dark', mapStyle: 'outdoors', collectTravelData: false,
+        inferFrequentRoutes: false, travelDataChoiceMade: false });
+      expect(state.trips).toEqual([]); expect(state.commutes).toEqual([]);
+      expect((await request('/admin/users', token)).status).toBe(403);
+      expect((await request('/profile', token, { displayName: 'Disposable auth test', city: 'Islamabad' }, 'PATCH')).status).toBe(200);
+      await signOut(clientAuth);
+      await expect(createUserWithEmailAndPassword(clientAuth, email, originalPassword)).rejects.toMatchObject({ code: 'auth/email-already-in-use' });
+      await sendPasswordResetEmail(clientAuth, email);
+      // The emulator deliberately does not send mail: inspect its local OOB store without printing links/codes.
+      const codesResponse = await fetch(`http://${emulatorHost}/emulator/v1/projects/${projectId}/oobCodes`);
+      expect(codesResponse.status).toBe(200);
+      const { oobCodes } = await codesResponse.json() as { oobCodes: { email: string; requestType: string; oobCode: string }[] };
+      const reset = oobCodes.find(value => value.email === email && value.requestType === 'PASSWORD_RESET');
+      if (!reset) throw new Error('The isolated emulator did not create the expected password-reset action.');
+      expect(await verifyPasswordResetCode(clientAuth, reset.oobCode)).toBe(email);
+      await confirmPasswordReset(clientAuth, reset.oobCode, changedPassword);
+      await expect(verifyPasswordResetCode(clientAuth, reset.oobCode)).rejects.toMatchObject({ code: 'auth/invalid-action-code' });
+      await expect(signInWithEmailAndPassword(clientAuth, email, originalPassword)).rejects.toBeTruthy();
+      const signedIn = await signInWithEmailAndPassword(clientAuth, email, changedPassword);
+      expect(signedIn.user.uid).toBe(uid);
+      expect(await (await request('/profile', await signedIn.user.getIdToken())).json()).toMatchObject({
+        displayName: 'Disposable auth test', city: 'Islamabad', collectTravelData: false, inferFrequentRoutes: false,
+      });
+    } finally {
+      await signOut(clientAuth);
+      if (uid) await services.auth.deleteUser(uid);
+      await deleteClientApp(client);
+    }
+  }, 30000);
   it('allows guest planning state but requires verified identities/admin claims for protected actions', async () => {
     const state = await (await request('/state')).json();
     expect(state.commutes).toEqual([]); expect(state.trips).toEqual([]); expect(state.notices).toEqual([]);
@@ -149,6 +201,49 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
     expect(await personal.get('trip', trip.id)).toBeUndefined();
     await expect(personal.addAlertOnce('optout-alert-fixture', { title: 'Must not be written', message: 'Synthetic fixture', createdAt: trip.createdAt, read: false, frequentRouteId: 'usual-fixture' })).rejects.toMatchObject({ status: 409 });
     expect(await personal.get('alert', 'optout-alert-fixture')).toBeUndefined();
+  });
+  it('persists a skipped data choice per UID without opting in, defaults missing styles to Classic and preserves saved palettes', async () => {
+    expect(await (await request('/profile')).json()).toMatchObject({ theme: 'dark', mapStyle: 'outdoors', collectTravelData: false, travelDataChoiceMade: false });
+    expect(await store.forUser('bob').profile()).toMatchObject({ theme: 'dark', mapStyle: 'outdoors', collectTravelData: false, travelDataChoiceMade: false });
+    const styleStore = store.forUser('legacy-style-fixture');
+    const { mapStyle: _oldStyle, ...legacyStyle } = { ...await styleStore.profile(), displayName: 'Legacy style fixture', theme: 'light' as const,
+      updatedAt: '2026-10-01T12:00:00.000Z' };
+    await styleStore.setMeta('profile', legacyStyle);
+    expect(await styleStore.profile()).toEqual({ ...legacyStyle, mapStyle: 'outdoors' });
+    expect(await styleStore.meta('profile')).toEqual(legacyStyle);
+    for (const mapStyle of ['outdoors', 'minimal', 'night', 'streets', 'contrast'] as const) {
+      const chosen = await styleStore.updateProfile({ mapStyle });
+      expect(await new FirestoreStore(services.db).forUser('legacy-style-fixture').profile()).toEqual(chosen);
+    }
+    expect((await request('/profile', undefined, { travelDataChoiceMade: true }, 'PATCH')).status).toBe(401);
+    for (const invalid of ['true', 1, null]) expect((await request('/profile', alice, { travelDataChoiceMade: invalid }, 'PATCH')).status).toBe(400);
+    expect((await request('/profile', alice, { demoData: true }, 'PATCH')).status).toBe(400);
+    expect(await (await request('/profile', alice)).json()).not.toHaveProperty('demoData');
+    expect((await request('/profile', alice, { travelDataChoiceMade: true, collectTravelData: false }, 'PATCH')).status).toBe(200);
+    expect(await new FirestoreStore(services.db).forUser('alice').profile()).toMatchObject({ travelDataChoiceMade: true, collectTravelData: false, inferFrequentRoutes: false });
+    expect(await store.forUser('bob').profile()).toMatchObject({ travelDataChoiceMade: false, collectTravelData: false });
+    expect((await request('/profile', alice, { inferFrequentRoutes: true }, 'PATCH')).status).toBe(400);
+  });
+  it('defaults missing Firestore appearance to Dark and preserves explicit saved Light, Dark and System', async () => {
+    const personal = store.forUser('legacy-theme-fixture');
+    const { theme: _oldTheme, ...legacy } = { ...await personal.profile(), displayName: 'Legacy appearance fixture', mapStyle: 'minimal' as const,
+      createdAt: '2026-10-01T12:00:00.000Z', updatedAt: '2026-10-02T12:00:00.000Z' };
+    await personal.setMeta('profile', legacy);
+    expect(await personal.profile()).toEqual({ ...legacy, theme: 'dark' });
+    expect(await personal.meta('profile')).toEqual(legacy);
+    const updated = await personal.updateProfile({ displayName: 'Updated legacy fixture' });
+    expect(updated).toMatchObject({ theme: 'dark', mapStyle: 'minimal', createdAt: legacy.createdAt });
+    expect(await personal.meta('profile')).toEqual(updated);
+    for (const theme of ['light', 'dark', 'system'] as const) {
+      const chosen = await personal.updateProfile({ theme });
+      expect(await new FirestoreStore(services.db).forUser('legacy-theme-fixture').profile()).toEqual(chosen);
+      expect(chosen).toMatchObject({ theme, mapStyle: 'minimal', createdAt: legacy.createdAt });
+    }
+    const { theme: _theme, mapStyle: _style, ...withoutAppearance } = await personal.profile();
+    await personal.setMeta('profile', withoutAppearance);
+    expect(await personal.profile()).toEqual({ ...withoutAppearance, theme: 'dark', mapStyle: 'outdoors' });
+    expect(await personal.meta('profile')).toEqual(withoutAppearance);
+    expect(await personal.updateProfile({ displayName: 'Both appearance fields missing' })).toMatchObject({ theme: 'dark', mapStyle: 'outdoors', createdAt: legacy.createdAt });
   });
   it('isolates simultaneous users, profiles and saved records and persists across repository instances', async () => {
     await Promise.all([request('/profile', alice, { displayName: 'Alice' }, 'PATCH'), request('/profile', bob, { displayName: 'Bob' }, 'PATCH')]);
@@ -302,6 +397,42 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
     const snapshot = await reader.routingSnapshot(); expect(snapshot.closures.find(item => item.id === closure.id)?.revision).toBe(2);
     expect(snapshot.revision).toBeGreaterThanOrEqual(2);
   });
+  it('shares transit notices outside private UID paths and atomically rejects concurrent service edits', async () => {
+    // The surrounding harness is explicitly demo-manzil-test on isolated ports.
+    // An otherwise nonexistent UID proves transit: metadata never acquires a
+    // private profile/subcollection, even when called through a scoped adapter.
+    expect(projectId).toBe('demo-manzil-test');
+    const probeUid='transit-shared-probe',data=transitFixture(),scoped=store.forUser(probeUid),reader=new FirestoreStore(services.db),transit=new TransitService(scoped,()=>data);
+    const config=readConfig({MANZIL_MODE:'emulator',FIREBASE_PROJECT_ID:projectId,FIRESTORE_EMULATOR_HOST:process.env.FIRESTORE_EMULATOR_HOST,FIREBASE_AUTH_EMULATOR_HOST:process.env.FIREBASE_AUTH_EMULATOR_HOST});
+    const {app}=createApp(store,{config,transit});
+    const instance=await new Promise<Server>(resolve=>{const running=app.listen(0,'127.0.0.1',()=>resolve(running));});
+    const url=`http://127.0.0.1:${(instance.address() as {port:number}).port}/api`;
+    const call=(path:string,token?:string,body?:unknown,method=body===undefined?'GET':'POST')=>fetch(`${url}${path}`,{method,headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:body===undefined?undefined:JSON.stringify(body)});
+    const draft={routeId:'r1',title:'Isolated bus service fixture',description:'Synthetic integration fixture only',startsAt:TRANSIT_AT,endsAt:'2026-10-18T05:00:00Z',status:'published' as const};
+    let recordId:string|undefined;
+    try{
+      expect((await call('/transit/disruptions',undefined,draft)).status).toBe(401);
+      expect((await call('/transit/disruptions',bob,draft)).status).toBe(403);
+      expect((await request('/admin/users/bob',admin,{verified:true},'PATCH')).status).toBe(200);
+      const created=await call('/transit/disruptions',bob,draft);expect(created.status).toBe(201);const notice=await created.json();recordId=notice.id;
+      expect(notice).toMatchObject({revision:1,author:{uid:'bob',role:'verified'}});
+      expect((await reader.meta<TransitDisruptionState>('transit:disruptions'))?.records.find(record=>record.id===notice.id)?.revision).toBe(1);
+      const competitors=[new TransitService(store.forUser('bob'),()=>data),new TransitService(reader,()=>data)];
+      const results=await Promise.allSettled(competitors.map((service,index)=>service.save({...draft,title:`Concurrent bus edit ${index}`},notice.author,notice.id,1)));
+      expect(results.filter(result=>result.status==='fulfilled')).toHaveLength(1);
+      const rejected=results.find(result=>result.status==='rejected') as PromiseRejectedResult;expect(rejected.reason).toMatchObject({status:409});
+      const state=await scoped.meta<TransitDisruptionState>('transit:disruptions');expect(state?.records.find(record=>record.id===notice.id)?.revision).toBe(2);
+      const guestNetwork=await(await call(`/transit/network?at=${TRANSIT_AT}`)).json();expect(guestNetwork.statuses[0].availability).toBe('suspended');expect(guestNetwork.profile).toBeUndefined();expect(guestNetwork.trips).toBeUndefined();
+      const cancelled=await call(`/transit/disruptions/${notice.id}`,admin,{...draft,status:'cancelled',revision:2},'PUT');expect(cancelled.status).toBe(200);
+      const publicNotices=await(await call('/transit/disruptions')).json();expect(publicNotices.records.some((record:{id:string})=>record.id===notice.id)).toBe(false);
+      expect((await(await call(`/transit/network?at=${TRANSIT_AT}`)).json()).statuses[0].availability).toBe('available');
+      const probe=services.db.collection('users').doc(probeUid);expect((await probe.get()).exists).toBe(false);expect(await probe.listCollections()).toHaveLength(0);
+    }finally{
+      await request('/admin/users/bob',admin,{verified:false},'PATCH');
+      if(recordId)await store.updateTransitDisruptions(state=>({revision:state.revision+1,records:state.records.filter(record=>record.id!==recordId)}));
+      await new Promise<void>(resolve=>{instance.closeAllConnections();instance.close(()=>resolve());});
+    }
+  },30000);
   it('chunks large GPS traces, keeps summaries small and enforces private trace access/deletion', async () => {
     expect((await request('/profile', alice, { collectTravelData: true }, 'PATCH')).status).toBe(200);
     const now = Date.now(), count = 12000;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Closure, Coordinate, RoutePath } from '../shared/types';
-import { activeClosurePolygons, closureRoadKey, exclusiveBaselineSegments, routeMatchesMapSnapshot, visibleClosureRoads, type ClosureRoads } from '../src/lib/mapOverlays';
+import { activeClosurePolygons, closureMarkerCoordinate, closureRoadKey, exclusiveBaselineSegments, previewClosureRoads, routeMatchesMapSnapshot, visibleClosureRoads, type ClosureRoads } from '../src/lib/mapOverlays';
 
 const closure: Closure = {
   id: 'road', title: 'Road closed', description: '', reason: 'other', status: 'published', revision: 1,
@@ -46,6 +46,30 @@ describe('map closure snapshots', () => {
     const future = { ...closure, id: 'future', startsAt: '2026-10-16T10:00:00Z', endsAt: null };
     expect(closureRoadKey([closure], closure.startsAt)).toBe(closureRoadKey([closure, future], closure.startsAt));
     expect(closureRoadKey([closure, future], future.startsAt)).not.toBe(closureRoadKey([closure], closure.startsAt));
+  });
+
+  it('keys upcoming revisions separately and never paints scheduled geometry as active', () => {
+    const at = '2026-10-15T09:00:00Z', key = closureRoadKey([closure], at, true), response = { key, data: roads };
+    expect(key).not.toBe(closureRoadKey([closure], at));
+    expect(closureRoadKey([{ ...closure, revision: 2 }], at, true)).not.toBe(key);
+    expect(closureRoadKey([closure], closure.startsAt, true)).toBe(key);
+    expect(visibleClosureRoads(response, key, [closure], at).features).toHaveLength(0);
+    expect(previewClosureRoads(response, key, [closure], at, null).features).toHaveLength(0);
+    expect(previewClosureRoads(response, key, [closure], at, closure.id).features).toHaveLength(1);
+    expect(previewClosureRoads(response, key, [closure], closure.startsAt, closure.id).features).toHaveLength(0);
+    expect(previewClosureRoads(response, `${key}-new`, [closure], at, closure.id).features).toHaveLength(0);
+    expect(previewClosureRoads(response, key, [{ ...closure, status: 'draft' }], at, closure.id).features).toHaveLength(0);
+    expect(previewClosureRoads(response, key, [{ ...closure, status: 'cancelled' }], at, closure.id).features).toHaveLength(0);
+    expect(previewClosureRoads(response, key, [closure], closure.endsAt!, closure.id).features).toHaveLength(0);
+  });
+
+  it('anchors on the longest affected road section instead of its polygon centre and rejects stale geometry', () => {
+    const key = 'current', data: ClosureRoads = { ...roads, features: [...roads.features,
+      { ...roads.features[0], geometry: { type: 'LineString', coordinates: [[73.005, 33.702], [73.007, 33.702], [73.009, 33.702]] } }] };
+    expect(closureMarkerCoordinate(closure, { key, data }, key)).toEqual([73.007, 33.702]);
+    const drawn = { ...closure, drawing: { kind: 'line' as const, widthMeters: 10, coordinates: [[73, 33.7], [73.002, 33.7]] as Coordinate[] } };
+    expect(closureMarkerCoordinate(drawn, { key, data }, 'new')).toEqual([73.001, 33.7]);
+    expect(closureMarkerCoordinate(closure, { key, data }, 'new')).toEqual([73.0005, 33.700500000000005]);
   });
 });
 
