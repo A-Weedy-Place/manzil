@@ -21,6 +21,9 @@ The hosted release enables daily PSO checks, cloud speech and selective validate
 
 ## Licence and data scope
 
+Licensing documents are pinned at [`0beb849`](https://github.com/A-Weedy-Place/manzil/commit/0beb849f3cedc0f05ce54f6a9ec4cec49072b4ad): [MIT licence](https://github.com/A-Weedy-Place/manzil/blob/0beb849f3cedc0f05ce54f6a9ec4cec49072b4ad/LICENSE) and [third-party notices](https://github.com/A-Weedy-Place/manzil/blob/0beb849f3cedc0f05ce54f6a9ec4cec49072b4ad/THIRD_PARTY_NOTICES.md). This documentation commit is separate from the deployed application commit.
+
+
 Original Manzil code/documentation are offered under MIT; third-party material retains separate rights. Download and retain the supplemental **LICENSE** and **THIRD_PARTY_NOTICES.md** release assets. The tagged deployment predates those files, so GitHub's automatic source ZIP/tarball does not embed them.
 
 PakBus permission is noncommercial, OSM/GeoNames retain their respective licences, and the Survey of Pakistan-derived login outline requires permission review or replacement before public redistribution. This is not an unrestricted MIT dataset/artwork release. The attached notices identify source/provenance and the unresolved item.

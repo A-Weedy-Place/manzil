@@ -7,7 +7,7 @@ Read [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md), [implementation status](docs/IMPL
 ## Current working boundary
 
 - Feature work is on `codex/feature-development`; preserve teammate changes and uncommitted work. Never force-push shared history.
-- Current work is licensing, public-project documentation and a GitHub release for the verified deployed checkpoint. Application feature work is tested on localhost. Do not deploy, merge `main`, change repository visibility, activate external/model jobs or change production roles without the owner's instruction.
+- Application feature work is tested on localhost. Licensing/public-project documentation and release tags must preserve the distinction between the deployed source and this feature branch. Do not deploy, merge `main`, change repository visibility, activate external/model jobs or change production roles without the owner's instruction.
 - Previously deployed services and integration code exist. A feature-branch push does not establish that its features are live. The user's next Gemini reasoning work remains a separate scope; do not activate/extend the existing bounded integration by inference.
 - Archives are historical evidence, not current instructions. Older automatic-publication preferences or city-only restrictions are superseded by current guides and owner requests.
 

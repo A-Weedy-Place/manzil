@@ -8,6 +8,7 @@ A GitHub release records an exact source snapshot and links to the hosted app. I
 | --- | --- |
 | App | [manzil-app-v1.web.app](https://manzil-app-v1.web.app) |
 | GitHub release | [v0.1.0](https://github.com/A-Weedy-Place/manzil/releases/tag/v0.1.0), marked as an MVP prerelease |
+| Licence/notice source | [`0beb849`](https://github.com/A-Weedy-Place/manzil/commit/0beb849f3cedc0f05ce54f6a9ec4cec49072b4ad); supplemental assets accompany the older application tag |
 | Application source | [`8702fb9d0b5262b5d40953d5ed0dfab464343567`](https://github.com/A-Weedy-Place/manzil/commit/8702fb9d0b5262b5d40953d5ed0dfab464343567) |
 | Teammate's deployment record | [`2c893e2`](https://github.com/A-Weedy-Place/manzil/blob/2c893e2822bb3837f7dfeb48d88f47c594e26bf2/docs/IMPLEMENTATION_STATUS.md) |
 | API / worker revisions | Recorded `manzil-api-00015-7cr` / `manzil-source-worker-00012-t2z` |
@@ -52,7 +53,7 @@ Use a stable release designation only when that reflects the intended support/qu
 
 The owner plans public distribution; this task prepares licensing/release metadata without changing visibility or merging `main`.
 
-- Original software uses MIT. Preserve the [third-party terms](../../THIRD_PARTY_NOTICES.md), notably PakBus's noncommercial permission, ODbL/CC BY obligations and unresolved outline redistribution permission. Resolve the outline through permission or replacement before public redistribution; do not claim every bundled asset is MIT.
+- Original software uses MIT. Preserve the [third-party terms](../../THIRD_PARTY_NOTICES.md), notably PakBus's noncommercial permission, ODbL/CC BY obligations and unresolved outline redistribution permission. Resolve the outline through permission or replacement before public redistribution; do not claim every bundled asset is MIT. Historical commits and the older release tag retain copies, so replacing only the latest file does not clear those copies. Coordinate any history/tag removal with the owner rather than rewriting shared history implicitly.
 - A targeted audit found no matching secret-token/private-key patterns or tracked private runtime/database/source-archive paths across the 57 commits reachable during review. It examined 1,338 text blobs. This is bounded evidence, not proof that every possible secret or external record was inspected.
 - Keep credentials, account exports, precise traces and raw source evidence ignored. Public Firebase project IDs/service URLs are identifiers, not model/admin credentials. Never publish local `.env` or ADC files.
 - Read [security reporting](../../SECURITY.md). When the repository becomes public, the owner can enable GitHub private vulnerability reporting and review the repository's public contact/security settings.
