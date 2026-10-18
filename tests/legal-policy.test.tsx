@@ -31,6 +31,9 @@ it('lets a guest read both policies in the shared settings panel without signing
   expect(within(dialog).getByText(/raw GPS points after 30 days.*summaries after 90 days/)).toBeTruthy();
   expect(within(dialog).getByText(/does not offer a self-service account-deletion button/)).toBeTruthy();
   expect(within(dialog).getByText(/does not send your live position for that forecast/)).toBeTruthy();
+  expect(within(dialog).getByText(/chosen road coordinates.*OpenStreetMap Overpass or map-data API.*not your stored GPS history/)).toBeTruthy();
+  expect(within(dialog).getByRole('link', { name: /Overpass API service information/ }).getAttribute('href')).toBe('https://wiki.openstreetmap.org/wiki/Overpass_API');
+  expect(within(dialog).getByRole('link', { name: /OpenStreetMap map-data API/ }).getAttribute('href')).toBe('https://www.openstreetmap.org/about/api');
   expect(within(dialog).queryByRole('checkbox')).toBeNull(); expect(within(dialog).queryByRole('button', { name: /accept|agree|allow/i })).toBeNull();
   expect(props.onSignIn).not.toHaveBeenCalled(); expect(api).not.toHaveBeenCalled(); expect(send).not.toHaveBeenCalled(); expect(location).not.toHaveBeenCalled(); expect(profile.collectTravelData).toBe(false);
 });
@@ -66,6 +69,8 @@ it('renders complete Urdu policy text and semantic RTL content when the language
   expect(within(dialog).getByRole('heading', { name: '۶۔ مدت اور حذف کرنا' })).toBeTruthy();
   expect(within(dialog).getByRole('article').getAttribute('dir')).toBe('rtl'); expect(within(dialog).getByRole('article').getAttribute('lang')).toBe('ur');
   expect(within(dialog).getByText('۱۸ اکتوبر ۲۰۲۶')).toBeTruthy();
+  expect(within(dialog).getByText(/OpenStreetMap Overpass یا نقشے کے ڈیٹا کی API.*آپ کی محفوظ GPS تاریخ نہیں/)).toBeTruthy();
+  expect(within(dialog).getByRole('link', { name: /OpenStreetMap نقشے کے ڈیٹا کی API/ }).getAttribute('href')).toBe('https://www.openstreetmap.org/about/api');
   fireEvent.click(within(dialog).getByRole('button', { name: 'شرائط و ضوابط' }));
   expect(within(screen.getByRole('dialog', { name: 'شرائط و ضوابط' })).getByRole('heading', { name: '۲۔ محفوظ سفر' })).toBeTruthy();
   expect(send).not.toHaveBeenCalled(); expect(location).not.toHaveBeenCalled();

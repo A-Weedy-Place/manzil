@@ -1,110 +1,112 @@
 import { t } from '../lib/language';
 import { useEffect, useRef, useState } from 'react';
-import { Check, Circle, ImagePlus, MousePointer2, Pentagon, Plus, Route, Undo2, X } from 'lucide-react';
+import { Check, ImagePlus, MapPin, Plus, Route, Construction, X } from 'lucide-react';
 import type { Polygon } from 'geojson';
-import type { Closure, ClosureDraft, ClosureReason, Drawing, MapMode } from '../../shared/types';
+import type { Closure, ClosureDraft, ClosureReason, Drawing, MapMode, RestrictionType } from '../../shared/types';
+import { MAX_CLOSURE_PHOTOS, MAX_CLOSURE_PHOTO_CHARACTERS } from '../../shared/closures';
+import type { RoadSelectionController } from '../lib/useRoadSelection';
 import { send } from '../lib/api';
-import { inputISO, localInput } from '../lib/format';
+import { distance, inputISO, localInput } from '../lib/format';
 import { fileToPhotoDataUrl } from '../lib/images';
 import type { AgentProposal } from '../../shared/agent';
-
 interface Props {
   closure: Closure | null; drawing: Drawing; onDraw: (drawing: Drawing) => void;
   mode: MapMode; setMode: (mode: MapMode) => void;
   onSave: (draft: ClosureDraft) => Promise<void>; onCancel: () => void;
-  seed?: Partial<ClosureDraft>;
-  canPublish?: boolean; selectedRoadName?: string;
+  seed?: Partial<ClosureDraft>; canPublish?: boolean; selectedRoadName?: string;
+  roadSelection?: RoadSelectionController; onStartRoad?: () => void;
+  restrictionType?: RestrictionType; onTypeChange?: (kind: RestrictionType) => void; selectionChanged?: boolean;
   agentProposal?: AgentProposal; onReject?: () => Promise<void>;
 }
-export default function ClosureEditor({ closure, drawing, onDraw, mode, setMode, onSave, onCancel, seed, canPublish = true, selectedRoadName = '', agentProposal, onReject }: Props) {
+export default function ClosureEditor({ closure, drawing, onDraw, mode, setMode, onSave, onCancel, seed, canPublish = true, selectedRoadName = '', roadSelection, onStartRoad, restrictionType = closure?.restrictionType ?? seed?.restrictionType ?? 'road_closure', onTypeChange, selectionChanged = false, agentProposal, onReject }: Props) {
   const [title, setTitle] = useState(closure?.title ?? seed?.title ?? '');
   const [titleTouched, setTitleTouched] = useState(!!(closure?.title ?? seed?.title));
-  const [roadTool, setRoadTool] = useState(mode === 'road');
-  const [photos, setPhotos] = useState<string[]>(closure?.photos ?? seed?.photos ?? []);
-  const [photoBusy, setPhotoBusy] = useState(false), [roadBusy, setRoadBusy] = useState(false);
-  const current = useRef({ drawing, roadTool }); current.current = { drawing, roadTool };
-  const sectionSequence = useRef(0), mounted = useRef(true);
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; sectionSequence.current++; }; }, []);
-  useEffect(() => { if (selectedRoadName && !titleTouched && !closure) setTitle(selectedRoadName); }, [selectedRoadName, titleTouched, closure]);
   const [description, setDescription] = useState(closure?.description ?? seed?.description ?? '');
   const [reason, setReason] = useState<ClosureReason>(closure?.reason ?? seed?.reason ?? 'other');
   const [start, setStart] = useState(closure?.startsAt || seed?.startsAt ? localInput(new Date((closure?.startsAt ?? seed?.startsAt)!)) : agentProposal ? '' : localInput());
-  const [end, setEnd] = useState(closure?.endsAt || seed?.endsAt ? localInput(new Date((closure?.endsAt ?? seed?.endsAt)!)) : agentProposal ? '' : localInput(new Date(Date.now() + 60 * 60 * 1000)));
-  const [unknownEnd, setUnknownEnd] = useState(closure ? !closure.endsAt : agentProposal ? seed?.endsAt === null : false);
+  const [end, setEnd] = useState(closure?.endsAt || seed?.endsAt ? localInput(new Date((closure?.endsAt ?? seed?.endsAt)!)) : agentProposal ? '' : localInput(new Date(Date.now() + 3600000)));
+  const [unknownEnd, setUnknownEnd] = useState(closure ? !closure.endsAt : seed?.endsAt === null);
   const [endConfirmed, setEndConfirmed] = useState(false), [accessConfirmed, setAccessConfirmed] = useState(false);
-  const [publish, setPublish] = useState(closure?.status !== 'draft');
   const [sourceUrl, setSourceUrl] = useState(closure?.sourceUrl ?? seed?.sourceUrl ?? '');
-  const [error, setError] = useState('');
-  const [saving, setSaving] = useState(false);
+  const [photos, setPhotos] = useState<string[]>(closure?.photos ?? seed?.photos ?? []);
+  const [photoBusy, setPhotoBusy] = useState(false), [saving, setSaving] = useState(false), [error, setError] = useState('');
   const [coordinate, setCoordinate] = useState('');
-  const minPoints = drawing.kind === 'point' ? 1 : drawing.kind === 'line' ? 2 : 3;
-  const chooseTool = (kind: Drawing['kind']) => { sectionSequence.current++; setRoadBusy(false); setRoadTool(false); onDraw({ kind, coordinates: [], widthMeters: drawing.widthMeters }); setMode(kind); };
-  const chooseRoad = () => { sectionSequence.current++; setRoadBusy(false); setRoadTool(true); onDraw({ kind: 'line', coordinates: [], widthMeters: drawing.widthMeters }); setMode('road'); };
-  async function addPhoto(files: FileList | null) {
-    if (!files?.length) return; setPhotoBusy(true); setError('');
-    try { if (photos.length + files.length > 2) throw new Error('Add up to two photos.'); const next: string[] = []; for (const file of Array.from(files)) next.push(await fileToPhotoDataUrl(file)); setPhotos(current => [...current, ...next].slice(0, 2)); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not read this photo.'); } finally { setPhotoBusy(false); }
+  const alive = useRef(true), photoSequence = useRef(0), currentDrawing = useRef(drawing); currentDrawing.current = drawing;
+  const currentPhotos = useRef(photos); currentPhotos.current = photos;
+  const completedDrawing = useRef<Drawing | null>(null);
+  useEffect(() => { if (roadSelection?.anchors.length === 2 && !roadSelection.busy) completedDrawing.current = drawing; }, [drawing, roadSelection?.anchors, roadSelection?.busy]);
+  const hasRoad = drawing.coordinates.length >= (drawing.kind === 'point' ? 1 : drawing.kind === 'polygon' ? 3 : 2) && (!selectionChanged || roadSelection?.anchors.length === 2 || completedDrawing.current === drawing);
+  const busy = saving || photoBusy || roadSelection?.busy === true;
+  useEffect(() => { alive.current = true; return () => { alive.current = false; photoSequence.current++; }; }, []);
+  useEffect(() => { if (selectedRoadName && !titleTouched && !closure) setTitle(selectedRoadName); }, [selectedRoadName, titleTouched, closure]);
+  function chooseRoad() {
+    setError(''); setCoordinate('');
+    if (onStartRoad) onStartRoad();
+    else { onDraw({ kind: 'line', coordinates: [], widthMeters: 14 }); setMode('road'); }
   }
-  async function save(event: React.FormEvent) {
-    event.preventDefault(); setError('');
+  async function addPhotos(files: FileList | null) {
+    if (!files?.length || photoBusy) return;
+    const selected = Array.from(files), sequence = ++photoSequence.current;
+    setPhotoBusy(true); setError('');
     try {
-      if (agentProposal && !start) throw new Error('Enter the confirmed start time before approving.');
-      if (agentProposal && unknownEnd && !endConfirmed) throw new Error('Confirm that this restriction should remain active until cancelled, or set an end time.');
-      if (agentProposal && (agentProposal.action === 'disruption' || agentProposal.impact !== 'closed') && !accessConfirmed) throw new Error('Confirm that this is an actual road restriction before approving.');
-      if (drawing.coordinates.length < minPoints) throw new Error(`Add at least ${minPoints} point${minPoints > 1 ? 's' : ''} to the map.`);
-      const startsAt = inputISO(start); const endsAt = unknownEnd ? null : inputISO(end);
-      if (endsAt && endsAt <= startsAt) throw new Error('End time must be after the start time.');
-      setSaving(true);
-      const geometry = await send<Polygon>('/geometry', drawing);
-      await onSave({ title: title.trim(), description: description.trim(), reason, startsAt, endsAt, status: canPublish && (agentProposal || publish) ? 'published' : 'draft', sourceUrl: sourceUrl.trim() || undefined, geometry, drawing, photos });
-    } catch (e) { setError(e instanceof Error ? e.message : 'Could not save this closure.'); }
-    finally { setSaving(false); }
+      if (currentPhotos.current.length + selected.length > MAX_CLOSURE_PHOTOS) throw new Error('Add up to six photos.');
+      const next: string[] = [];
+      for (const file of selected) next.push(await fileToPhotoDataUrl(file));
+      if (!alive.current || sequence !== photoSequence.current) return;
+      const combined = [...currentPhotos.current, ...next];
+      if (combined.length > MAX_CLOSURE_PHOTOS) throw new Error('Add up to six photos.');
+      if (combined.reduce((size, photo) => size + photo.length, 0) > MAX_CLOSURE_PHOTO_CHARACTERS) throw new Error('Photos are too large together. Choose smaller photos.');
+      setPhotos(combined);
+    } catch (reason) { if (alive.current && sequence === photoSequence.current) setError(reason instanceof Error ? reason.message : 'Could not read this photo.'); }
+    finally { if (alive.current && sequence === photoSequence.current) setPhotoBusy(false); }
   }
   async function addCoordinate() {
     const match = coordinate.trim().match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
     if (!match || Math.abs(+match[1]) > 90 || Math.abs(+match[2]) > 180) { setError('Enter latitude, longitude, for example 33.7000, 73.0500.'); return; }
-    const next: [number, number] = [+match[2], +match[1]];
-    if (roadTool && drawing.coordinates.length) {
-      const sequence = ++sectionSequence.current;
-      setRoadBusy(true); setError('');
-      try {
-        const result = await send<{ drawing: Drawing; roadNames: string[] }>('/roads/section', { from: drawing.coordinates[0], to: next });
-        if (!mounted.current || sequence !== sectionSequence.current || current.current.drawing !== drawing || !current.current.roadTool) return;
-        onDraw({ ...result.drawing, widthMeters: drawing.widthMeters }); if (!titleTouched) setTitle(result.roadNames.join(' · ')); setCoordinate('');
-      }
-      catch (reason) { if (mounted.current && sequence === sectionSequence.current && current.current.drawing === drawing) setError(reason instanceof Error ? reason.message : 'Could not select this road section.'); } finally { if (mounted.current && sequence === sectionSequence.current) setRoadBusy(false); }
-      return;
-    }
-    onDraw({ ...drawing, coordinates: drawing.kind === 'point' ? [next] : [...drawing.coordinates, next] }); setCoordinate(''); setError('');
+    if (!roadSelection) return;
+    setError(''); await roadSelection.choose([+match[2], +match[1]]);
   }
-  return <form className="editor-form" onSubmit={save}>
-    {agentProposal && <div className="pipeline-outcome"><h2>{t('Review agent map proposal')}</h2><p>{t('This draft does not affect routes until you approve it. Check its location, road access and timing.')}</p>{agentProposal.issues.map((issue, index) => <p className="small" key={index}>{t(issue)}</p>)}{(agentProposal.action === 'disruption' || agentProposal.impact !== 'closed') && <label className="check-row"><input type="checkbox" checked={accessConfirmed} onChange={event => setAccessConfirmed(event.target.checked)} />{t('I confirm this is an actual road restriction, not only congestion or a service suspension.')}</label>}</div>}
-    <div className="section-heading"><div><span className="eyebrow">{t("MAP EDITOR")}</span><h1>{closure ? t("Edit restriction") : t("Add a road restriction")}</h1></div><button type="button" className="icon-button" aria-label={t("Close editor")} onClick={onCancel}><X size={18} /></button></div>
-    <fieldset className="tool-fieldset"><legend>{t('Affected section')}</legend><div className="segmented drawing-tools">
-      <button type="button" className={roadTool ? 'active' : ''} aria-pressed={roadTool} onClick={chooseRoad}><Route size={16} aria-hidden="true" />{t('Road section')}</button>
-      {([['point', Circle, 'Point'], ['line', Route, 'Draw'], ['polygon', Pentagon, 'Area']] as const).map(([kind, Icon, label]) => <button key={kind} type="button" className={!roadTool && drawing.kind === kind ? 'active' : ''} aria-pressed={!roadTool && drawing.kind === kind} onClick={() => chooseTool(kind)}><Icon size={16} aria-hidden="true" />{t(label)}</button>)}
-    </div></fieldset>
-    <div className="drawing-hint"><MousePointer2 size={18} /><span>{roadTool ? drawing.coordinates.length < 1 ? t('Select where the closed section starts.') : drawing.coordinates.length < 2 ? t('Select where the closed section ends.') : t('Road section selected. Adjust its width if needed.') : mode === 'browse' ? t("Drawing paused. Drag a point or resume drawing.") : drawing.kind === 'point' ? t("Click the map to place the closure.") : `Click along ${drawing.kind === 'line' ? t("the affected road") : t("the boundary")}. Drag points to adjust.`}</span></div>
-    <div className="row wrap"><button type="button" className="text-button" disabled={!drawing.coordinates.length} onClick={() => onDraw({ ...drawing, coordinates: roadTool ? [] : drawing.coordinates.slice(0, -1) })}><Undo2 size={15} />{t(roadTool ? 'Clear section' : 'Undo point')}</button><button type="button" className="text-button" onClick={() => setMode(mode === 'browse' ? roadTool ? 'road' : drawing.kind : 'browse')}><Check size={15} />{mode === 'browse' ? t("Resume drawing") : t("Finish drawing")}</button></div>
-    {drawing.kind !== 'polygon' && <label className="field-label">{drawing.kind === 'point' ? t("Closure diameter") : t("Total corridor width")}<span className="range-row"><input type="range" min="10" max="200" step="1" value={drawing.widthMeters} onChange={e => onDraw({ ...drawing, widthMeters: +e.target.value })} /><output>{drawing.widthMeters} {t("m")}</output></span></label>}
-    <details className="coordinate-details"><summary>{t("Enter or adjust coordinates")}</summary><p className="small muted">{t("Latitude, longitude. This also provides a keyboard alternative to drawing.")}</p><div className="row"><input aria-label={t("New closure coordinate")} placeholder={t("33.7000, 73.0500")} value={coordinate} onChange={e => setCoordinate(e.target.value)} /><button type="button" className="icon-button bordered" aria-label={t("Add coordinate")} onClick={addCoordinate}><Plus size={18} /></button></div>
-      {drawing.coordinates.map((point, index) => <div className="coordinate-row" key={index}><span>{index + 1}</span><input aria-label={`Point ${index + 1} latitude`} type="number" step="any" min="-90" max="90" value={point[1]} onChange={e => onDraw({ ...drawing, coordinates: drawing.coordinates.map((p, i) => i === index ? [p[0], +e.target.value] : p) })} /><input aria-label={`Point ${index + 1} longitude`} type="number" step="any" min="-180" max="180" value={point[0]} onChange={e => onDraw({ ...drawing, coordinates: drawing.coordinates.map((p, i) => i === index ? [+e.target.value, p[1]] : p) })} /><button type="button" className="icon-button small" aria-label={`Remove point ${index + 1}`} onClick={() => onDraw({ ...drawing, coordinates: drawing.coordinates.filter((_, i) => i !== index) })}><X size={14} /></button></div>)}
-    </details>
-    <div className="form-divider" /><label className="field-label">{t('Road / place')}<input required maxLength={160} placeholder={t('Road name or nearby landmark')} value={title} onChange={e => { setTitle(e.target.value); setTitleTouched(true); }} /></label>
-    <label className="field-label">{t("Reason")}<select value={reason} onChange={e => setReason(e.target.value as ClosureReason)}><option value="other">{t("Road restriction")}</option><option value="protest">{t("Protest / gathering")}</option><option value="vip">{t("VIP movement")}</option><option value="construction">{t("Roadworks")}</option><option value="accident">{t("Accident / obstruction")}</option></select></label>
-    <label className="field-label">{t("Starts · Pakistan time")}<input type="datetime-local" required value={start} onInput={e => setStart(e.currentTarget.value)} /></label>
-    {!unknownEnd && <label className="field-label">{t("Ends · Pakistan time")}<input type="datetime-local" required value={end} onInput={e => setEnd(e.currentTarget.value)} /></label>}
-    <label className="check-row"><input type="checkbox" checked={unknownEnd} onChange={e => setUnknownEnd(e.target.checked)} />{t("End time unknown; keep active until cancelled")}</label>
+  async function save(event: React.FormEvent) {
+    event.preventDefault(); if (busy) return; setError('');
+    try {
+      if (!hasRoad) throw new Error('Select a road on the map.');
+      if (agentProposal && !start) throw new Error('Enter the confirmed start time before approving.');
+      if (agentProposal && unknownEnd && !endConfirmed) throw new Error('Confirm that this restriction should remain active until cancelled, or set an end time.');
+      if (agentProposal && (agentProposal.action === 'disruption' || agentProposal.impact !== 'closed') && !accessConfirmed) throw new Error('Confirm that this is an actual road restriction before approving.');
+      if (!start || !unknownEnd && !end) throw new Error('Choose a valid date and time.');
+      const startsAt = inputISO(start), endsAt = unknownEnd ? null : inputISO(end);
+      if (endsAt && endsAt <= startsAt) throw new Error('End time must be after the start time.');
+      setSaving(true);
+      const snapshot = drawing, geometry = await send<Polygon>('/geometry', snapshot);
+      if (!alive.current || currentDrawing.current !== snapshot) throw new Error('The road selection changed. Save again.');
+      const status = canPublish && (agentProposal || closure?.status !== 'draft') ? 'published' : 'draft';
+      const typed = selectionChanged || closure?.restrictionType || seed?.restrictionType || !closure && !agentProposal;
+      await onSave({ ...(typed ? { restrictionType } : {}), title: title.trim(), description: description.trim(), reason, startsAt, endsAt, status, sourceUrl: sourceUrl.trim() || undefined, geometry, drawing: snapshot, photos });
+    } catch (reason) { if (alive.current) setError(reason instanceof Error ? reason.message : 'Could not save this closure.'); }
+    finally { if (alive.current) setSaving(false); }
+  }
+  const action = agentProposal ? 'Approve and add to map' : !canPublish ? 'Submit for review' : closure?.status === 'draft' ? 'Save draft' : closure ? 'Save changes' : 'Add closure';
+  return <form className="editor-form closure-simple-editor" onSubmit={save} aria-busy={busy}>
+    <div className="section-heading"><h1>{t(closure ? 'Edit closure' : 'Add closure')}</h1><button type="button" className="icon-button" aria-label={t('Close editor')} disabled={saving} onClick={onCancel}><X size={18} /></button></div>
+    {onTypeChange && <fieldset className="closure-type-field"><legend>{t('Type')}</legend><div className="segmented closure-type-options"><button type="button" aria-pressed={restrictionType === 'road_closure'} className={restrictionType === 'road_closure' ? 'active' : ''} disabled={busy} onClick={() => { if (restrictionType !== 'road_closure') onTypeChange('road_closure'); }}><Route size={17} />{t('Road closure')}</button><button type="button" aria-pressed={restrictionType === 'blockade'} className={restrictionType === 'blockade' ? 'active' : ''} disabled={busy} onClick={() => { if (restrictionType !== 'blockade') onTypeChange('blockade'); }}><Construction size={17} />{t('Blockade')}</button></div></fieldset>}
+    {agentProposal && <section className="closure-agent-review"><h2>{t('Review agent map proposal')}</h2>{agentProposal.issues.length > 0 && <details><summary>{t('Review notes')}</summary><ul>{agentProposal.issues.map((issue, index) => <li key={index}>{t(issue)}</li>)}</ul></details>}{(agentProposal.action === 'disruption' || agentProposal.impact !== 'closed') && <label className="check-row"><input type="checkbox" checked={accessConfirmed} onChange={event => setAccessConfirmed(event.target.checked)} />{t('I confirm this is an actual road restriction, not only congestion or a service suspension.')}</label>}</section>}
+    <section className={`closure-road-picker ${hasRoad ? 'has-road' : ''}`} aria-label={t('Affected road')}>
+      <div className="closure-road-selection"><span className="closure-road-icon">{restrictionType === 'blockade' ? <Construction size={21} /> : <Route size={21} />}</span><div><strong>{t(roadSelection?.busy ? 'Selecting road…' : hasRoad ? selectedRoadName || (restrictionType === 'blockade' ? 'Blockade selected' : 'Road selected') : roadSelection?.anchors.length === 1 ? restrictionType === 'blockade' ? 'Select the other end of the blockade' : 'Select the end on the same road' : restrictionType === 'blockade' ? 'Draw across the blocked lanes' : 'Select a road on the map')}</strong>{hasRoad && roadSelection?.distanceMeters != null && <small>{distance(roadSelection.distanceMeters)}</small>}</div>{hasRoad && <Check size={19} aria-hidden="true" />}</div>
+      <div className="closure-road-actions"><button type="button" className={hasRoad ? 'text-button' : 'secondary-button full'} disabled={busy} onClick={chooseRoad}><MapPin size={16} />{t(restrictionType === 'blockade' ? hasRoad ? 'Redraw blockade' : 'Draw blockade' : hasRoad ? 'Change road' : 'Choose road')}</button>{roadSelection?.anchors.length === 1 && <button type="button" className="text-button" disabled={busy} onClick={() => setMode('road')}><Plus size={16} />{t('Add end point')}</button>}</div>
+      {roadSelection?.error && <div className="error-box" role="alert">{t(roadSelection.error)}</div>}
+      {roadSelection && <details className="closure-coordinate-input"><summary>{t('Coordinates')}</summary><label className="field-label">{t('Road point · latitude, longitude')}<input value={coordinate} placeholder="33.7000, 73.0500" disabled={busy} onChange={event => setCoordinate(event.target.value)} /></label><button className="secondary-button full" type="button" disabled={busy || !coordinate.trim() || mode !== 'road'} onClick={addCoordinate}>{t('Select point')}</button></details>}
+    </section>
+    <label className="field-label">{t('Road / place')}<input required maxLength={160} placeholder={t('Road name or nearby landmark')} value={title} onChange={event => { setTitle(event.target.value); setTitleTouched(true); }} /></label>
+    <label className="field-label">{t('Reason')}<select value={reason} onChange={event => setReason(event.target.value as ClosureReason)}><option value="other">{t('Road restriction')}</option><option value="protest">{t('Protest / gathering')}</option><option value="vip">{t('VIP movement')}</option><option value="construction">{t('Roadworks')}</option><option value="accident">{t('Accident / obstruction')}</option></select></label>
+    <label className="field-label">{t('Starts · Pakistan time')}<input type="datetime-local" required value={start} onInput={event => setStart(event.currentTarget.value)} /></label>
+    <div className="closure-end-time">{!unknownEnd && <label className="field-label">{t('Ends · Pakistan time')}<input type="datetime-local" required value={end} onInput={event => setEnd(event.currentTarget.value)} /></label>}<label className="check-row"><input type="checkbox" checked={unknownEnd} onChange={event => setUnknownEnd(event.target.checked)} />{t('End time unknown')}</label></div>
     {agentProposal && unknownEnd && <label className="check-row"><input type="checkbox" checked={endConfirmed} onChange={event => setEndConfirmed(event.target.checked)} />{t('I approve keeping this restriction active until an administrator cancels it.')}</label>}
-    <label className="field-label">{t("Notes ")}<span className="optional">{t("optional")}</span><textarea rows={2} maxLength={3000} value={description} placeholder={t("Affected directions, landmarks or context…")} onChange={e => setDescription(e.target.value)} /></label>
-    <div className="closure-photo-editor"><span className="field-label">{t('Photos')} <span className="optional">{photos.length}/2</span></span><div className="closure-photo-grid">{photos.map((photo, index) => <div key={index}><img src={photo} alt={`${t('Closure photo')} ${index + 1}`} /><button type="button" className="icon-button" aria-label={`${t('Remove photo')} ${index + 1}`} onClick={() => setPhotos(current => current.filter((_, i) => i !== index))}><X size={16} /></button></div>)}</div><label className="secondary-button photo-upload"><ImagePlus size={17} aria-hidden="true" />{t(photoBusy ? 'Preparing photo…' : 'Add photo')}<input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={photoBusy || photos.length >= 2} onChange={event => { void addPhoto(event.target.files); event.target.value = ''; }} /></label></div>
-    <label className="field-label">{t("Source link ")}<span className="optional">{t("optional")}</span><input type="url" value={sourceUrl} placeholder={t("https://…")} onChange={e => setSourceUrl(e.target.value)} /></label>
-    {agentProposal ? <p className="review-note">{t('Approving publishes your reviewed restriction to the map and route planner.')}</p> : canPublish ? <label className="check-row"><input type="checkbox" checked={publish} onChange={e => setPublish(e.target.checked)} />{t("Apply to route planning ")}<span className="optional">{t("otherwise save as draft")}</span></label> : <p className="review-note"><ShieldNote />{t('Your report will be reviewed before appearing on the public map.')}</p>}
-    <p className="small muted">{t("Drawn restrictions apply to intersecting roads in both directions. Review flyovers and divided roads before saving.")}</p>
+    <label className="field-label">{t('Notes ')}<span className="optional">{t('optional')}</span><textarea rows={2} maxLength={3000} value={description} onChange={event => setDescription(event.target.value)} /></label>
+    <div className="closure-photo-editor"><span className="field-label">{t('Photos')} <span className="optional">{photos.length}/{MAX_CLOSURE_PHOTOS}</span></span><div className="closure-photo-grid">{photos.map((photo, index) => <div key={index}><img src={photo} alt={`${t('Closure photo')} ${index + 1}`} /><button type="button" className="icon-button" disabled={busy} aria-label={`${t('Remove photo')} ${index + 1}`} onClick={() => setPhotos(value => value.filter((_, i) => i !== index))}><X size={16} /></button></div>)}</div><label className="secondary-button photo-upload"><ImagePlus size={17} aria-hidden="true" />{t(photoBusy ? 'Preparing photo…' : 'Add photos')}<input aria-label={t('Closure photos')} type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={busy || photos.length >= MAX_CLOSURE_PHOTOS} onChange={event => { void addPhotos(event.target.files); event.target.value = ''; }} /></label></div>
+    <label className="field-label">{t('Source link ')}<span className="optional">{t('optional')}</span><input type="url" maxLength={1500} value={sourceUrl} placeholder="https://…" onChange={event => setSourceUrl(event.target.value)} /></label>
     {error && <div className="error-box" role="alert">{t(error)}</div>}
-    <button className="primary-button full" disabled={saving || photoBusy || roadBusy || !title.trim()}>{saving ? t("Saving restriction…") : <><Check size={17} />{agentProposal ? t('Approve and add to map') : !canPublish ? t('Submit for review') : closure ? t("Save changes") : publish ? t("Save restriction") : t("Save draft")}</>}</button>
-    {agentProposal && onReject && <button type="button" className="secondary-button full" disabled={saving} onClick={async () => { setSaving(true); try { await onReject(); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not reject map draft.'); } finally { setSaving(false); } }}>{t('Reject proposal')}</button>}
-    <button type="button" className="text-button full centered" onClick={onCancel}>{t("Cancel")}</button>
+    <button className="primary-button full" disabled={busy || !title.trim() || !hasRoad}>{saving ? t('Saving closure…') : <><Check size={17} />{t(action)}</>}</button>
+    {agentProposal && onReject && <button type="button" className="secondary-button full" disabled={busy} onClick={async () => { setSaving(true); try { await onReject(); } catch (reason) { if (alive.current) setError(reason instanceof Error ? reason.message : 'Could not reject map draft.'); } finally { if (alive.current) setSaving(false); } }}>{t('Reject proposal')}</button>}
+    <button type="button" className="text-button full centered" disabled={saving} onClick={onCancel}>{t('Cancel')}</button>
   </form>;
 }
-function ShieldNote() { return <Check size={17} aria-hidden="true" />; }

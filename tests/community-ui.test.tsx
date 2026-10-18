@@ -94,12 +94,53 @@ it('lets an admin verify and unverify a person, updating the displayed role afte
   calls.send.mockResolvedValueOnce({ uid: 'person 2', role: 'verified', verified: true }).mockResolvedValueOnce({ uid: 'person 2', role: 'user', verified: false });
   const props = listProps();
   render(<AdminPanel state={state} at={at} selectedId={null} reload={vi.fn(async () => {})} notify={vi.fn()} onSelect={props.onSelect} onEdit={props.onEdit} onCancel={props.onCancel} onReview={props.onReview} onManualClosure={vi.fn()} />);
-  fireEvent.click(screen.getByRole('tab', { name: 'People' })); await screen.findByText('Sara');
-  const panel = within(screen.getByRole('tabpanel', { name: 'People' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Users' })); await screen.findByText('Sara');
+  const panel = within(screen.getByRole('tabpanel', { name: 'Users' }));
   fireEvent.click(panel.getByRole('button', { name: 'Verify' }));
   await waitFor(() => expect(calls.send).toHaveBeenCalledWith('/admin/users/person%202', { verified: true }, 'PATCH'));
   expect(await panel.findByText('Verified contributor')).toBeTruthy();
   fireEvent.click(panel.getByRole('button', { name: 'Remove verification' }));
   await waitFor(() => expect(calls.send).toHaveBeenCalledWith('/admin/users/person%202', { verified: false }, 'PATCH'));
-  expect(await panel.findByText('Community member')).toBeTruthy();
+  expect(await panel.findByText('Not verified')).toBeTruthy();
+});
+
+it('confirms administrator grants and removals, keeps self access protected, and filters loaded users', async () => {
+  calls.api.mockResolvedValue({ users: [
+    {uid:'self',displayName:'Owner',role:'admin',verified:true,disabled:false},
+    {uid:'person 2',displayName:'Sara',email:'sara@example.test',role:'user',verified:false,disabled:false},
+  ] });
+  calls.send.mockResolvedValueOnce({uid:'person 2',role:'admin',verified:true}).mockResolvedValueOnce({uid:'person 2',role:'user',verified:false});
+  const props = listProps();
+  render(<AdminPanel state={{...state,membership:{uid:'self',role:'admin',verified:true}}} initialTab="users" at={at} selectedId={null} reload={vi.fn(async()=>{})} notify={vi.fn()} onSelect={props.onSelect} onEdit={props.onEdit} onCancel={props.onCancel} onReview={props.onReview} onManualClosure={vi.fn()} />);
+  const sara = within(await screen.findByRole('article',{name:'Sara'}));
+  const owner = within(screen.getByRole('article',{name:'Owner'}));
+  expect(owner.queryByRole('button',{name:'Remove admin'})).toBeNull();
+  expect(owner.getByText('Your account')).toBeTruthy();
+  fireEvent.click(sara.getByRole('button',{name:'Make admin'}));
+  expect(calls.send).not.toHaveBeenCalled();
+  fireEvent.click(sara.getByRole('button',{name:'Cancel'}));
+  expect(sara.queryByRole('group',{name:'Confirm role change'})).toBeNull();
+  fireEvent.click(sara.getByRole('button',{name:'Make admin'}));
+  fireEvent.click(sara.getByRole('button',{name:'Confirm'}));
+  await waitFor(()=>expect(calls.send).toHaveBeenCalledWith('/admin/users/person%202',{admin:true},'PATCH'));
+  fireEvent.click(await sara.findByRole('button',{name:'Remove admin'}));
+  fireEvent.click(sara.getByRole('button',{name:'Confirm'}));
+  await waitFor(()=>expect(calls.send).toHaveBeenCalledWith('/admin/users/person%202',{admin:false},'PATCH'));
+  expect(await screen.findByText('User access updated.')).toBeTruthy();
+  fireEvent.change(screen.getByRole('searchbox'),{target:{value:'sara@example'}});
+  expect(screen.queryByRole('article',{name:'Owner'})).toBeNull(); expect(screen.getByRole('article',{name:'Sara'})).toBeTruthy();
+});
+
+it('retains paginated users and exposes a loading state and directory failure', async () => {
+  calls.api.mockImplementation(async path=>path==='/admin/users' ? {users:[{uid:'one',displayName:'First',role:'user',verified:false,disabled:false}],nextPageToken:'next page'} : path==='/admin/users?pageToken=next%20page' ? {users:[{uid:'two',displayName:'Second',role:'user',verified:false,disabled:false}]} : {});
+  const props = listProps();
+  render(<AdminPanel state={state} initialTab="users" at={at} selectedId={null} reload={vi.fn(async()=>{})} notify={vi.fn()} onSelect={props.onSelect} onEdit={props.onEdit} onCancel={props.onCancel} onReview={props.onReview} onManualClosure={vi.fn()} />);
+  expect(screen.getByText('Loading users…')).toBeTruthy();
+  await screen.findByRole('article',{name:'First'});
+  fireEvent.click(screen.getByRole('button',{name:'Load more users'}));
+  await screen.findByRole('article',{name:'Second'}); expect(screen.getByRole('article',{name:'First'})).toBeTruthy();
+  calls.api.mockRejectedValue(new Error('Directory unavailable.'));
+  fireEvent.click(screen.getByRole('button',{name:'Refresh users'}));
+  expect(await screen.findByRole('alert')).toHaveProperty('textContent','Directory unavailable.');
+  expect(screen.getByRole('article',{name:'First'})).toBeTruthy();
 });

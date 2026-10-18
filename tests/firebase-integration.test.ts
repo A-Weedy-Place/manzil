@@ -189,6 +189,24 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
     expect((await services.auth.getUser('bob')).customClaims?.admin).toBe(false);
     expect((await request('/admin/users/administrator', admin, { verified: false }, 'PATCH')).status).toBe(409);
   });
+  it('grants and revokes administrator access immediately for an existing token without deleting unrelated claims', async () => {
+    const original = (await services.auth.getUser('bob')).customClaims ?? {};
+    try {
+      await services.auth.setCustomUserClaims('bob', {...original, extraFeature:'retained'});
+      expect((await request('/admin/users', bob)).status).toBe(403);
+      expect((await request('/admin/users/bob', admin, {admin:true}, 'PATCH')).status).toBe(200);
+      expect((await services.auth.getUser('bob')).customClaims).toMatchObject({admin:true,extraFeature:'retained'});
+      // The token predates the grant; no client token refresh is required.
+      expect((await request('/admin/users', bob)).status).toBe(200);
+      expect((await request('/agent/status', bob)).status).toBe(200);
+      expect((await request('/admin/users/bob', bob, {admin:false}, 'PATCH')).status).toBe(409);
+      expect((await request('/admin/users/bob', admin, {admin:false}, 'PATCH')).status).toBe(200);
+      expect((await services.auth.getUser('bob')).customClaims).toEqual({extraFeature:'retained'});
+      expect((await request('/admin/users', bob)).status).toBe(403);
+      expect((await request('/agent/status', bob)).status).toBe(403);
+      expect((await (await request('/state', bob)).json()).membership.role).toBe('user');
+    } finally { await services.auth.setCustomUserClaims('bob',original); }
+  });
   it('stores collection consent per UID and prevents trip and learned-alert writes after opt-out', async () => {
     const personal = store.forUser('alice');
     expect((await request('/profile', alice, { collectTravelData: true, inferFrequentRoutes: true }, 'PATCH')).status).toBe(200);

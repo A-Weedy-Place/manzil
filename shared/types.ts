@@ -6,6 +6,7 @@ export type Coordinate = [number, number];
 export interface Place { id?: string; name: string; coordinate: Coordinate }
 export interface Drawing { kind: 'point' | 'line' | 'polygon'; coordinates: Coordinate[]; widthMeters: number }
 export type ClosureReason = 'protest' | 'vip' | 'construction' | 'accident' | 'other';
+export type RestrictionType = 'road_closure' | 'blockade';
 export type CommunityRole = 'user' | 'verified' | 'admin';
 export interface ClosureAuthor { uid: string; displayName: string; role: CommunityRole }
 export interface ClosureModeration {
@@ -18,6 +19,8 @@ export interface CommunityUser extends Membership {
   createdAt?: string; lastSignInAt?: string;
 }
 export interface ClosureDraft {
+  /** Whole road section versus a short physical barrier across the affected lanes. */
+  restrictionType?: RestrictionType;
   title: string; description: string; reason: ClosureReason;
   startsAt: string; endsAt: string | null;
   status: 'published' | 'draft' | 'cancelled';

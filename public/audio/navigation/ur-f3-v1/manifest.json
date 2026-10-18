@@ -1,0 +1,198 @@
+{
+  "pack": "ur-f3-v1",
+  "generator": {
+    "package": "@echogarden/espeak-ng-emscripten",
+    "version": "0.3.5",
+    "source": "https://github.com/echogarden-project/espeak-ng-emscripten",
+    "voice": "ur+f3",
+    "rate": 175,
+    "pitch": 50,
+    "range": 50,
+    "engineHashes": {
+      "espeak-ng.js": "3502d997af2640e54518a06845776c8507bfeebd8ff75f80176370e35de9896b",
+      "espeak-ng.data": "f7f8eff5685c709db9dae81e88a0e0556867d60514f7308ae99e0579369397b5"
+    }
+  },
+  "format": {
+    "encoding": "PCM16",
+    "channels": 1,
+    "sampleRate": 16000
+  },
+  "files": [
+    {
+      "id": "left",
+      "text": "بائیں مڑیں۔",
+      "bytes": 25560,
+      "samples": 12758,
+      "sha256": "0de2765b116fba4cc3ad2746c651f33faeff34552e5afa9c1a107cf3275177c1"
+    },
+    {
+      "id": "right",
+      "text": "دائیں مڑیں۔",
+      "bytes": 25656,
+      "samples": 12806,
+      "sha256": "62282ba405116842e7d3ff9661861f85927cfd40c9943d84aec9643c40241328"
+    },
+    {
+      "id": "straight",
+      "text": "سیدھا چلتے رہیں۔",
+      "bytes": 41664,
+      "samples": 20810,
+      "sha256": "7ac1ff7e6533b150c1f722607ebc9306bef8ad2d39713745cbca007ce05a7f78"
+    },
+    {
+      "id": "start",
+      "text": "راستے پر آگے بڑھیں۔",
+      "bytes": 48066,
+      "samples": 24011,
+      "sha256": "489d68852270f9d3d227b2c3f74115f97c1610acf2d1b2095cdcc8042bc4db84"
+    },
+    {
+      "id": "arrive",
+      "text": "آپ منزل کے قریب ہیں۔ رکنے کی مناسب جگہ دیکھیں۔",
+      "bytes": 117214,
+      "samples": 58585,
+      "sha256": "4ae71a17ff87ea6caee4f8ef4f444384c4619e67988d83cc0bd4f89b3774e7af"
+    },
+    {
+      "id": "rerouting",
+      "text": "آپ کا راستہ تبدیل کیا جا رہا ہے۔",
+      "bytes": 73678,
+      "samples": 36817,
+      "sha256": "4d53288215eacfeb7cfddd854f5560f530998e59124ef13149fcd9c77ad23787"
+    },
+    {
+      "id": "gps_lost",
+      "text": "آپ کے مقام کا انتظار ہے۔ ہدایات عارضی طور پر روک دی گئی ہیں۔",
+      "bytes": 136862,
+      "samples": 68409,
+      "sha256": "c79c760a182cf763804432dd7a31a5cbb97b430503e57b95fb5923b4b4aeb1d0"
+    },
+    {
+      "id": "unavailable",
+      "text": "کوئی کھلا راستہ دستیاب نہیں۔ ہدایات عارضی طور پر روک دی گئی ہیں۔",
+      "bytes": 149696,
+      "samples": 74826,
+      "sha256": "fed18cc247001ac480ad87c4095c6854a9e4220973cfb875788a8c96ec2e8d5e"
+    },
+    {
+      "id": "test",
+      "text": "صوتی رہنمائی تیار ہے۔ دو سو میٹر کے بعد بائیں مڑیں۔",
+      "bytes": 123450,
+      "samples": 61703,
+      "sha256": "704fe5ea128a18e424a72cb87973f9c3f8d62ab12233cc0ac6c7a23c1718b4c2"
+    },
+    {
+      "id": "after-50",
+      "text": "پچاس میٹر کے بعد،",
+      "bytes": 44326,
+      "samples": 22141,
+      "sha256": "1901f5e28be7693203ab71012542e3f7850bce3b6d1a9a953959bdcc6c9249eb"
+    },
+    {
+      "id": "straight-50",
+      "text": "پچاس میٹر تک سیدھا چلتے رہیں۔",
+      "bytes": 72752,
+      "samples": 36354,
+      "sha256": "2b396358132856a4d5b1fc80266f599e20e584d8c4ba0a472febd8be1f8a727e"
+    },
+    {
+      "id": "after-75",
+      "text": "پچھتر میٹر کے بعد،",
+      "bytes": 48066,
+      "samples": 24011,
+      "sha256": "3229d2572eefe98ee30a3313c1d992c9f89c265a9fc2ebe5f847657e9524daba"
+    },
+    {
+      "id": "straight-75",
+      "text": "پچھتر میٹر تک سیدھا چلتے رہیں۔",
+      "bytes": 75632,
+      "samples": 37794,
+      "sha256": "6aee6aa626640bebd1d7be0cd03925e0abba12218d6aa6f4340cd7a3c8508a5d"
+    },
+    {
+      "id": "after-100",
+      "text": "ایک سو میٹر کے بعد،",
+      "bytes": 44866,
+      "samples": 22411,
+      "sha256": "5ec2a8c3e51298191fe8af9e7b560fdc6e3184ab512a483bcc771dc655008b97"
+    },
+    {
+      "id": "straight-100",
+      "text": "ایک سو میٹر تک سیدھا چلتے رہیں۔",
+      "bytes": 76880,
+      "samples": 38418,
+      "sha256": "650ba9dccb7edcaa872d2809b75b9acef4fafa5c6cb39b81a2a782674b8e05df"
+    },
+    {
+      "id": "after-125",
+      "text": "ایک سو پچیس میٹر کے بعد،",
+      "bytes": 57672,
+      "samples": 28814,
+      "sha256": "59f5c683c57af635ef0293793b15403675ce85fd0e4e45e573c968a11d3ff36a"
+    },
+    {
+      "id": "straight-125",
+      "text": "ایک سو پچیس میٹر تک سیدھا چلتے رہیں۔",
+      "bytes": 89686,
+      "samples": 44821,
+      "sha256": "99cbf4e7256fa0565fdcdd6bc6907c215fa3818bf876032f58318ee663855f9d"
+    },
+    {
+      "id": "after-150",
+      "text": "ڈیڑھ سو میٹر کے بعد،",
+      "bytes": 48066,
+      "samples": 24011,
+      "sha256": "c820b6d7db77763d8307fb64222ab66d0f3a5d4affc76d53d0609fdbe60152c2"
+    },
+    {
+      "id": "straight-150",
+      "text": "ڈیڑھ سو میٹر تک سیدھا چلتے رہیں۔",
+      "bytes": 76782,
+      "samples": 38369,
+      "sha256": "4043bd04a1a753e5716fce70231c1134977b31505ad9c929120f964d6a9643b6"
+    },
+    {
+      "id": "after-175",
+      "text": "ایک سو پچھتر میٹر کے بعد،",
+      "bytes": 63108,
+      "samples": 31532,
+      "sha256": "048ff2b86a82f0a81537d3dea46d47ec9016842331dfdd07f763f9532342d0ec"
+    },
+    {
+      "id": "straight-175",
+      "text": "ایک سو پچھتر میٹر تک سیدھا چلتے رہیں۔",
+      "bytes": 92888,
+      "samples": 46422,
+      "sha256": "ccea62dd8d67c11bc4a35a161bad26cfd244053d2ba2eddf70067b57223b3bb1"
+    },
+    {
+      "id": "after-200",
+      "text": "دو سو میٹر کے بعد،",
+      "bytes": 44866,
+      "samples": 22411,
+      "sha256": "87bc3e0a656ec33d9d06e7c7bc09a0d567a803226ccaf9d48d3cb1154f3d95f1"
+    },
+    {
+      "id": "straight-200",
+      "text": "دو سو میٹر تک سیدھا چلتے رہیں۔",
+      "bytes": 73582,
+      "samples": 36769,
+      "sha256": "1a4ce98f1919253a14fbd782643ddebeadb42fb65c0e530460f2bff227004612"
+    },
+    {
+      "id": "after-225",
+      "text": "دو سو پچیس میٹر کے بعد،",
+      "bytes": 57198,
+      "samples": 28577,
+      "sha256": "0feef86b670c5f900b4159ab482f232bd2a2486c44a6362e046965e3ef26ca87"
+    },
+    {
+      "id": "straight-225",
+      "text": "دو سو پچیس میٹر تک سیدھا چلتے رہیں۔",
+      "bytes": 86388,
+      "samples": 43172,
+      "sha256": "293009ae04d081e3bd1461ca7d3310119c8068438d34edd39071ecb0d1c99f23"
+    }
+  ]
+}

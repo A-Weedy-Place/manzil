@@ -16,6 +16,7 @@ class MockMap {
   touchZoomRotate = { disableRotation: vi.fn() };
   keyboard = { disableRotation: vi.fn() };
   doubleClickZoom = { enable: vi.fn(), disable: vi.fn() };
+  dragPan = { isEnabled: vi.fn(() => true), enable: vi.fn(), disable: vi.fn() };
   canvas = document.createElement('canvas');
   remove = vi.fn(); resize = vi.fn(); jumpTo = vi.fn(); fitBounds = vi.fn(); easeTo = vi.fn();
   setStyle = vi.fn(() => this.emit('style.load'));
@@ -33,6 +34,7 @@ class MockMap {
   getContainer() { return this.options.container; }
   getCanvas() { return this.canvas; }
   project(point: Coordinate) { return { x: (point[0] - 73) * 10000, y: (point[1] - 33.6) * 10000 }; }
+  unproject(point: number[]) { return { lng: 73 + point[0] / 10000, lat: 33.6 + point[1] / 10000 }; }
 }
 
 vi.mock('maplibre-gl', () => ({
@@ -58,6 +60,7 @@ vi.mock('../src/lib/mapStyle', async importOriginal => ({
 import MapView from '../src/components/MapView';
 import { loadMapStyle } from '../src/lib/mapStyle';
 import { api } from '../src/lib/api';
+import * as transitMap from '../src/lib/transitMap';
 
 beforeEach(() => {
   maps.instances.length = 0; maps.markers.length = 0; vi.mocked(loadMapStyle).mockClear();
@@ -81,6 +84,139 @@ const props = (): MapViewProps => ({
   onPick: vi.fn(), onDraw: vi.fn(), onEndpointMove: vi.fn(), onClosureSelect: vi.fn(),
 });
 
+const pointerEvent = (target: Element, name: string, options: { pointerId?: number; clientX?: number; clientY?: number; pointerType?: string; isPrimary?: boolean } = {}) => {
+  const event = new MouseEvent(name, { bubbles: true, cancelable: true, button: 0, clientX: options.clientX ?? 100, clientY: options.clientY ?? 100 });
+  Object.defineProperties(event, { pointerId: { value: options.pointerId ?? 1 }, pointerType: { value: options.pointerType ?? 'mouse' }, isPrimary: { value: options.isPrimary ?? true } });
+  fireEvent(target, event);
+};
+
+it('draws a physical blockade by captured pointer stroke without panning or also submitting a click', async () => {
+  const base = props(), onRoadStroke = vi.fn(), onRoadPick = vi.fn();
+  const result = render(<MapView {...base} mode="road" closurePickType="blockade" onRoadStroke={onRoadStroke} onRoadPick={onRoadPick} />);
+  await act(async () => {});
+  const map = maps.instances[0], element = map.getContainer();
+  const capture = vi.fn(), release = vi.fn(); Object.assign(element, { setPointerCapture: capture, releasePointerCapture: release });
+  expect(map.dragPan.disable).toHaveBeenCalledOnce(); expect(map.canvas.style.touchAction).toBe('none');
+  pointerEvent(element, 'pointerdown', { clientX: 100, clientY: 100 });
+  pointerEvent(element, 'pointermove', { clientX: 100, clientY: 120 });
+  expect(map.getSource('manzil-drawing')!.data.features[0]).toMatchObject({ geometry: { type: 'LineString', coordinates: [[73.01, 33.61], [73.01, 33.612]] }, properties: { road: true, blockade: true } });
+  pointerEvent(element, 'pointerup', { clientX: 100, clientY: 120 });
+  expect(capture).toHaveBeenCalledWith(1); expect(release).toHaveBeenCalledWith(1);
+  expect(onRoadStroke).toHaveBeenCalledExactlyOnceWith([73.01, 33.61], [73.01, 33.612]);
+  await act(async () => { map.emit('click', { lngLat: { lng: 73.01, lat: 33.612 } }); });
+  expect(onRoadPick).not.toHaveBeenCalled(); expect(base.onDraw).not.toHaveBeenCalled();
+  result.rerender(<MapView {...base} mode="browse" />); await act(async () => {});
+  expect(map.dragPan.enable).toHaveBeenCalledOnce(); expect(map.canvas.style.touchAction).toBe('');
+});
+
+it('supports touch taps, cancels interrupted strokes, ignores controls and restores pan on exit', async () => {
+  const base = props(), onRoadStroke = vi.fn(), onRoadPick = vi.fn();
+  const result = render(<MapView {...base} mode="road" closurePickType="blockade" onRoadStroke={onRoadStroke} onRoadPick={onRoadPick} />);
+  await act(async () => {});
+  const map = maps.instances[0], element = map.getContainer();
+  pointerEvent(element, 'pointerdown', { pointerType: 'touch' }); pointerEvent(element, 'pointerup', { pointerType: 'touch' });
+  expect(onRoadPick).toHaveBeenCalledExactlyOnceWith([73.01, 33.61]);
+  pointerEvent(element, 'pointerdown', { pointerType: 'touch' }); pointerEvent(element, 'pointermove', { pointerType: 'touch', clientY: 120 }); pointerEvent(element, 'pointercancel', { pointerType: 'touch' });
+  pointerEvent(element, 'pointerup', { pointerType: 'touch', clientY: 120 });
+  expect(onRoadStroke).not.toHaveBeenCalled(); expect(map.getSource('manzil-drawing')!.data.features).toEqual([]);
+  const control = document.createElement('button'); element.append(control); pointerEvent(control, 'pointerdown'); pointerEvent(control, 'pointerup');
+  expect(onRoadPick).toHaveBeenCalledOnce();
+  pointerEvent(element, 'pointerdown'); pointerEvent(element, 'pointermove', { clientY: 120 });
+  result.unmount(); pointerEvent(element, 'pointerup', { clientY: 120 });
+  expect(onRoadStroke).not.toHaveBeenCalled(); expect(map.dragPan.enable).toHaveBeenCalledOnce();
+});
+
+it('delegates every road click to the shared selection controller without inventing raw geometry', async () => {
+  const base = props(), onRoadPick = vi.fn();
+  render(<MapView {...base} mode="road" onRoadPick={onRoadPick} roadSelection={{ anchors: [], busy: false, error: '', distanceMeters: null }} />);
+  await act(async () => {});
+  const map = maps.instances[0];
+  await act(async () => {
+    for (const [lng, lat] of [[73.03, 33.64], [73.031, 33.641], [73.032, 33.642]]) map.emit('click', { lngLat: { lng, lat } });
+  });
+  expect(onRoadPick.mock.calls).toEqual([[[73.03, 33.64]], [[73.031, 33.641]], [[73.032, 33.642]]]);
+  expect(base.onDraw).not.toHaveBeenCalled();
+  expect(vi.mocked(api).mock.calls.some(([path]) => String(path).startsWith('/roads/'))).toBe(false);
+});
+
+it('shows the exact solid road preview and picked anchors, preserving it during a failed or pending second pick', async () => {
+  const base = props(), drawing = { kind: 'line' as const, coordinates: [[73.03, 33.64], [73.031, 33.64], [73.031, 33.641], [73.032, 33.641]] as Coordinate[], widthMeters: 14 };
+  const selected = { anchors: [[73.03001, 33.64]] as Coordinate[], busy: false, error: '', distanceMeters: 20 };
+  const result = render(<MapView {...base} mode="road" drawing={drawing} roadSelection={selected} />);
+  await act(async () => {});
+  const map = maps.instances[0], source = map.getSource('manzil-drawing')!;
+  expect(source.data.features).toEqual([{ type: 'Feature', geometry: { type: 'LineString', coordinates: drawing.coordinates }, properties: { road: true } }]);
+  const initialMarkers = maps.markers.filter(marker => marker.options.element.isConnected);
+  expect(initialMarkers).toHaveLength(1);
+  expect(initialMarkers[0].coordinate[0]).toBeCloseTo(selected.anchors[0][0], 8);
+  expect(initialMarkers[0].coordinate[1]).toBe(33.64);
+  const line = map.layers.get('manzil-drawing-line') as { paint: Record<string, unknown> };
+  expect(line.paint['line-color']).toBe('#ff163a'); expect(line.paint['line-dasharray']).toBeUndefined();
+  expect(vi.mocked(api).mock.calls.some(([path]) => path === '/geometry')).toBe(false);
+  result.rerender(<MapView {...base} mode="road" drawing={drawing} roadSelection={{ ...selected, busy: true }} />);
+  await act(async () => {});
+  expect(source.data.features[0].geometry).toEqual({ type: 'LineString', coordinates: drawing.coordinates });
+  result.rerender(<MapView {...base} mode="road" drawing={drawing} roadSelection={{ ...selected, error: 'Choose both ends on the same road.' }} />);
+  await act(async () => {});
+  expect(source.data.features[0].geometry).toEqual({ type: 'LineString', coordinates: drawing.coordinates });
+  expect(base.onDraw).not.toHaveBeenCalled();
+  result.rerender(<MapView {...base} mode="road" drawing={drawing} roadSelection={{ ...selected, anchors: [[73.03, 33.64], [73.032, 33.641]] }} />);
+  await act(async () => {});
+  const visibleMarkers = maps.markers.filter(marker => marker.options.element.isConnected);
+  expect(visibleMarkers.map(marker => marker.coordinate)).toEqual([[73.03, 33.64], [73.032, 33.641]]);
+});
+
+it('shows only the selected pending report as a private review preview without marking public roads closed', async () => {
+  const base = props(), drawing = { kind: 'line' as const, coordinates: [[73.03, 33.64], [73.031, 33.64], [73.031, 33.641]] as Coordinate[], widthMeters: 14 };
+  const pending: Closure = { id: 'private-report', revision: 1, title: 'Reported road', description: '', reason: 'other', startsAt: departureAt, endsAt: null, status: 'draft', moderation: 'pending', drawing,
+    geometry: { type: 'Polygon', coordinates: [[[73.03, 33.64], [73.031, 33.64], [73.031, 33.641], [73.03, 33.64]]] }, createdAt: departureAt, updatedAt: departureAt };
+  const result = render(<MapView {...base} closures={[pending]} selectedClosureId={pending.id} />);
+  await act(async () => {});
+  const map = maps.instances[0], review = map.getSource('manzil-pending-review')!;
+  expect(review.data.features).toEqual([{ type: 'Feature', geometry: { type: 'LineString', coordinates: drawing.coordinates }, properties: { closureId: pending.id, moderation: 'pending' } }]);
+  expect(map.getSource('manzil-closure-roads')!.data.features).toEqual([]);
+  expect(map.options.container.querySelector('button[aria-label="Reported road — Pending review"]')).not.toBeNull();
+  expect(vi.mocked(api).mock.calls.some(([path]) => String(path).startsWith('/closures/roads'))).toBe(false);
+  result.rerender(<MapView {...base} closures={[pending]} selectedClosureId={null} />);
+  await act(async () => {});
+  expect(review.data.features).toEqual([]);
+  expect(map.options.container.querySelector('button[aria-label="Reported road — Pending review"]')).toBeNull();
+  result.rerender(<MapView {...base} closures={[{ ...pending, moderation: 'rejected' }]} selectedClosureId={pending.id} />);
+  await act(async () => {});
+  expect(review.data.features).toEqual([]);
+  result.rerender(<MapView {...base} closures={[pending]} selectedClosureId={pending.id} roadSelection={{ anchors: [], busy: false, error: '', distanceMeters: null }} />);
+  await act(async () => {});
+  expect(review.data.features).toEqual([]);
+  result.rerender(<MapView {...base} closures={[pending]} selectedClosureId={pending.id} drawing={drawing} />);
+  await act(async () => {});
+  expect(review.data.features).toEqual([]);
+});
+
+it('paints active physical blockades as exact cross-road strokes while future, pending and rejected barriers stay off the red map', async () => {
+  const base = props(), drawing = { kind: 'line' as const, coordinates: [[73.03, 33.6399], [73.03, 33.6401]] as Coordinate[], widthMeters: 4 };
+  const active: Closure = { id: 'barrier', revision: 1, restrictionType: 'blockade', title: 'Physical blockade', description: '', reason: 'other', startsAt: '2026-10-17T11:00:00Z', endsAt: '2026-10-17T13:00:00Z', status: 'published', moderation: 'approved', drawing,
+    geometry: { type: 'Polygon', coordinates: [[[73.03, 33.6399], [73.03001, 33.6399], [73.03001, 33.6401], [73.03, 33.6399]]] }, createdAt: departureAt, updatedAt: departureAt };
+  const future = { ...active, id: 'future-barrier', title: 'Future blockade', startsAt: '2026-10-17T12:30:00Z' };
+  const pending = { ...active, id: 'pending-barrier', status: 'draft' as const, moderation: 'pending' as const };
+  const rejected = { ...active, id: 'rejected-barrier', status: 'draft' as const, moderation: 'rejected' as const };
+  // Simulate returned road clips: the map must replace the longitudinal
+  // roadway patch for a physical blockade with its actual cross-road stroke.
+  vi.mocked(api).mockResolvedValue({ type: 'FeatureCollection', features: [active, future].map(item => ({ type: 'Feature', properties: { closureId: item.id, title: item.title }, geometry: { type: 'LineString', coordinates: [[73.02999, 33.64], [73.03001, 33.64]] } })) });
+  const closures = [active, future, pending, rejected], result = render(<MapView {...base} closures={closures} />);
+  await act(async () => {});
+  const map = maps.instances[0], red = () => map.getSource('manzil-closure-roads')!.data.features, yellow = () => map.getSource('manzil-upcoming-roads')!.data.features;
+  expect(red()).toHaveLength(1); expect(red()[0]).toMatchObject({ geometry: { type: 'LineString', coordinates: drawing.coordinates }, properties: { closureId: active.id, blockade: true } });
+  expect(yellow()).toEqual([]);
+  const futureMarker = map.options.container.querySelector('button[aria-label^="Future blockade"]')!;
+  fireEvent.mouseEnter(futureMarker);
+  expect(yellow()).toHaveLength(1); expect(yellow()[0]).toMatchObject({ geometry: { type: 'LineString', coordinates: drawing.coordinates }, properties: { closureId: future.id, blockade: true } });
+  fireEvent.mouseLeave(futureMarker); expect(yellow()).toEqual([]);
+  result.rerender(<MapView {...base} closures={closures} departureAt="2026-10-17T12:45:00Z" />); await act(async () => {});
+  expect(red().map(item => item.properties?.closureId)).toEqual([active.id, future.id]);
+  result.rerender(<MapView {...base} closures={closures} showClosures={false} />); await act(async () => {});
+  expect(red()).toEqual([]); expect(yellow()).toEqual([]);
+});
+
 it('adds and removes transit overlays on the retained map, keeping red closures above bus routes', async () => {
   const network: TransitNetwork = { version: 'local-test', importedAt: null, evaluatedAt: departureAt, eventRevision: 0, disruptionRevision: 0, sources: [], disruptions: [], limitations: [],
     routes: [{ id: 'bus', name: 'City bus', shortName: 'B1', agency: 'Test', color: '#2f6fd3', sourceId: 'test', coverage: 'stops-and-shape' }], stops: [{ id: 'a', name: 'First stop', coordinate: [73.03, 33.64] }, { id: 'b', name: 'Last stop', coordinate: [73.05, 33.66] }],
@@ -89,8 +225,7 @@ it('adds and removes transit overlays on the retained map, keeping red closures 
   const map = maps.instances[0], source = map.getSource('manzil-transit')!;
   const validation = validateStyleMin({ version: 8, glyphs: 'https://example.com/{fontstack}/{range}.pbf', sources: Object.fromEntries([...map.sources].map(([id, source]) => [id, { type: 'geojson', data: source.data }])), layers: [...map.layers.values()] as LayerSpecification[] });
   expect(validation.map(issue => issue.message)).toEqual([]);
-  expect(map.layers.get('manzil-transit-journey-schematic')).toMatchObject({ paint: { 'line-dasharray': [2, 1.8] }, filter: ['all', ['==', ['get', 'kind'], 'ride'], ['==', ['get', 'schematic'], true]] });
-  expect(map.layers.get('manzil-transit-journey-line')).toMatchObject({ filter: ['all', ['==', ['get', 'kind'], 'ride'], ['==', ['get', 'schematic'], false]] });
+  expect(map.layers.get('manzil-transit-journey-line')).toMatchObject({ source: 'manzil-transit-journey', type: 'line' });
   result.rerender(<MapView {...base} transit={{ network, selectedPatternId: 'bus-0', journey: null, stale: false }} />); await act(async () => {});
   expect(source.data.features[0].properties).toMatchObject({ color: '#697781', selected: true, patternId: 'bus-0' });
   expect(map.getSource('manzil-transit-stops')?.data.features).toHaveLength(2);
@@ -100,21 +235,24 @@ it('adds and removes transit overlays on the retained map, keeping red closures 
   expect(maps.instances).toHaveLength(1); expect(map.setStyle).toHaveBeenCalledOnce();
 });
 
-it('keeps all bus lines and intermediate stops legible at city overview without white bundles or overstating schematic geometry', async () => {
+it('keeps road-aligned bus lines and stops legible, with solid bus strokes and closure precedence', async () => {
   render(<MapView {...props()} mapStyle="minimal" />); await act(async () => {});
   const map = maps.instances[0], layers = [...map.layers.keys()];
   const paint = (id: string) => (map.layers.get(id) as { paint: Record<string, unknown> }).paint;
-  const evaluate = (expression: unknown, zoom: number, selected: boolean): number => {
+  const evaluate = (expression: unknown, zoom: number, selected: boolean, muted = false, focused = false): number => {
     if (typeof expression === 'number') return expression;
     const parsed = createExpression(expression, 'test.paint');
     if (parsed.result !== 'success') throw new Error(JSON.stringify(parsed.value));
-    return parsed.value.evaluate({ zoom }, { type: 'Point', properties: { selected } });
+    return parsed.value.evaluate({ zoom }, { type: 'Point', properties: { selected, muted, focused } });
   };
-  for (const name of ['manzil-transit-line', 'manzil-transit-schematic']) {
+  for (const name of ['manzil-transit-line']) {
     const style = paint(name);
     expect(evaluate(style['line-width'], 11.5, false)).toBeGreaterThanOrEqual(4);
     expect(evaluate(style['line-width'], 11.5, true)).toBeGreaterThanOrEqual(7);
     expect(evaluate(style['line-opacity'], 11.5, false)).toBeGreaterThanOrEqual(.9);
+    expect(evaluate(style['line-opacity'], 11.5, false, true)).toBeLessThanOrEqual(.2);
+    expect(evaluate(style['line-width'], 11.5, false, true)).toBeLessThan(evaluate(style['line-width'], 11.5, false));
+    expect(evaluate(style['line-opacity'], 11.5, false, false, true)).toBeGreaterThan(evaluate(style['line-opacity'], 11.5, false, true));
     expect(style['line-color']).toEqual(['get', 'color']);
   }
   const casing = paint('manzil-transit-casing');
@@ -126,12 +264,46 @@ it('keeps all bus lines and intermediate stops legible at city overview without 
   expect(evaluate(stops['circle-radius'], 9, false)).toBeLessThan(evaluate(stops['circle-radius'], 11.5, false));
   expect(evaluate(stops['circle-opacity'], 9, false)).toBeLessThan(evaluate(stops['circle-opacity'], 11.5, false));
   expect(evaluate(stops['circle-radius'], 9, true)).toBeGreaterThanOrEqual(5); expect(evaluate(stops['circle-opacity'], 9, true)).toBe(1);
-  expect((map.layers.get('manzil-transit-casing') as { filter: unknown }).filter).toEqual(['==', ['get', 'schematic'], false]);
-  expect(paint('manzil-transit-schematic')['line-dasharray']).toEqual([2, 1.8]);
-  expect(paint('manzil-transit-journey-schematic')['line-dasharray']).toEqual([2, 1.8]);
-  for (const layer of ['manzil-transit-line', 'manzil-transit-schematic', 'manzil-transit-journey-line', 'manzil-transit-journey-schematic', 'manzil-transit-stops']) expect(layers.indexOf('manzil-closure-roads-line')).toBeGreaterThan(layers.indexOf(layer));
+  for (const zoom of [9, 11.5, 16]) {
+    expect(evaluate(stops['circle-opacity'], zoom, false, true)).toBeLessThanOrEqual(.2);
+    expect(evaluate(stops['circle-stroke-opacity'], zoom, false, true)).toBeLessThanOrEqual(.2);
+    expect(evaluate(stops['circle-opacity'], zoom, true)).toBe(1);
+  }
+  const busLayers = [...map.layers.values()].filter((layer): layer is LayerSpecification & { paint: Record<string, unknown> } => {
+    const value = layer as { id: string; type: string; source?: string };
+    return value.type === 'line' && ['manzil-transit', 'manzil-transit-journey'].includes(value.source ?? '') && value.id !== 'manzil-transit-walk-line';
+  });
+  expect(busLayers.length).toBeGreaterThanOrEqual(4);
+  for (const layer of busLayers) {
+    expect(layer.paint['line-dasharray'], layer.id).toBeUndefined();
+    expect(layers.indexOf('manzil-closure-roads-line')).toBeGreaterThan(layers.indexOf(layer.id));
+  }
+  expect(paint('manzil-transit-walk-line')['line-dasharray']).toEqual([1, 1.4]);
+  expect(layers.indexOf('manzil-closure-roads-line')).toBeGreaterThan(layers.indexOf('manzil-transit-stops'));
   const validation = validateStyleMin({ version: 8, glyphs: 'https://example.com/{fontstack}/{range}.pbf', sources: Object.fromEntries([...map.sources].map(([id, source]) => [id, { type: 'geojson', data: source.data }])), layers: [...map.layers.values()] as LayerSpecification[] });
   expect(validation.map(issue => issue.message)).toEqual([]); expect(maps.instances).toHaveLength(1);
+});
+
+it('does not rebuild transit sources for an equivalent wrapper or unrelated map UI changes', async () => {
+  const network: TransitNetwork = { version: 'stable-transit', importedAt: null, evaluatedAt: departureAt, eventRevision: 0, disruptionRevision: 0, sources: [], disruptions: [], limitations: [],
+    routes: [{ id: 'bus', name: 'City bus', shortName: 'B1', agency: 'Test', color: '#2f6fd3', sourceId: 'test', coverage: 'stops-and-shape' }], stops: [{ id: 'a', name: 'First stop', coordinate: [73.03, 33.64] }, { id: 'b', name: 'Last stop', coordinate: [73.05, 33.66] }],
+    patterns: [{ id: 'bus-0', routeId: 'bus', directionId: '0', headsign: 'Last stop', stopIds: ['a', 'b'], geometryQuality: 'provided-shape', geometry: { type: 'LineString', coordinates: [[73.03, 33.64], [73.04, 33.64], [73.05, 33.66]] } }], statuses: [{ patternId: 'bus-0', availability: 'available', closureIds: [], disruptionIds: [], closureAssessment: 'provided-shape' }] };
+  const build = vi.spyOn(transitMap, 'transitOverlayFeatures');
+  try {
+    const base = { ...props(), transit: { network, selectedPatternId: null, journey: null, stale: false } };
+    const result = render(<MapView {...base} />); await act(async () => {});
+    const map = maps.instances[0], before = build.mock.calls.length;
+    const sources = ['manzil-transit', 'manzil-transit-stops', 'manzil-transit-journey'].map(id => map.getSource(id)!);
+    const writes = sources.map(source => source.setData.mock.calls.length);
+    result.rerender(<MapView {...base} theme="dark" departureAt="2026-10-17T12:01:00Z" closures={[]} transit={{ ...base.transit }} />); await act(async () => {});
+    expect(build).toHaveBeenCalledTimes(before);
+    expect(sources.map(source => source.setData.mock.calls.length)).toEqual(writes);
+    result.rerender(<MapView {...base} transit={{ ...base.transit, selectedPatternId: 'bus-0' }} />); await act(async () => {});
+    expect(build).toHaveBeenCalledTimes(before + 1);
+    expect(sources[0].data.features[0].properties?.selected).toBe(true);
+    expect(sources[1].data.features.every(feature => feature.properties?.selected === true)).toBe(true);
+    expect(map.setStyle).toHaveBeenCalledOnce(); expect(maps.instances).toHaveLength(1);
+  } finally { build.mockRestore(); }
 });
 
 it('retains the map, style and overlay sources across route switches, polling and app theme changes', async () => {
@@ -173,6 +345,49 @@ it('starts missing preferences with a Classic backdrop and avoids equivalent Cla
   expect(map.setStyle).toHaveBeenCalledOnce();
   result.rerender(<MapView {...base} mapStyle="night" />); await act(async () => {});
   expect(map.setStyle).toHaveBeenCalledTimes(2);
+  expect(maps.instances).toHaveLength(1);
+});
+
+it('shows raw location uncertainty below routes and closures, updates it without moving endpoints, and restores it after a style swap', async () => {
+  const getCurrentPosition = vi.fn(), watchPosition = vi.fn();
+  Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition, watchPosition } });
+  const selected = route('current', 0), base = { ...props(), mapStyle: 'minimal' as const, selectedRoute: selected, routeOptions: [selected],
+    origin: { name: 'Start', coordinate: selected.snappedOrigin }, destination: { name: 'End', coordinate: selected.snappedDestination }, followPosition: false };
+  const raw: Coordinate = [73.04567, 33.65123], next: Coordinate = [73.04613, 33.65189];
+  const result = render(<MapView {...base} navigationPosition={raw} navigationAccuracy={500} />); await act(async () => {});
+  const map = maps.instances[0], source = map.getSource('manzil-location-accuracy')!;
+  expect(source.data.features).toHaveLength(1); expect(source.data.features[0].properties).toEqual({ accuracyMeters: 500 });
+  const routeBefore = structuredClone(map.getSource('manzil-routes')!.data);
+  const endpointA = maps.markers.find(marker => marker.options.element.classList.contains('map-endpoint-a'))!;
+  const endpointB = maps.markers.find(marker => marker.options.element.classList.contains('map-endpoint-b'))!;
+  const location = maps.markers.find(marker => marker.options.element.classList.contains('map-navigation-marker'))!;
+  expect(location.coordinate).toEqual(raw); expect(location.options.element.getAttribute('aria-label')).toContain('±500 m');
+  const order = [...map.layers.keys()];
+  for (const id of ['manzil-route-line', 'manzil-closure-roads-line']) {
+    expect(order.indexOf('manzil-location-accuracy-fill')).toBeLessThan(order.indexOf(id));
+    expect(order.indexOf('manzil-location-accuracy-line')).toBeLessThan(order.indexOf(id));
+  }
+
+  result.rerender(<MapView {...base} navigationPosition={next} navigationAccuracy={12} />); await act(async () => {});
+  expect(map.getSource('manzil-location-accuracy')).toBe(source); expect(source.data.features[0].properties).toEqual({ accuracyMeters: 12 });
+  expect(location.coordinate).toEqual(next); expect(location.options.element.getAttribute('aria-label')).toContain('±12 m');
+  expect(endpointA.coordinate).toEqual(selected.snappedOrigin); expect(endpointB.coordinate).toEqual(selected.snappedDestination);
+  expect(map.getSource('manzil-routes')!.data).toEqual(routeBefore); expect(base.onEndpointMove).not.toHaveBeenCalled();
+  expect(map.easeTo).not.toHaveBeenCalled(); expect(getCurrentPosition).not.toHaveBeenCalled(); expect(watchPosition).not.toHaveBeenCalled();
+
+  // A real style replacement removes GeoJSON sources; model that boundary so
+  // this proves the uncertainty is restored even when location itself is stable.
+  map.sources.clear(); map.layers.clear();
+  result.rerender(<MapView {...base} mapStyle="night" navigationPosition={next} navigationAccuracy={12} />); await act(async () => {});
+  const restored = map.getSource('manzil-location-accuracy')!;
+  expect(restored).not.toBe(source); expect(restored.data.features).toHaveLength(1);
+  expect(restored.data.features[0].properties).toEqual({ accuracyMeters: 12 }); expect(location.coordinate).toEqual(next);
+  expect(map.getSource('manzil-routes')!.data).toEqual(routeBefore);
+  expect(map.setStyle).toHaveBeenCalledTimes(2); expect(maps.instances).toHaveLength(1);
+
+  result.rerender(<MapView {...base} mapStyle="night" navigationPosition={null} navigationAccuracy={null} />); await act(async () => {});
+  expect(restored.data.features).toEqual([]); expect(location.options.element.isConnected).toBe(false);
+  expect(endpointA.coordinate).toEqual(selected.snappedOrigin); expect(endpointB.coordinate).toEqual(selected.snappedDestination);
   expect(maps.instances).toHaveLength(1);
 });
 

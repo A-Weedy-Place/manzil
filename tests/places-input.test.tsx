@@ -36,14 +36,15 @@ it('ignores a stale geocoder response even when the transport ignores its abort 
 });
 
 it.each(['Starting point', 'Destination', 'Stop 1'])('offers explicit current location first for %s without requesting GPS on focus', async label => {
-  vi.useFakeTimers(); const getPosition = vi.fn((success: PositionCallback) => success({ coords: { longitude: 73.05, latitude: 33.7 } } as GeolocationPosition));
+  vi.useFakeTimers(); const getPosition = vi.fn((success: PositionCallback, _failure?: PositionErrorCallback, _options?: PositionOptions) => success({ timestamp: Date.now(), coords: { longitude: 73.05, latitude: 33.7, accuracy: 12 } } as GeolocationPosition));
   Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition: getPosition } });
   vi.mocked(api).mockResolvedValue([]); const onChange = vi.fn();
   render(<PlaceInput label={label} letter={label === 'Starting point' ? 'A' : label === 'Destination' ? 'B' : '1'} value={null} onChange={onChange} onPick={() => undefined} active={false} />);
   fireEvent.focus(screen.getByRole('combobox')); expect(getPosition).not.toHaveBeenCalled();
   expect(screen.getAllByRole('option')[0].textContent).toBe('Use current location');
   fireEvent.click(screen.getByRole('option', { name: 'Use current location' }));
-  expect(onChange).toHaveBeenCalledWith({ name: 'Current location', coordinate: [73.05, 33.7] });
+  expect(onChange).toHaveBeenCalledWith({ name: 'Current location · ±12 m', coordinate: [73.05, 33.7] });
+  expect(getPosition.mock.calls[0][2]).toEqual({ enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
   expect(screen.queryByRole('listbox')).toBeNull();
 });
 it('keeps map selection available offline and never requests GPS when Enter selects a searched place', async () => {
@@ -75,10 +76,10 @@ it('cancels pending GPS immediately when a searched place is selected or a blank
   const ui = render(<PlaceInput {...props} />); const input = screen.getByRole('combobox'); fireEvent.focus(input);
   await act(async () => { await vi.advanceTimersByTimeAsync(230); });
   fireEvent.click(screen.getByRole('option', { name: 'Use current location' })); fireEvent.click(screen.getByRole('option', { name: 'I-8' }));
-  onChange.mockClear(); act(() => success({ coords: { longitude: 74, latitude: 31 } } as GeolocationPosition)); expect(onChange).not.toHaveBeenCalled();
+  onChange.mockClear(); act(() => success({ timestamp: Date.now(), coords: { longitude: 74, latitude: 31, accuracy: 12 } } as GeolocationPosition)); expect(onChange).not.toHaveBeenCalled();
   fireEvent.focus(input); fireEvent.click(screen.getByRole('option', { name: 'Use current location' }));
   ui.rerender(<PlaceInput {...props} locationContext={1} />);
-  act(() => success({ coords: { longitude: 74, latitude: 31 } } as GeolocationPosition)); expect(onChange).not.toHaveBeenCalled();
+  act(() => success({ timestamp: Date.now(), coords: { longitude: 74, latitude: 31, accuracy: 12 } } as GeolocationPosition)); expect(onChange).not.toHaveBeenCalled();
   expect((input as HTMLInputElement).value).toBe('I-8');
 });
 it('preserves the current place after denied GPS and rejects a position arriving after a manual edit or unmount', async () => {
@@ -90,7 +91,40 @@ it('preserves the current place after denied GPS and rejects a position arriving
   act(() => error({ code: 1 } as GeolocationPositionError)); expect(onChange).not.toHaveBeenCalled();
   expect(screen.getByRole('alert').textContent).toContain('permission was declined'); expect(input.getAttribute('value')).toBe('Original');
   fireEvent.click(screen.getByRole('option', { name: 'Use current location' })); fireEvent.change(input, { target: { value: 'New search' } }); onChange.mockClear();
-  act(() => success({ coords: { longitude: 73.05, latitude: 33.7 } } as GeolocationPosition)); expect(onChange).not.toHaveBeenCalled();
+  act(() => success({ timestamp: Date.now(), coords: { longitude: 73.05, latitude: 33.7, accuracy: 12 } } as GeolocationPosition)); expect(onChange).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('option', { name: 'Use current location' })); ui.unmount();
-  act(() => success({ coords: { longitude: 73.05, latitude: 33.7 } } as GeolocationPosition)); expect(onChange).not.toHaveBeenCalled();
+  act(() => success({ timestamp: Date.now(), coords: { longitude: 73.05, latitude: 33.7, accuracy: 12 } } as GeolocationPosition)); expect(onChange).not.toHaveBeenCalled();
+});
+
+it('keeps an approximate endpoint visibly approximate after the bounded accuracy refinement', async () => {
+  vi.useFakeTimers(); let first!: PositionCallback, update!: PositionCallback;
+  const clear = vi.fn();
+  Object.defineProperty(navigator, 'geolocation', { configurable: true, value: {
+    getCurrentPosition: (ok: PositionCallback) => { first = ok; },
+    watchPosition: (ok: PositionCallback) => { update = ok; return 4; }, clearWatch: clear,
+  } });
+  vi.mocked(api).mockResolvedValue([]); const onChange = renderInput();
+  fireEvent.focus(screen.getByRole('combobox')); fireEvent.click(screen.getByRole('option', { name: 'Use current location' }));
+  act(() => first({ timestamp: Date.now(), coords: { longitude: 73.05, latitude: 33.7, accuracy: 500 } } as GeolocationPosition));
+  expect(onChange).not.toHaveBeenCalled(); expect(screen.getByRole('option', { name: 'Finding your location…' }).matches(':disabled')).toBe(true);
+  act(() => update({ timestamp: Date.now(), coords: { longitude: 73.051, latitude: 33.701, accuracy: 250 } } as GeolocationPosition));
+  await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
+  expect(onChange).toHaveBeenCalledWith({ name: 'Current location · ±250 m', coordinate: [73.051, 33.701] });
+  expect(clear).toHaveBeenCalledWith(4); expect(screen.getByRole('combobox')).toHaveProperty('value', 'Current location · ±250 m');
+});
+
+it('ends a coarse location watch when manual map selection replaces the pending endpoint', () => {
+  vi.useFakeTimers(); let first!: PositionCallback, update!: PositionCallback; const clear = vi.fn(), onPick = vi.fn(), onChange = vi.fn();
+  Object.defineProperty(navigator, 'geolocation', { configurable: true, value: {
+    getCurrentPosition: (ok: PositionCallback) => { first = ok; },
+    watchPosition: (ok: PositionCallback) => { update = ok; return 8; }, clearWatch: clear,
+  } });
+  vi.mocked(api).mockResolvedValue([]);
+  render(<PlaceInput label="Destination" letter="B" value={null} onChange={onChange} onPick={onPick} active={false} />);
+  fireEvent.focus(screen.getByRole('combobox')); fireEvent.click(screen.getByRole('option', { name: 'Use current location' }));
+  act(() => first({ timestamp: Date.now(), coords: { longitude: 73.05, latitude: 33.7, accuracy: 500 } } as GeolocationPosition));
+  fireEvent.click(screen.getByRole('option', { name: 'Choose on map' }));
+  expect(clear).toHaveBeenCalledWith(8); expect(onPick).toHaveBeenCalledOnce();
+  act(() => update({ timestamp: Date.now(), coords: { longitude: 73.051, latitude: 33.701, accuracy: 15 } } as GeolocationPosition));
+  expect(onChange).not.toHaveBeenCalled();
 });

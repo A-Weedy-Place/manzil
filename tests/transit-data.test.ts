@@ -3,6 +3,8 @@ import { gunzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import type { TransitDataset } from '../shared/transit';
+import { distanceMeters } from '../server/geometry';
+import type { Coordinate } from '../shared/types';
 
 const bytes = gunzipSync(readFileSync(new URL('../assets/transit/islamabad.json.gz', import.meta.url)));
 const data = JSON.parse(bytes.toString('utf8')) as TransitDataset;
@@ -34,11 +36,12 @@ describe('actual attributed twin-city transit snapshot', () => {
   it('preserves the known EV2 missing Rahimabad coordinate as a non-routable break', () => {
     const pattern = patterns.get('eqyn8')!;
     expect(pattern.unplacedStops).toContain('Rahimabad'); expect(pattern.stopIds).not.toContain('c4t4y');
-    expect(stops.has('c4t4y')).toBe(false); expect(pattern.breakAfterStopIndexes).toEqual([8]);
-    expect(pattern.geometrySegments).toHaveLength(2);
+    expect(stops.has('c4t4y')).toBe(false); expect(pattern.breakAfterStopIndexes).toContain(8);expect(pattern.roadSegments![8]).toBeNull();
+    expect(pattern.geometrySegments!.length).toBeGreaterThanOrEqual(2);
     const sections = pattern.geometrySegments!;
-    expect(sections[0].coordinates.at(-1)).toEqual(stops.get(pattern.stopIds[8])?.coordinate);
-    expect(sections[1].coordinates[0]).toEqual(stops.get(pattern.stopIds[9])?.coordinate);
+    expect(distanceMeters(sections[0].coordinates.at(-1)! as Coordinate,stops.get(pattern.stopIds[8])!.coordinate)).toBeLessThanOrEqual(150.2);
+    expect(distanceMeters(sections[1].coordinates[0] as Coordinate,stops.get(pattern.stopIds[9])!.coordinate)).toBeLessThanOrEqual(150.2);
+    expect(sections[0].coordinates.at(-1)).toEqual(pattern.roadSegments![7]!.coordinates.at(-1));expect(sections[1].coordinates[0]).toEqual(pattern.roadSegments![9]!.coordinates[0]);
   });
   it('retains restricted-access metadata and real GTFS timing/pickup/dropoff qualification', () => {
     expect(patterns.get('z3t6g')?.restrictedAccess).toBe(true);

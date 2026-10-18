@@ -9,6 +9,7 @@ import { signInDevelopment, signOut } from '../src/lib/auth';
 import { setLanguage } from '../src/lib/language';
 import { api, send } from '../src/lib/api';
 import { useTransit } from '../src/lib/useTransit';
+import { transitOverlayFeatures, TRANSIT_CONTEXT_COLOR } from '../src/lib/transitMap';
 import App from '../src/App';
 import TransitPanel, { ServiceNoticeForm } from '../src/components/TransitPanel';
 
@@ -81,6 +82,97 @@ it('keeps Local endpoints and transit lines independent of the driving planner w
   expect(capture.props?.origin?.name).toBe('Station A');
 });
 
+it('focuses the chosen Local option, restores the catalogue and preserves the chosen option on return', async () => {
+  const localNetwork = structuredClone(network);
+  const detourStop = { id: 'd', name: 'Station D', coordinate: [73.01, 33.71] as [number, number] };
+  const unusedStop = { id: 'e', name: 'Station E', coordinate: [73.03, 33.7] as [number, number] };
+  localNetwork.stops.push(detourStop, unusedStop);
+  localNetwork.patterns[0].stopIds.push(unusedStop.id);
+  localNetwork.patterns[0].geometry.coordinates.push(unusedStop.coordinate);
+  localNetwork.routes.push({ ...localNetwork.routes[0], id: 'ev2', shortName: 'EV05102', name: 'Station A via Station D', color: '#168c70' });
+  const alternativeStops = [localNetwork.stops[0], detourStop, localNetwork.stops[2]];
+  localNetwork.patterns.push({ ...localNetwork.patterns[0], id: 'ev2-0', routeId: 'ev2', stopIds: alternativeStops.map(stop => stop.id), geometry: { type: 'LineString', coordinates: alternativeStops.map(stop => stop.coordinate) } });
+  localNetwork.statuses.push({ ...localNetwork.statuses[0], patternId: 'ev2-0' });
+  const response = transitPlan();
+  response.options.push({ ...response.options[0], id: 'alternative-journey', distanceMeters: 2600, legs: [{ ...response.options[0].legs[0], kind: 'ride', routeId: 'ev2', patternId: 'ev2-0', from: alternativeStops[0], to: alternativeStops[2], stops: alternativeStops, geometry: localNetwork.patterns[1].geometry, geometryQuality: 'provided-shape', availability: 'available' }] });
+  vi.mocked(api).mockImplementation(async path => path.startsWith('/transit/network') ? localNetwork : path === '/transit/plan' ? response : path === '/transit/revision' ? { version: localNetwork.version, eventRevision: 0, disruptionRevision: 0 } : state as never);
+  render(<App />);
+  await screen.findByRole('button', { name: 'Find routes' });
+  fireEvent.click(screen.getByRole('button', { name: 'Local' }));
+  fireEvent.click(await screen.findByRole('button', { name: /EV-1 Station A to Station C/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Start at Station A' }));
+  fireEvent.click(screen.getByRole('button', { name: 'End at Station C' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Find local routes' }));
+  await screen.findByRole('button', { name: /Option 1/ });
+  const overlay = () => transitOverlayFeatures(capture.props!.transit);
+  const line = (id: string) => overlay().lines.features.find(feature => feature.properties?.patternId === id)!.properties!;
+  const stop = (id: string) => overlay().stops.features.find(feature => feature.properties?.stopId === id)!.properties!;
+  expect(capture.props!.transit!.journey?.id).toBe('bus-journey');
+  expect(line('ev1-0')).toMatchObject({ focused: true, muted: false, selected: false, availability: 'available' });
+  expect(line('ev2-0')).toMatchObject({ muted: true, color: TRANSIT_CONTEXT_COLOR, availability: 'available' });
+  expect(stop('b')).toMatchObject({ selected: true, muted: false });
+  expect(stop('d')).toMatchObject({ selected: false, muted: true });
+  expect(stop('e')).toMatchObject({ selected: false, muted: true });
+  expect(overlay().journey.features[0].geometry).toEqual(response.options[0].legs[0].geometry);
+
+  fireEvent.click(screen.getByRole('button', { name: /Option 2/ }));
+  expect(capture.props!.transit!.journey?.id).toBe('alternative-journey');
+  expect(line('ev1-0')).toMatchObject({ muted: true, color: TRANSIT_CONTEXT_COLOR, availability: 'available' });
+  expect(line('ev2-0')).toMatchObject({ focused: true, muted: false });
+  expect(stop('b')).toMatchObject({ selected: false, muted: true });
+  expect(stop('d')).toMatchObject({ selected: true, muted: false });
+  expect(overlay().journey.features[0].geometry).toEqual(response.options[1].legs[0].geometry);
+
+  fireEvent.click(screen.getByRole('button', { name: /Bus routes/ }));
+  expect(capture.props!.transit!.journey).toBeNull();
+  expect(overlay().journey.features).toHaveLength(0);
+  expect(line('ev1-0')).toMatchObject({ selected: true, muted: false, focused: false });
+  expect(line('ev2-0')).toMatchObject({ muted: false, focused: false });
+  expect(line('ev1-0').color).not.toBe(TRANSIT_CONTEXT_COLOR);
+  expect(line('ev2-0').color).not.toBe(TRANSIT_CONTEXT_COLOR);
+  expect(stop('e')).toMatchObject({ selected: true, muted: false });
+
+  fireEvent.click(screen.getByRole('button', { name: /Your journey/ }));
+  expect(capture.props!.transit!.journey?.id).toBe('alternative-journey');
+  expect(screen.getByRole('button', { name: /Option 2/ }).getAttribute('aria-pressed')).toBe('true');
+  expect(line('ev1-0').muted).toBe(true);
+  expect(line('ev2-0').focused).toBe(true);
+  expect(vi.mocked(api).mock.calls.filter(([path]) => path === '/transit/plan')).toHaveLength(1);
+  for (const section of ['Map', 'Profile']) {
+    fireEvent.click(screen.getByRole('button', { name: section }));
+    expect(capture.props!.transit).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Local' }));
+    await waitFor(() => expect(capture.props!.transit!.journey?.id).toBe('alternative-journey'));
+    expect(screen.getByRole('button', { name: /Your journey/ }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: /Bus routes/ }).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('button', { name: /Option 2/ }).getAttribute('aria-pressed')).toBe('true');
+    expect(line('ev1-0')).toMatchObject({ muted: true, color: TRANSIT_CONTEXT_COLOR });
+    expect(line('ev2-0')).toMatchObject({ focused: true, muted: false });
+  }
+  expect(vi.mocked(api).mock.calls.filter(([path]) => path === '/transit/revision')).toHaveLength(2);
+  expect(vi.mocked(api).mock.calls.filter(([path]) => path.startsWith('/transit/network'))).toHaveLength(1);
+  expect(capture.mounts).toBe(1);
+});
+
+it('leaves journey focus when a catalogue line is selected directly on the Local map', async () => {
+  render(<App />);
+  await screen.findByRole('button', { name: 'Find routes' });
+  fireEvent.click(screen.getByRole('button', { name: 'Local' }));
+  fireEvent.click(await screen.findByRole('button', { name: /EV-1 Station A to Station C/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Start at Station A' }));
+  fireEvent.click(screen.getByRole('button', { name: 'End at Station C' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Find local routes' }));
+  await screen.findByRole('button', { name: /Option 1/ });
+  expect(capture.props!.transit!.journey?.id).toBe('bus-journey');
+  act(() => capture.props!.onTransitPatternSelect!('ev1-0'));
+  expect(capture.props!.transit!.journey).toBeNull();
+  expect(transitOverlayFeatures(capture.props!.transit).journey.features).toHaveLength(0);
+  expect(screen.getByRole('button', { name: /Bus routes/ }).getAttribute('aria-pressed')).toBe('true');
+  expect(screen.getByRole('region', { name: 'Selected bus route' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: /Your journey/ }));
+  expect(capture.props!.transit!.journey?.id).toBe('bus-journey');
+});
+
 it('supports stop-name and friendly code search and hides publication controls from a guest', async () => {
   render(<App />); await screen.findByRole('button', { name: 'Find routes' }); fireEvent.click(screen.getByRole('button', { name: 'Local' }));
   await screen.findByRole('button', { name: /EV-1 Station A to Station C/ });
@@ -130,6 +222,141 @@ it('does not fetch the network on ordinary live clock ticks, but checks a lightw
   expect(vi.mocked(api).mock.calls.filter(([path]) => path === '/transit/revision')).toHaveLength(1);
 });
 
+it('shows an accessible route skeleton immediately during the first Local download and replaces it when ready', async () => {
+  let resolve!: (value: TransitNetwork) => void;
+  vi.mocked(api).mockImplementation(async path => path.startsWith('/transit/network') ? new Promise<TransitNetwork>(done => { resolve = done; }) : state as never);
+  function LoadingPanel() { const transit = useTransit(true, at, 0, [], vi.fn()); return <TransitPanel transit={transit} mode="browse" setMode={vi.fn()} onFocus={vi.fn()} canReview={false} at={at} />; }
+  render(<LoadingPanel />);
+  const loading = screen.getByRole('region', { name: 'Local routes loading' });
+  expect(within(loading).getByRole('status').textContent).toContain('Loading local routes…');
+  expect(loading.querySelector('.transit-loading-skeleton')?.getAttribute('aria-hidden')).toBe('true');
+  expect((screen.getByRole('button', { name: 'Find local routes' }) as HTMLButtonElement).disabled).toBe(true);
+  await act(async () => resolve(network));
+  expect(screen.queryByRole('region', { name: 'Local routes loading' })).toBeNull();
+  expect(screen.getByRole('button', { name: /EV-1 Station A to Station C/ })).toBeTruthy();
+});
+
+it('offers an explicit retry after an initial Local download fails', async () => {
+  let attempts = 0;
+  vi.mocked(api).mockImplementation(async path => {
+    if (path.startsWith('/transit/network')) { if (++attempts === 1) throw new Error('Local transport is unavailable.'); return network; }
+    return state as never;
+  });
+  function FailedPanel() { const transit = useTransit(true, at, 0, [], vi.fn()); return <TransitPanel transit={transit} mode="browse" setMode={vi.fn()} onFocus={vi.fn()} canReview={false} at={at} />; }
+  render(<FailedPanel />);
+  expect((await screen.findByRole('alert')).textContent).toContain('Local transport is unavailable.');
+  expect(screen.queryByRole('region', { name: 'Local routes loading' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+  await screen.findByRole('button', { name: /EV-1 Station A to Station C/ });
+  expect(screen.queryByRole('alert')).toBeNull(); expect(attempts).toBe(2);
+});
+
+it('reuses Local geometry on re-entry after a small revision check and does not trust cached availability during that check', async () => {
+  let resolve!: (value: { version: string; eventRevision: number; disruptionRevision: number }) => void;
+  vi.mocked(api).mockImplementation(async path => path.startsWith('/transit/network') ? network : path === '/transit/revision' ? new Promise(done => { resolve = done; }) : transitPlan() as never);
+  const { result, rerender } = renderHook(({ enabled }) => useTransit(enabled, at, 0, [], vi.fn()), { initialProps: { enabled: true } });
+  await act(async () => { await Promise.resolve(); });
+  const original = result.current.network;
+  act(() => { result.current.changeEndpoint('A', { name: 'A', coordinate: [73, 33.7] }); result.current.changeEndpoint('B', { name: 'C', coordinate: [73.02, 33.7] }); });
+  rerender({ enabled: false }); rerender({ enabled: true });
+  expect(result.current.network).toBe(original); expect(result.current.networkLoading).toBe(true); expect(result.current.stale).toBe(true);
+  await act(async () => { await result.current.calculate(); });
+  expect(vi.mocked(api).mock.calls.some(([path]) => path === '/transit/plan')).toBe(false);
+  await act(async () => resolve({ version: network.version, eventRevision: 0, disruptionRevision: 0 }));
+  expect(result.current.network).toBe(original); expect(result.current.networkLoading).toBe(false); expect(result.current.stale).toBe(false);
+  expect(vi.mocked(api).mock.calls.filter(([path]) => path.startsWith('/transit/network'))).toHaveLength(1);
+  expect(vi.mocked(api).mock.calls.filter(([path]) => path === '/transit/revision')).toHaveLength(1);
+});
+
+it('cannot expose a previous journey through periodic polling while cached re-entry verification is still pending', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(at);
+  let resolve!: (value: { version: string; eventRevision: number; disruptionRevision: number }) => void, checks = 0;
+  const revision = { version: network.version, eventRevision: 0, disruptionRevision: 0 };
+  vi.mocked(api).mockImplementation(async path => path.startsWith('/transit/network') ? network : path === '/transit/revision' ? ++checks === 1 ? new Promise(done => { resolve = done; }) : revision : transitPlan() as never);
+  const { result, rerender, unmount } = renderHook(({ enabled }) => useTransit(enabled, at, 0, [], vi.fn()), { initialProps: { enabled: true } });
+  await act(async () => { await Promise.resolve(); });
+  act(() => { result.current.changeEndpoint('A', { name: 'A', coordinate: [73, 33.7] }); result.current.changeEndpoint('B', { name: 'C', coordinate: [73.02, 33.7] }); });
+  await act(async () => result.current.calculate()); expect(result.current.journey?.id).toBe('bus-journey');
+  rerender({ enabled: false }); rerender({ enabled: true });
+  expect(result.current.network).toBe(network); expect(result.current.journey).toBeNull();
+  await act(async () => { await vi.advanceTimersByTimeAsync(20000); });
+  expect(checks).toBe(1); expect(result.current.networkLoading).toBe(true); expect(result.current.stale).toBe(true);
+  expect(result.current.result).toBeNull(); expect(result.current.journey).toBeNull();
+  await act(async () => resolve(revision));
+  expect(result.current.networkLoading).toBe(false); expect(result.current.stale).toBe(false); expect(result.current.journey?.id).toBe('bus-journey');
+  unmount(); vi.clearAllTimers();
+});
+
+it('bounds stalled periodic service checks, marks availability uncertain and permits a later check to recover', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(at);
+  vi.spyOn(AbortSignal, 'timeout').mockImplementation(milliseconds => {
+    const deadline = new AbortController(); setTimeout(() => deadline.abort(new DOMException('Timed out', 'TimeoutError')), milliseconds); return deadline.signal;
+  });
+  let checks = 0, polledSignal!: AbortSignal;
+  vi.mocked(api).mockImplementation(async (path, init) => {
+    if (path.startsWith('/transit/network')) return network;
+    if (path === '/transit/revision') {
+      if (++checks > 1) return { version: network.version, eventRevision: 0, disruptionRevision: 0 };
+      polledSignal = init!.signal!;
+      return new Promise((_, reject) => polledSignal.addEventListener('abort', () => reject(polledSignal.reason), { once: true }));
+    }
+    return state as never;
+  });
+  const { result, unmount } = renderHook(() => useTransit(true, at, 0, [], vi.fn()));
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(20000); });
+  expect(checks).toBe(1); expect(polledSignal.aborted).toBe(false);
+  await act(async () => { await vi.advanceTimersByTimeAsync(29999); });
+  expect(polledSignal.aborted).toBe(false); expect(checks).toBe(1);
+  await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+  expect(polledSignal.aborted).toBe(true); expect(result.current.network).toBe(network);
+  expect(result.current.stale).toBe(true); expect(result.current.networkError).toBe('Service updates unavailable. Refresh to retry.');
+  await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
+  expect(checks).toBe(2); expect(result.current.stale).toBe(false); expect(result.current.networkError).toBe('');
+  unmount(); vi.clearAllTimers();
+});
+
+it('downloads a changed service revision on re-entry while retaining the old geometry until replacement', async () => {
+  const next = { ...network, disruptionRevision: 1 };
+  let resolve!: (value: TransitNetwork) => void, requests = 0;
+  vi.mocked(api).mockImplementation(async path => path.startsWith('/transit/network') ? ++requests === 1 ? network : new Promise<TransitNetwork>(done => { resolve = done; }) : path === '/transit/revision' ? { version: network.version, eventRevision: 0, disruptionRevision: 1 } : state as never);
+  const { result, rerender } = renderHook(({ enabled }) => useTransit(enabled, at, 0, [], vi.fn()), { initialProps: { enabled: true } });
+  await act(async () => { await Promise.resolve(); });
+  rerender({ enabled: false }); rerender({ enabled: true });
+  await act(async () => { await Promise.resolve(); });
+  expect(requests).toBe(2); expect(result.current.network?.disruptionRevision).toBe(0); expect(result.current.stale).toBe(true);
+  await act(async () => resolve(next));
+  expect(result.current.network?.disruptionRevision).toBe(1); expect(result.current.stale).toBe(false);
+});
+
+it('keeps saved Local geometry explicitly uncertain when re-entry revision verification fails', async () => {
+  vi.mocked(api).mockImplementation(async path => path.startsWith('/transit/network') ? network : path === '/transit/revision' ? Promise.reject(new Error('Offline')) : state as never);
+  const { result, rerender } = renderHook(({ enabled }) => useTransit(enabled, at, 0, [], vi.fn()), { initialProps: { enabled: true } });
+  await act(async () => { await Promise.resolve(); });
+  rerender({ enabled: false }); rerender({ enabled: true }); await act(async () => { await Promise.resolve(); });
+  expect(result.current.network).toBe(network); expect(result.current.stale).toBe(true); expect(result.current.networkLoading).toBe(false);
+  expect(result.current.networkError).toBe('Service updates unavailable. Refresh to retry.');
+});
+
+it('ignores a late Local download after leaving the tab and cancels its signal', async () => {
+  let resolve!: (value: TransitNetwork) => void, signal!: AbortSignal;
+  vi.mocked(api).mockImplementation(async (path, init) => path.startsWith('/transit/network') ? new Promise<TransitNetwork>(done => { resolve = done; signal = init!.signal!; }) : state as never);
+  const { result, rerender } = renderHook(({ enabled }) => useTransit(enabled, at, 0, [], vi.fn()), { initialProps: { enabled: true } });
+  rerender({ enabled: false }); expect(signal.aborted).toBe(true);
+  await act(async () => resolve(network)); expect(result.current.network).toBeNull();
+});
+
+it('invalidates and refreshes Local availability at a road closure time boundary without removing known geometry', async () => {
+  const closure = { id: 'road', revision: 1, status: 'published', moderation: 'approved', startsAt: '2026-10-18T08:01:00Z', endsAt: '2026-10-18T09:00:00Z' } as AppState['closures'][number];
+  let resolve!: (value: TransitNetwork) => void, requests = 0;
+  vi.mocked(api).mockImplementation(async path => path.startsWith('/transit/network') ? ++requests === 1 ? network : new Promise<TransitNetwork>(done => { resolve = done; }) : state as never);
+  const { result, rerender } = renderHook(({ time }) => useTransit(true, time, 0, [closure], vi.fn()), { initialProps: { time: at } });
+  await act(async () => { await Promise.resolve(); });
+  rerender({ time: '2026-10-18T08:01:00.000Z' });
+  expect(requests).toBe(2); expect(result.current.network).toBe(network); expect(result.current.stale).toBe(true);
+  await act(async () => resolve(network)); expect(result.current.stale).toBe(false);
+});
+
 it('rejects an outdated local journey response after its endpoints change', async () => {
   let resolve!: (value: TransitPlanResponse) => void;
   vi.mocked(api).mockImplementation(async path => path.startsWith('/transit/network') ? network : path === '/transit/plan' ? new Promise<TransitPlanResponse>(done => { resolve = done; }) : state as never);
@@ -153,6 +380,50 @@ it('refreshes a wanted journey on the minute without hiding its previous route o
   const next = transitPlan(); next.options[0] = { ...next.options[0], id: 'new-departure', departureAt: later }; next.departureAt = later;
   await act(async () => { resolve(next); await Promise.resolve(); });
   expect(result.current.planning).toBe(false); expect(result.current.journey?.id).toBe('new-departure');
+});
+
+it('preserves the chosen alternative through background refresh and reordering, falling back only if it disappears', async () => {
+  const initial = transitPlan();
+  initial.options.push({ ...initial.options[0], id: 'chosen-alternative', distanceMeters: 2800 });
+  let resolve!: (value: TransitPlanResponse) => void, requests = 0;
+  const focus = vi.fn();
+  vi.mocked(api).mockImplementation(async path => path.startsWith('/transit/network') ? network : path === '/transit/plan' ? ++requests === 1 ? initial : new Promise<TransitPlanResponse>(done => { resolve = done; }) : state as never);
+  const { result, rerender } = renderHook(({ time }) => useTransit(true, time, 0, [], focus), { initialProps: { time: at } });
+  await act(async () => { await Promise.resolve(); });
+  act(() => { result.current.changeEndpoint('A', { name: 'A', coordinate: [73, 33.7] }); result.current.changeEndpoint('B', { name: 'C', coordinate: [73.02, 33.7] }); });
+  await act(async () => result.current.calculate());
+  act(() => result.current.selectJourney(initial.options[1]));
+  expect(result.current.journey).toBe(initial.options[1]);
+  focus.mockClear();
+
+  const nextMinute = '2026-10-18T08:01:00.000Z';
+  rerender({ time: nextMinute });
+  await act(async () => { await Promise.resolve(); });
+  expect(requests).toBe(2);
+  expect(result.current.planning).toBe(true);
+  expect(result.current.journey).toBe(initial.options[1]);
+  const updatedChoice = { ...initial.options[1], departureAt: nextMinute, distanceMeters: 2850 };
+  const reordered = { ...initial, departureAt: nextMinute, options: [updatedChoice, initial.options[0]] };
+  await act(async () => { resolve(reordered); await Promise.resolve(); });
+  expect(result.current.planning).toBe(false);
+  expect(result.current.journey).toBe(updatedChoice);
+  expect(result.current.journey?.id).toBe('chosen-alternative');
+  expect(result.current.journey?.distanceMeters).toBe(2850);
+
+  const laterMinute = '2026-10-18T08:02:00.000Z';
+  rerender({ time: laterMinute });
+  await act(async () => { await Promise.resolve(); });
+  expect(requests).toBe(3);
+  expect(result.current.planning).toBe(true);
+  expect(result.current.journey).toBe(updatedChoice);
+  const remainingChoice = { ...initial.options[0], departureAt: laterMinute };
+  await act(async () => { resolve({ ...initial, departureAt: laterMinute, options: [remainingChoice] }); await Promise.resolve(); });
+  expect(result.current.planning).toBe(false);
+  expect(result.current.journey).toBe(remainingChoice);
+  expect(result.current.journey?.id).toBe('bus-journey');
+  expect(result.current.journeyVisible).toBe(true);
+  expect(focus).not.toHaveBeenCalled();
+  expect(vi.mocked(api).mock.calls.filter(([path]) => path.startsWith('/transit/network'))).toHaveLength(1);
 });
 
 it('publishes a strict whole-line notice for both directions by default, and scopes a partial section to one direction', async () => {
@@ -203,4 +474,35 @@ it.each([false, true])('labels section-only service notices accurately in route 
   const label = full ? 'Service suspended' : 'Partial suspension';
   expect(screen.getByRole('region', { name: 'Selected bus route' }).querySelector('.transit-status')?.textContent).toBe(label);
   expect(screen.getByRole('button', { name: `EV-1 Station A to Station C · ${label}` })).toBeTruthy();
+});
+
+it('keeps inferred road gaps distinct from closures and lists the affected consecutive stop pairs only on expansion', async () => {
+  const gapped = structuredClone(network);
+  gapped.patterns[0].geometryQuality = 'road-aligned-estimate';
+  gapped.patterns[0].roadAlignment = { method: 'ordered-bus-road-shortest-path', snapDistancesMeters: [0, 0, 0], unresolved: [{ afterStopIndex: 0, reason: 'Road path unavailable' }, { afterStopIndex: 0, reason: 'Source gap' }] };
+  gapped.patterns[0].breakAfterStopIndexes = [1];
+  const { result } = renderHook(() => useTransit(true, at, 0, [], vi.fn())); await act(async () => { await Promise.resolve(); });
+  const props = { mode: 'browse' as const, setMode: vi.fn(), onFocus: vi.fn(), canReview: false, at };
+  const view = render(<TransitPanel {...props} transit={{ ...result.current, network: gapped, selectedPatternId: 'ev1-0' }} />);
+  const region = screen.getByRole('region', { name: 'Selected bus route' });
+  expect(within(region).getByText('Road-aligned estimate')).toBeTruthy();
+  expect(within(region).getByText('No reported disruption')).toBeTruthy();
+  expect(within(region).queryByText('Service suspended')).toBeNull();
+  const summary = within(region).getByText('Some road sections are unmapped'), details = summary.closest('details')!;
+  expect(details.open).toBe(false); expect(details.querySelectorAll('li')).toHaveLength(2);
+  expect(details.textContent).toContain('Station A – Station B'); expect(details.textContent).toContain('Station B – Station C');
+  fireEvent.click(summary); expect(details.open).toBe(true);
+  view.rerender(<TransitPanel {...props} transit={{ ...result.current, network, selectedPatternId: 'ev1-0' }} />);
+  expect(screen.queryByText('Some road sections are unmapped')).toBeNull();
+});
+
+it('labels an unmapped stops-only route without advertising straight schematic road connections', async () => {
+  const unmapped = structuredClone(network); unmapped.patterns[0].geometryQuality = 'stops-only';
+  const { result } = renderHook(() => useTransit(true, at, 0, [], vi.fn())); await act(async () => { await Promise.resolve(); });
+  render(<TransitPanel transit={{ ...result.current, network: unmapped, selectedPatternId: 'ev1-0' }} mode="browse" setMode={vi.fn()} onFocus={vi.fn()} canReview={false} at={at} />);
+  const region = screen.getByRole('region', { name: 'Selected bus route' });
+  expect(within(region).getByText('Road alignment unavailable')).toBeTruthy();
+  expect(within(region).queryByText('Schematic stop connections')).toBeNull();
+  expect(within(region).queryByText('Some road sections are unmapped')).toBeNull();
+  expect(within(region).getByRole('button', { name: 'Start at Station A' })).toBeTruthy();
 });

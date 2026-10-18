@@ -40,9 +40,26 @@ export function validateTransitDataset(value: unknown): TransitDataset {
     }
   }
   for (const pattern of data.patterns) {
-    if (!routes.has(pattern.routeId) || pattern.stopIds.some(id => !stops.has(id)) || pattern.stopIds.length < 2 || !shape(pattern.geometry)||pattern.geometrySegments?.some(line=>!shape(line))||!['provided-shape','mapped-corridor','stops-only'].includes(pattern.geometryQuality)) throw new Error('Invalid transit pattern.');
+    if (!routes.has(pattern.routeId) || pattern.stopIds.some(id => !stops.has(id)) || pattern.stopIds.length < 2 || !shape(pattern.geometry)||pattern.geometrySegments?.some(line=>!shape(line))||!['provided-shape','mapped-corridor','road-aligned-estimate','stops-only'].includes(pattern.geometryQuality)) throw new Error('Invalid transit pattern.');
     if (pattern.breakAfterStopIndexes?.some(index => !Number.isInteger(index) || index < 0 || index >= pattern.stopIds.length - 1)) throw new Error('Invalid transit gap.');
     if (pattern.routingUnavailableReason !== undefined && (typeof pattern.routingUnavailableReason !== 'string' || !pattern.routingUnavailableReason.trim() || pattern.routingUnavailableReason.length > 1000)) throw new Error('Invalid source-conflict explanation.');
+    if (pattern.stopDistancesMeters && (pattern.stopDistancesMeters.length !== pattern.stopIds.length || pattern.stopDistancesMeters.some((distance,index,all)=>!Number.isFinite(distance)||distance<0||index>0&&distance<all[index-1]))) throw new Error('Invalid transit stop distances.');
+    if (pattern.geometryQuality === 'road-aligned-estimate') {
+      if (!pattern.geometrySourceId || !sources.has(pattern.geometrySourceId) || !Array.isArray(pattern.roadSegments) || pattern.roadSegments.length !== pattern.stopIds.length - 1 || !pattern.roadAlignment || pattern.roadAlignment.method !== 'ordered-bus-road-shortest-path' || pattern.roadAlignment.snapDistancesMeters.length !== pattern.stopIds.length || pattern.roadAlignment.snapDistancesMeters.some(distance=>distance!==null&&(!Number.isFinite(distance)||distance<0||distance>150))) throw new Error('Invalid transit road alignment.');
+      for (let index=0;index<pattern.roadSegments.length;index++) {
+        const line=pattern.roadSegments[index],gap=pattern.breakAfterStopIndexes?.includes(index)??false;
+        if (line === null ? !gap : gap || !shape(line)) throw new Error('Invalid transit road gap.');
+        const previous=index?pattern.roadSegments[index-1]:null;
+        if(line&&previous&&JSON.stringify(previous.coordinates.at(-1))!==JSON.stringify(line.coordinates[0]))throw new Error('Disconnected transit road pairs.');
+      }
+      if (pattern.roadAlignment.unresolved.some(item=>!Number.isInteger(item.afterStopIndex)||item.afterStopIndex<0||item.afterStopIndex>=pattern.stopIds.length-1||!item.reason||!pattern.breakAfterStopIndexes?.includes(item.afterStopIndex))) throw new Error('Invalid road-alignment limitation.');
+      if(new Set(pattern.roadAlignment.unresolved.map(item=>item.afterStopIndex)).size!==(pattern.breakAfterStopIndexes?.length??0))throw new Error('Missing road-alignment limitation.');
+      const expectedGroups:typeof pattern.geometry[]=[],flush=(coordinates:number[][])=>{if(coordinates.length>=2)expectedGroups.push({type:'LineString',coordinates});};let group:number[][]=[];
+      for(const line of pattern.roadSegments){if(!line){flush(group);group=[];}else group.push(...(group.length?line.coordinates.slice(1):line.coordinates));}flush(group);
+      if(!Array.isArray(pattern.geometrySegments)||JSON.stringify(pattern.geometrySegments)!==JSON.stringify(expectedGroups))throw new Error('Transit map sections differ from validated road pairs.');
+      const firstStop=data.stops.find(stop=>stop.id===pattern.stopIds[0])!.coordinate,representative=expectedGroups[0]??{type:'LineString',coordinates:[firstStop,firstStop]};
+      if(JSON.stringify(pattern.geometry)!==JSON.stringify(representative))throw new Error('Transit representative geometry bridges or differs from road sections.');
+    } else if (pattern.roadSegments || pattern.roadAlignment) throw new Error('Road segments require estimated geometry provenance.');
   }
   for(const calendar of data.calendars)if(!date(calendar.startDate)||!date(calendar.endDate)||calendar.startDate>calendar.endDate||!Array.isArray(calendar.weekdays)||calendar.weekdays.some(day=>!Number.isInteger(day)||day<0||day>6)||!Array.isArray(calendar.exceptions)||calendar.exceptions.some(exception=>!date(exception.date)||typeof exception.added!=='boolean'))throw new Error('Invalid transit calendar.');
   const patternById = new Map(data.patterns.map(pattern => [pattern.id,pattern]));

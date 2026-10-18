@@ -16,7 +16,7 @@ it('binds the shipped authority comparison to the exact imported evidence and pu
   expect(manifest.evidence.cdaSha256).toBe(digest(readFileSync(new URL('../assets/transit/cda-verification.json', import.meta.url))));
   expect(manifest.datasetVersion).toBe(cda.comparedDatasetVersion); expect(manifest.datasetVersion).toBe(pma.datasetVersion);
   expect(manifest.normalizedDatasetSha256).toBe(pma.normalizedDatasetSha256);
-  expect(data.version).toBe(`${manifest.datasetVersion}-review-${provenance.officialReviewSha256.slice(0, 8)}`);
+  expect(data.version).toBe(`${manifest.datasetVersion}-review-${provenance.officialReviewSha256.slice(0, 8)}-roads-${provenance.roadAlignmentSha256.slice(0,8)}`);
   expect(data.routes).toHaveLength(37); expect(data.patterns).toHaveLength(67); expect(data.stops).toHaveLength(1210);
   expect(data.routes.every(route => !!route.officialReview)).toBe(true);
   expect(data.routes.filter(route => route.officialReview?.status === 'consistent')).toHaveLength(10);
@@ -50,7 +50,7 @@ it('preserves official Punjab stop order agreement while rejecting the same inva
     expect(digest(JSON.stringify(pattern.stopIds.map(id => stops.get(id)!.coordinate)))).toBe(direction.usableCoordinateSha256);
   }
   const broken = data.patterns.find(pattern => pattern.id === 'eqyn8')!;
-  expect(broken.unplacedStops).toContain('Rahimabad'); expect(broken.breakAfterStopIndexes).toEqual([8]);
+  expect(broken.unplacedStops).toContain('Rahimabad'); expect(broken.breakAfterStopIndexes).toContain(8);expect(broken.roadSegments![8]).toBeNull();
 });
 
 it('keeps contradictory partial Metro patterns unavailable and new historical references unmapped without altering the full Metro corridor', () => {

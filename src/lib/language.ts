@@ -23,6 +23,7 @@ export function translate(text: string, language: Language): string {
     [/^(\d+) min$/, m => `${m[1]} منٹ`], [/^(\d+) hr (\d+) min$/, m => `${m[1]} گھنٹے ${m[2]} منٹ`],
     [/^([\d.]+) km$/, m => `${m[1]} کلومیٹر`], [/^(\d+) m$/, m => `${m[1]} میٹر`],
     [/^GPS estimate · reported accuracy about (\d+) m$/, m => `جی پی ایس کی تخمینی درستگی تقریباً ${m[1]} میٹر`],
+    [/^Current location · ±(\d+) m$/, m => `موجودہ مقام · ±${m[1]} میٹر`],
     [/^Leave (\d+) minutes earlier$/, m => `${m[1]} منٹ پہلے روانگی`], [/^Leave (\d+) minutes later$/, m => `${m[1]} منٹ بعد روانگی`],
     [/^To (.+)$/, m => `${m[1]} کی طرف`], [/^Via (.+)$/, m => `براستہ ${m[1]}`],
     [/^(.+) ahead$/, m => `${translate(m[1], language)} آگے`],

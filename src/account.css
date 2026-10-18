@@ -1,5 +1,6 @@
 /* Entry uses code-native scenery only; it never starts map/GPS services. */
-.account-modal .modal-card { padding: 30px; }
+.account-modal .modal-card { position: relative; padding: 30px; }
+.account-modal .account-close { position: absolute; top: 10px; inset-inline-end: 10px; width: 44px; height: 44px; }
 .account-layout { min-width: 0; }
 .account-form-column { min-width: 0; }
 .account-form-inner { width: 100%; max-width: 352px; margin: auto; }
@@ -13,6 +14,10 @@
 .account-modal .account-fields { margin: 0; gap: 17px; }
 .account-modal .field-label { font-size: 13px; gap: 8px; }
 .account-modal input { min-height: 50px; font-size: 16px; border-radius: 11px; }
+.account-password-field { position: relative; min-width: 0; direction: ltr; }
+.account-password-field input { padding-inline-end: 54px; }
+.account-modal .account-password-toggle { position: absolute; top: 50%; inset-inline-end: 3px; transform: translateY(-50%); width: 44px; height: 44px; padding: 10px; }
+.account-modal .account-password-toggle:focus-visible,.account-modal .account-close:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 .account-modal .account-submit { min-height: 50px; margin-top: 3px; font-size: 14px; border-radius: 11px; background: var(--paper); }
 .account-links { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 12px; }
 .account-links .text-button { min-height: 44px; font-size: 13px; }

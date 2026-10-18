@@ -18,6 +18,7 @@ function disruptionHits(disruption:TransitDisruption,pattern:TransitPattern,from
   return first>=0&&last>first&&from<last&&to>first;
 }
 export function rideAffected(pattern:TransitPattern,from:number,to:number,start:number,end:number,closures:Closure[],disruptions:TransitDisruption[],stops:Map<string,TransitStop>,distances:number[],scheduled?:{trip:TransitTrip;serviceStart:number},geometryRisks?:Map<string,Closure[]>):boolean {
+  if(hasGap(pattern,from,to))return true;
   if(disruptions.some(alert=>disruptionHits(alert,pattern,from,to,start,end)))return true;
   // Resolve crossing time per consecutive stop pair rather than treating an entire
   // long bus line as occupying every road for the whole journey.
@@ -26,7 +27,7 @@ export function rideAffected(pattern:TransitPattern,from:number,to:number,start:
     const enter=scheduled?scheduled.serviceStart+scheduled.trip.times[index][index===from?1:0]*1000:start+(end-start)*(distances[index]-distances[from])/total,exit=scheduled?scheduled.serviceStart+scheduled.trip.times[index+1][0]*1000:start+(end-start)*(distances[index+1]-distances[from])/total;
     if(!closures.length)continue;
     const key=`${pattern.id}:${index}`;let risks=geometryRisks?.get(key);
-    if(!risks){const line=sliceShape(pattern,distances,index,index+1,stops);risks=closures.filter(closure=>lineHitsClosure(line,closure));geometryRisks?.set(key,risks);}
+    if(!risks){let line;try{line=sliceShape(pattern,distances,index,index+1,stops);}catch{return true;}risks=closures.filter(closure=>lineHitsClosure(line,closure));geometryRisks?.set(key,risks);}
     for(const closure of risks)if(overlap(closure.startsAt,closure.endsAt,enter,exit))return true;
   }
   return false;
@@ -89,14 +90,14 @@ export function planTransit(data:TransitDataset|null,request:TransitPlanRequest,
       for(const boarding of boardings(pattern,index,readyAt))for(let end=index+1;end<pattern.stopIds.length;end++){
         if(hasGap(pattern,index,end))break;if(boarding.trip?.dropOffAllowed?.[end]===false)continue;
         const shapeKey=`${pattern.id}:${index}:${end}`;let cachedShape=rideShapes.get(shapeKey);
-        if(!cachedShape){const shape=sliceShape(pattern,distances.get(pattern.id)!,index,end,stops);cachedShape={shape,distance:lineDistance(shape)};rideShapes.set(shapeKey,cachedShape);}
+        if(!cachedShape){let shape;try{shape=sliceShape(pattern,distances.get(pattern.id)!,index,end,stops);}catch{if(!response.warnings.includes('Some bus road geometry is unavailable; unresolved sections are excluded.'))response.warnings.push('Some bus road geometry is unavailable; unresolved sections are excluded.');break;}cachedShape={shape,distance:lineDistance(shape)};rideShapes.set(shapeKey,cachedShape);}
         const {shape,distance}=cachedShape,unknown=boarding.departure===null||state.clock===null;
         const departure=unknown?null:boarding.departure!,arrival=unknown?null:boarding.serviceStart!+boarding.trip!.times[end][0]*1000;
         const approximateDuration=Math.max(60,distance/6),elapsed=unknown?state.elapsed+approximateDuration*1000:arrival!-started;
         const fromTime=departure??started,toTime=arrival??started+MAX_JOURNEY;
         if(rideAffected(pattern,index,end,fromTime,toTime,closures,disruptions,stops,distances.get(pattern.id)!,!unknown?{trip:boarding.trip!,serviceStart:boarding.serviceStart!}:undefined,geometryRisks))continue;
         const to=stops.get(pattern.stopIds[end])!,ride:TransitRideLeg={kind:'ride',routeId:pattern.routeId,patternId:pattern.id,...(boarding.trip?{tripId:boarding.trip.id}:{}),from:stop,to,stops:pattern.stopIds.slice(index,end+1).map(id=>stops.get(id)!),geometry:shape,distanceMeters:Math.round(distance),departureAt:departure===null?null:new Date(departure).toISOString(),arrivalAt:arrival===null?null:new Date(arrival).toISOString(),durationSeconds:arrival===null||departure===null?null:Math.round((arrival-departure)/1000),availability:'available',geometryQuality:pattern.geometryQuality};
-        const warnings=new Set(state.warnings);if(unknown)warnings.add('No dependable timetable is available for every connection; no arrival time is promised.');if(pattern.geometryQuality==='stops-only')warnings.add('Some bus lines connect known stops schematically; their road alignment and closure clearance are unverified.');if(boarding.trip?.timepoint?.slice(index,end+1).some(value=>!value))warnings.add('Intermediate stop times are source-model estimates, not live vehicle predictions.');if(data.routes.find(route=>route.id===pattern.routeId)?.officialReview?.status==='differences')warnings.add('Official sources differ from this route snapshot; check the linked references before travelling.');
+        const warnings=new Set(state.warnings);if(unknown)warnings.add('No dependable timetable is available for every connection; no arrival time is promised.');if(pattern.geometryQuality==='stops-only')warnings.add('Some bus lines connect known stops schematically; their road alignment and closure clearance are unverified.');if(pattern.geometryQuality==='road-aligned-estimate')warnings.add('Bus road alignment is estimated from ordered stops and mapped bus-access roads; actual operator streets can differ.');if(boarding.trip?.timepoint?.slice(index,end+1).some(value=>!value))warnings.add('Intermediate stop times are source-model estimates, not live vehicle predictions.');if(data.routes.find(route=>route.id===pattern.routeId)?.officialReview?.status==='differences')warnings.add('Official sources differ from this route snapshot; check the linked references before travelling.');
         push({stopId:to.id,legs:[...state.legs,ride],clock:arrival,elapsed,walking:state.walking,rides:state.rides+1,used:new Set([...state.used,pattern.routeId]),warnings});
       }
     }

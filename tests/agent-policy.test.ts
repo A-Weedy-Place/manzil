@@ -73,10 +73,10 @@ describe('source location resolution against actual roads', () => {
     expect(resolved.drawing.kind).toBe('line'); expect(resolved.drawing.coordinates[0]).toEqual([73.001,33.7]);
     expect(lookup).not.toHaveBeenCalled();
   });
-  it('holds unknown roads, unsupported cities and ambiguous places for review', async () => {
+  it('accepts an explicitly scoped road graph for another city and holds unknown roads and ambiguous places for review', async () => {
     const event = extraction().events[0]; event.location.city = 'Lahore';
-    await expect(resolveAgentLocation(event, graph(), vi.fn())).rejects.toThrow(/Islamabad/);
-    event.location.city = 'Islamabad'; event.location.road = 'Invented Road';
+    expect((await resolveAgentLocation(event, graph(), vi.fn())).key).toMatch(/^lahore:/);
+    event.location.road = 'Invented Road';
     await expect(resolveAgentLocation(event, graph(), vi.fn())).rejects.toThrow(/matched/);
     event.location.road = 'Park Road'; event.location.from = 'Unknown Place';
     await expect(resolveAgentLocation(event, graph(), async () => [])).rejects.toThrow(/ambiguous/);
