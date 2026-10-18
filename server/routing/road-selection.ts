@@ -49,7 +49,7 @@ function snaps(graph: RoutingGraph, values: Segment[], point: Coordinate): Snap[
  * node are not junctions. No private-road or off-road fallback is used. */
 export function selectRoadPoint(graph: RoutingGraph | null, point: Coordinate): RoadSection {
   if (!graph || point[0] < graph.bounds[0] || point[0] > graph.bounds[2] || point[1] < graph.bounds[1] || point[1] > graph.bounds[3]) {
-    throw new RoadSelectionError('Road selection is available inside the imported Islamabad road area.', 503);
+    throw new RoadSelectionError('Road data is unavailable for this area. Try again.', 503);
   }
   const values = segments(graph), nearest = snaps(graph, values, point)[0];
   if (!nearest) throw new RoadSelectionError(`Click within ${MAX_SNAP} metres of a supported public car road.`);
@@ -96,7 +96,7 @@ export function selectRoadPoint(graph: RoutingGraph | null, point: Coordinate): 
  * off-road line from becoming a published road barrier. */
 export function selectRoadBlockade(graph: RoutingGraph | null, from: Coordinate, to: Coordinate): RoadSection {
   if (!graph || [from, to].some(point => point[0] < graph.bounds[0] || point[0] > graph.bounds[2] || point[1] < graph.bounds[1] || point[1] > graph.bounds[3])) {
-    throw new RoadSelectionError('Road selection is available inside the imported Islamabad road area.', 503);
+    throw new RoadSelectionError('Road data is unavailable for this area. Try again.', 503);
   }
   const length = distanceMeters(from, to);
   if (length < 2) throw new RoadSelectionError('Draw a blockade at least 2 metres long.');
@@ -127,7 +127,7 @@ export function selectRoadBlockade(graph: RoutingGraph | null, from: Coordinate,
  * Never join roads at a visual crossing or invent a straight-line connection. */
 export function selectRoadSection(graph: RoutingGraph | null, from: Coordinate, to: Coordinate): RoadSection {
   if (!graph || [from, to].some(point => point[0] < graph.bounds[0] || point[0] > graph.bounds[2] || point[1] < graph.bounds[1] || point[1] > graph.bounds[3])) {
-    throw new RoadSelectionError('Road selection is available inside the imported Islamabad road area.', 503);
+    throw new RoadSelectionError('Road data is unavailable for this area. Try again.', 503);
   }
   const values = segments(graph), starts = snaps(graph, values, from), ends = snaps(graph, values, to);
   if (!starts.length || !ends.length) throw new RoadSelectionError(`Click within ${MAX_SNAP} metres of a supported public car road.`);

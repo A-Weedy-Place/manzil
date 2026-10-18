@@ -66,7 +66,8 @@ export function useRoadSelection({ enabled, owner, drawing, kind = 'road_closure
     const accepted = acceptedDrawing.current;
     setState(value => ({ ...value, busy: true, error: '' }));
     const stillCurrent = () => alive.current && sequence.current === request && current.current.enabled && current.current.owner === snapshot.owner && current.current.kind === snapshot.kind && (current.current.drawing === snapshot.drawing || current.current.drawing === accepted);
-    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]);
+    // An uncached road selection may need a bounded public OSM lookup first.
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(25000)]);
     let rejectAbort!: (reason: unknown) => void;
     const aborted = new Promise<never>((_, reject) => { rejectAbort = reject; });
     const onAbort = () => rejectAbort(signal.reason);

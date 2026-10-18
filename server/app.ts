@@ -2,7 +2,7 @@ import express, { type ErrorRequestHandler, type Request } from 'express';
 import { randomUUID } from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { z, ZodError } from 'zod';
-import type { Alert, AppState, Closure, ClosureDraft, ClosureInput, Commute, CommuteDraft, GraphStatus, Place, Trip } from '../shared/types.js';
+import type { Alert, AppState, Closure, ClosureDraft, ClosureInput, Commute, CommuteDraft, Coordinate, GraphStatus, Place, Trip } from '../shared/types.js';
 import type { Repository } from './repository.js';
 import { isAllowedApplicationHost, readConfig, type RuntimeConfig } from './config.js';
 import { firebaseServices } from './firebase.js';
@@ -26,6 +26,7 @@ import { frequentRouteProposals } from './frequent-routes.js';
 import { SpeechService, speechSchema } from './speech.js';
 import { actorFor, assertEditClosure, authenticateToken, canReadClosure, closureSummary, directoryEntry, isReviewer, membershipFor, setVerification, type TokenUser, type UserDirectory } from './community.js';
 import { RoadSelectionError, selectRoadBlockade, selectRoadPoint, selectRoadSection } from './routing/road-selection.js';
+import { RoadCoverageProvider } from './routing/road-coverage.js';
 import { FuelService, travelStatistics, pktDay } from './fuel.js';
 import { estimateTraceFuel } from '../shared/fuel.js';
 import { WeatherService } from './weather.js';
@@ -45,6 +46,7 @@ interface AppOptions {
   dispatchAgent?: () => Promise<unknown>;
   graph?: () => GraphStatus; places?: (query: string) => Place[] | Promise<Place[]>;
   roadGraph?: () => RoutingGraph | null;
+  roadCoverage?: { graphFor: (points: Coordinate[]) => Promise<RoutingGraph> };
 }
 const id = (request: Request) => z.string().min(1).max(180).parse(request.params.id);
 const localHosts = new Set(['127.0.0.1', 'localhost', '[::1]']);
@@ -104,12 +106,13 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
   const currentGraph = options.graph ?? graphStatus;
   const places = options.places ?? searchPlaces;
   const roadGraph = options.roadGraph ?? getRoutingGraph;
+  const roadCoverage = options.roadCoverage ?? new RoadCoverageProvider(roadGraph);
   const requireRoadGraph = () => { const graph = roadGraph(); if (!graph) throw new HttpError(503, 'The local road graph is unavailable.'); return graph; };
-  const assertRoadClosureScope = (draft: ClosureDraft) => {
+  const assertRoadClosureScope = async (draft: ClosureDraft) => {
     if (draft.restrictionType !== 'blockade') return;
     // Schema validation already bounds the exact two-point drawing and its
     // derived polygon; repeat road access/intersection checks at write time.
-    try { selectRoadBlockade(roadGraph(), draft.drawing!.coordinates[0], draft.drawing!.coordinates[1]); }
+    try { const points = draft.drawing!.coordinates; selectRoadBlockade(await roadCoverage.graphFor(points), points[0], points[1]); }
     catch (error) { if (error instanceof RoadSelectionError) throw new HttpError(error.status,error.message); throw error; }
   };
   app.disable('x-powered-by');
@@ -268,19 +271,19 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
     const query = z.string().max(160).parse(request.query.q ?? ''); response.json(await places(query));
   });
   routes.post('/geometry', (request, response) => response.json(polygonSchema.parse(drawingToPolygon(drawingSchema.parse(request.body)))));
-  routes.post('/roads/point', (request, response) => {
+  routes.post('/roads/point', async (request, response) => {
     const { coordinate } = z.object({ coordinate: coordinateSchema }).strict().parse(request.body);
-    try { response.json(selectRoadPoint(roadGraph(), coordinate)); }
+    try { response.json(selectRoadPoint(await roadCoverage.graphFor([coordinate]), coordinate)); }
     catch (error) { if (error instanceof RoadSelectionError) throw new HttpError(error.status, error.message); throw error; }
   });
-  routes.post('/roads/blockade', (request, response) => {
+  routes.post('/roads/blockade', async (request, response) => {
     const { from,to } = z.object({from:coordinateSchema,to:coordinateSchema}).strict().parse(request.body);
-    try { response.json(selectRoadBlockade(roadGraph(),from,to)); }
+    try { response.json(selectRoadBlockade(await roadCoverage.graphFor([from,to]),from,to)); }
     catch (error) { if (error instanceof RoadSelectionError) throw new HttpError(error.status,error.message); throw error; }
   });
-  routes.post('/roads/section', (request, response) => {
+  routes.post('/roads/section', async (request, response) => {
     const { from, to } = z.object({ from: coordinateSchema, to: coordinateSchema }).strict().parse(request.body);
-    try { response.json(selectRoadSection(roadGraph(), from, to)); }
+    try { response.json(selectRoadSection(await roadCoverage.graphFor([from,to]), from, to)); }
     catch (error) { if (error instanceof RoadSelectionError) throw new HttpError(error.status, error.message); throw error; }
   });
   routes.post('/plan', async (request, response, next) => {
@@ -301,7 +304,7 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
   });
   routes.post('/closures', async (request, response) => {
     const member = response.locals.membership!;
-    const body = closureDraftSchema.parse(request.body); assertRoadClosureScope(body);
+    const body = closureDraftSchema.parse(request.body); await assertRoadClosureScope(body);
     const actor = await actorFor(store, member, response.locals.user);
     const draft: ClosureInput = { ...body, author: actor, moderation: isReviewer(member) ? 'approved' : 'pending',
       status: isReviewer(member) ? body.status : 'draft', photoCount: body.photos?.length ?? 0 };
@@ -310,7 +313,7 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
   routes.get('/closures/roads', async (request, response) => {
     const at = instantSchema.parse(request.query.at ?? new Date().toISOString());
     const includeUpcoming = z.enum(['true', 'false']).optional().parse(request.query.includeUpcoming) === 'true';
-    response.json(activeClosureRoads(requireRoadGraph(), (await store.routingSnapshot()).closures, at, includeUpcoming));
+    response.json(activeClosureRoads(roadGraph(), (await store.routingSnapshot()).closures, at, includeUpcoming));
   });
   routes.get('/closures/:id', async (request, response) => {
     const closure = await getRecord<Closure>(store, 'closure', id(request));
@@ -323,7 +326,7 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
     const body = z.object({ revision: z.number().int().positive(), decision: z.enum(['approve', 'reject']) }).strict().parse(request.body);
     const previous = await getRecord<Closure>(store, 'closure', id(request));
     if (previous.moderation !== 'pending' || previous.status !== 'draft') throw new HttpError(409, 'This report is no longer awaiting review.');
-    if (body.decision === 'approve' && previous.restrictionType) assertRoadClosureScope(closureDraftSchema.parse(previous));
+    if (body.decision === 'approve' && previous.restrictionType) await assertRoadClosureScope(closureDraftSchema.parse(previous));
     const reviewer = await actorFor(store, member, response.locals.user);
     const closure = await store.saveClosure({ ...previous, status: body.decision === 'approve' ? 'published' : 'draft',
       moderation: body.decision === 'approve' ? 'approved' : 'rejected', reviewedBy: reviewer, reviewedAt: new Date().toISOString() }, previous.id, body.revision);
@@ -350,7 +353,7 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
     const previous = await getRecord<Closure>(store, 'closure', id(request)), member = response.locals.membership!;
     assertEditClosure(previous, member);
     const checkedBody = closureDraftSchema.parse({ ...body, restrictionType:body.restrictionType ?? previous.restrictionType });
-    assertRoadClosureScope(checkedBody);
+    await assertRoadClosureScope(checkedBody);
     const draft: ClosureInput = { ...checkedBody, ...(previous.author ? { author: previous.author } : {}),
       moderation: isReviewer(member) ? 'approved' : 'pending', status: isReviewer(member) ? body.status : 'draft',
       photos: body.photos ?? previous.photos ?? [], photoCount: (body.photos ?? previous.photos)?.length ?? 0,
@@ -442,7 +445,7 @@ export function createApp(rootStore: Repository, options: AppOptions = {}) {
     const body = z.object({ noticeRevision: z.number().int().positive(), index: z.number().int().min(0).max(2),
       version: z.string().uuid(), decision: z.enum(['approve', 'reject']), draft: closureDraftSchema.optional(),
       confirmRestriction: z.boolean().optional(), confirmUnknownEnd: z.boolean().optional() }).strict().parse(request.body);
-    if (body.decision === 'approve' && body.draft) assertRoadClosureScope(body.draft);
+    if (body.decision === 'approve' && body.draft) await assertRoadClosureScope(body.draft);
     const reviewer = await actorFor(store, response.locals.membership!, response.locals.user);
     const decision = await rootStore.reviewAgentProposal({ ...body, noticeId: id(request), reviewer });
     if (decision.closure && config.mode === 'local') await recheck(); response.json(decision);

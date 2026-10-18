@@ -124,7 +124,9 @@ it.each<RoadSelectionKind>(['road_closure', 'blockade'])('ends a timed-out %s se
   const hook = setup({ enabled: true, owner: 'first-user', drawing: emptyDrawing, kind }); await act(async () => hook.result.current.choose(kind === 'blockade' ? barrierFrom : click));
   hook.rerender({ enabled: true, owner: 'first-user', drawing: hook.onDraw.mock.calls[0][0], kind });
   let work!: Promise<void>; act(() => { work = hook.result.current.choose(kind === 'blockade' ? barrierTo : secondClick); });
-  await act(async () => { await vi.advanceTimersByTimeAsync(10000); await work; });
+  await act(async () => { await vi.advanceTimersByTimeAsync(20000); });
+  expect(hook.result.current.busy).toBe(true); expect(hook.result.current.error).toBe('');
+  await act(async () => { await vi.advanceTimersByTimeAsync(5000); await work; });
   expect(hook.result.current.busy).toBe(false); expect(hook.result.current.error).toBe('Road selection timed out. Try again.'); expect(hook.result.current.anchors).toHaveLength(1);
   await act(async () => { hung.resolve(interval); await Promise.resolve(); });
   expect(hook.onDraw).toHaveBeenCalledTimes(1); expect(hook.result.current.error).toBe('Road selection timed out. Try again.');

@@ -140,7 +140,7 @@ export class LocalRouter {
     for (const place of places) {
       const [lon, lat] = place.coordinate;
       if (!Number.isFinite(lon) || !Number.isFinite(lat) || lon < this.graph.bounds[0] || lon > this.graph.bounds[2] || lat < this.graph.bounds[1] || lat > this.graph.bounds[3]) {
-        response.unavailableReason = 'The start, destination and every stop must be inside the imported Islamabad area.'; return response;
+        response.unavailableReason = 'The start, destination and every stop must be inside the loaded offline road area.'; return response;
       }
     }
     const snapped = places.map(place => this.snap(place.coordinate));

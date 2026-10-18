@@ -5,6 +5,7 @@ import { createApp } from '../server/app';
 import { readConfig } from '../server/config';
 import { Store } from '../server/store';
 import { buildGraph } from '../server/routing/graph';
+import { RoadSelectionError } from '../server/routing/road-selection';
 import { drawingToPolygon } from '../server/geometry';
 import { closureDraftSchema } from '../server/validation';
 
@@ -25,7 +26,8 @@ async function setup(available = true) {
   store.setMeta('community:member:reviewer',{verified:true});
   const graph=graphFixture();
   const graphStatus:GraphStatus={ready:available,source:'fixture',version:'fixture',nodeCount:graph.nodes.length,edgeCount:graph.edges.length,importedAt:null,bounds:graph.bounds,limitations:[]};
-  const {app}=createApp(store,{config:readConfig({MANZIL_MODE:'emulator',FIREBASE_PROJECT_ID:'demo-blockade-test',FIRESTORE_EMULATOR_HOST:'127.0.0.1:8180',FIREBASE_AUTH_EMULATOR_HOST:'127.0.0.1:9199'}),verifyToken:async uid=>({uid,admin:uid==='admin'}),roadGraph:()=>available?graph:null,graph:()=>graphStatus});
+  const {app}=createApp(store,{config:readConfig({MANZIL_MODE:'emulator',FIREBASE_PROJECT_ID:'demo-blockade-test',FIRESTORE_EMULATOR_HOST:'127.0.0.1:8180',FIREBASE_AUTH_EMULATOR_HOST:'127.0.0.1:9199'}),verifyToken:async uid=>({uid,admin:uid==='admin'}),roadGraph:()=>available?graph:null,graph:()=>graphStatus,
+    roadCoverage:{graphFor:async()=>{if(!available)throw new RoadSelectionError('Test road provider unavailable.',503);return graph;}}});
   const server=await new Promise<Server>(resolve=>{const server=app.listen(0,'127.0.0.1',()=>resolve(server));});
   cleanup.push(()=>new Promise<void>(resolve=>{server.closeAllConnections();server.close(()=>resolve());}));
   const base=`http://127.0.0.1:${(server.address() as {port:number}).port}/api`;
