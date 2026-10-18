@@ -1,0 +1,23 @@
+{
+  "catalogueSha256": "8fe797dd1bc770f0f7ca6284a94af5ab685d7c7f92b8cc529ab6f0516c9b90cd",
+  "gtfsSha256": "a17c931a9d85d4e6919a6c1aa07d34b3653df4fe76e440341b6123fa716af514",
+  "feedDate": "2026-10-17",
+  "serviceFrom": "2026-10-17",
+  "serviceUntil": "2026-11-16",
+  "routeCount": 32,
+  "patternCount": 63,
+  "mappedPatternCount": 19,
+  "stopCount": 1193,
+  "tripCount": 2064,
+  "rejectedShapeIds": [],
+  "supplementSha256": "81b022dbec57986da6ad2809695e95cbeaef0a385ca70e99fd1f22c36a50d208",
+  "officialReviewSha256": "d2205044d8b141cc7191e6521e13a22db24d2685a92547868ed121c6ac2b19c3",
+  "normalizedSha256": "2113cb68fbc2a3b862aa7e09dc1b26420769f561a86bc4c542f66b50ab10777d",
+  "compressedBytes": 306384,
+  "normalizedBytes": 1901143,
+  "importedAt": "2026-10-17T22:02:43.601Z",
+  "combinedRouteCount": 37,
+  "combinedPatternCount": 67,
+  "combinedStopCount": 1210,
+  "mappedCorridorPatternCount": 4
+}

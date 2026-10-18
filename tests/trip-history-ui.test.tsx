@@ -1,0 +1,179 @@
+// @vitest-environment jsdom
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import type { AppState, Trip } from '../shared/types';
+import TripHistory from '../src/components/TripHistory';
+import { setLanguage } from '../src/lib/language';
+
+const mock = vi.hoisted(() => ({ userId: 'traveller' as string | null, api: vi.fn(), download: vi.fn(), image: vi.fn(), downloadImage: vi.fn() }));
+vi.mock('../src/lib/api', () => ({ api: mock.api }));
+vi.mock('../src/lib/auth', () => ({ getAuthSession: () => ({ user: mock.userId ? { uid: mock.userId } : null }) }));
+vi.mock('../src/lib/format', async () => ({ ...(await vi.importActual<typeof import('../src/lib/format')>('../src/lib/format')), downloadJSON: mock.download }));
+vi.mock('../src/lib/tripShareImage', () => ({ renderTripShareImage: mock.image, downloadTripImage: mock.downloadImage }));
+const at = '2026-10-17T08:00:00Z';
+const trip: Trip = { id: 'sample', name: 'Office journey', startedAt: at, endedAt: '2026-10-17T08:10:00Z', points: [], pointCount: 2, contributeToRoadDiscovery: false, distanceMeters: 5000, durationSeconds: 600, createdAt: at, gaps: 0 };
+const full: Trip = { ...trip, points: [{ coordinate: [73, 33.7], timestamp: at, accuracy: 10 }, { coordinate: [73.01, 33.71], timestamp: '2026-10-17T08:00:30Z', accuracy: 12 }] };
+const state = (trips = [trip], uid = 'traveller') => ({ profile: { createdAt: at, collectTravelData: false }, trips, membership: { uid, role: 'user', verified: false } }) as AppState;
+const props = () => ({ reload: vi.fn(async () => {}), notify: vi.fn(), onView: vi.fn() });
+beforeEach(() => { mock.userId = 'traveller'; mock.api.mockReset().mockResolvedValue(full); mock.download.mockReset(); mock.downloadImage.mockReset(); mock.image.mockReset().mockResolvedValue({ blob: new Blob(['png'], { type: 'image/png' }), basemap: 'map' });
+  Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:trip-image') }); Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() });
+  Object.defineProperty(navigator, 'share', { configurable: true, value: undefined }); Object.defineProperty(navigator, 'canShare', { configurable: true, value: undefined }); setLanguage('en'); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+
+it('shows private summaries without loading traces, enabling collection, or starting GPS', () => {
+  const watchPosition = vi.fn(); Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { watchPosition } });
+  render(<TripHistory {...props()} state={state()} />);
+  expect(screen.getByText('Office journey')).toBeTruthy(); expect(screen.getByText('5.0 km')).toBeTruthy();
+  expect(screen.getByText('Fuel estimate unavailable for this trip.')).toBeTruthy();
+  expect(mock.api).not.toHaveBeenCalled(); expect(watchPosition).not.toHaveBeenCalled();
+  expect(screen.queryByRole('button', { name: 'Start recording' })).toBeNull();
+  expect(screen.queryByText(/\d+ points/)).toBeNull();
+});
+
+it('loads the authorized private trace only after View on map is selected', async () => {
+  const callbacks = props(); render(<TripHistory {...callbacks} state={state()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'View on map' }));
+  await waitFor(() => expect(callbacks.onView).toHaveBeenCalledWith(full));
+  expect(mock.api).toHaveBeenCalledWith('/trips/sample', expect.objectContaining({ signal: expect.any(AbortSignal) }));
+  expect(mock.download).not.toHaveBeenCalled();
+});
+
+it('supports standalone UI accounts even though the local storage membership is different', async () => {
+  mock.userId = 'dev-user';
+  const callbacks = props(); render(<TripHistory {...callbacks} state={state([trip], 'local-admin')} showHeading={false} />);
+  expect(screen.queryByRole('heading', { name: 'Trip history' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'View on map' }));
+  await waitFor(() => expect(callbacks.onView).toHaveBeenCalledWith(full));
+  expect(screen.queryByRole('alert')).toBeNull();
+});
+
+it('creates an image preview only after Share and offers PNG before secondary GeoJSON', async () => {
+  const callbacks = props(); render(<TripHistory {...callbacks} state={state()} />);
+  expect(screen.queryByRole('button', { name: 'Export' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Share' }));
+  await screen.findByRole('img', { name: 'Journey map and statistics: Office journey' });
+  expect(mock.download).not.toHaveBeenCalled(); expect(mock.image).toHaveBeenCalledWith(full, expect.objectContaining({ signal: expect.any(AbortSignal) }));
+  fireEvent.click(screen.getByRole('button', { name: 'Download PNG' }));
+  expect(mock.downloadImage).toHaveBeenCalledWith(expect.any(Blob), 'manzil-trip-sample.png');
+  fireEvent.click(screen.getByText('More options')); fireEvent.click(screen.getByRole('button', { name: 'Download GeoJSON' }));
+  await waitFor(() => expect(mock.download).toHaveBeenCalledWith('manzil-trip-sample.geojson', { type: 'Feature', properties: { name: full.name, startedAt: full.startedAt, endedAt: full.endedAt }, geometry: { type: 'LineString', coordinates: [[73, 33.7], [73.01, 33.71]] } }));
+  expect(callbacks.onView).not.toHaveBeenCalled(); expect(mock.api).toHaveBeenCalledTimes(1);
+});
+
+it('requires confirmation to delete a trip and refreshes summaries only after success', async () => {
+  const callbacks = props(); render(<TripHistory {...callbacks} state={state()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Delete Office journey' }));
+  expect(mock.api).not.toHaveBeenCalled(); fireEvent.click(screen.getByRole('button', { name: 'Keep it' }));
+  expect(screen.queryByRole('button', { name: 'Delete trip' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Delete Office journey' })); fireEvent.click(screen.getByRole('button', { name: 'Delete trip' }));
+  await waitFor(() => expect(callbacks.notify).toHaveBeenCalledWith('Trip deleted.'));
+  expect(mock.api).toHaveBeenCalledWith('/trips/sample', expect.objectContaining({ method: 'DELETE', signal: expect.any(AbortSignal) }));
+  expect(callbacks.reload).toHaveBeenCalledTimes(1); expect(screen.queryByRole('button', { name: 'Delete trip' })).toBeNull();
+});
+
+it('keeps a failed deletion visible and never reports it successful', async () => {
+  mock.api.mockRejectedValue(new Error('Could not delete this trip.'));
+  const callbacks = props(); render(<TripHistory {...callbacks} state={state()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Delete Office journey' })); fireEvent.click(screen.getByRole('button', { name: 'Delete trip' }));
+  expect((await screen.findByRole('alert')).textContent).toBe('Could not delete this trip.');
+  expect(screen.getByRole('button', { name: 'Delete trip' })).toBeTruthy(); expect(callbacks.reload).not.toHaveBeenCalled(); expect(callbacks.notify).not.toHaveBeenCalled();
+});
+
+it('disables trace actions for retained summary-only trips and reports missing full traces honestly', async () => {
+  const callbacks = props(); const ui = render(<TripHistory {...callbacks} state={state([{ ...trip, pointCount: 0 }])} />);
+  expect((screen.getByRole('button', { name: 'View on map' }) as HTMLButtonElement).disabled).toBe(true); expect((screen.getByRole('button', { name: 'Share' }) as HTMLButtonElement).disabled).toBe(true);
+  ui.rerender(<TripHistory {...callbacks} state={state()} />); mock.api.mockResolvedValue(trip);
+  fireEvent.click(screen.getByRole('button', { name: 'View on map' }));
+  expect((await screen.findByRole('alert')).textContent).toBe('This trip’s saved trace is no longer available.'); expect(callbacks.onView).not.toHaveBeenCalled();
+});
+
+it('drops and aborts an outstanding trace when the account changes', async () => {
+  let resolve!: (trip: Trip) => void; mock.api.mockReturnValue(new Promise<Trip>(done => { resolve = done; }));
+  const callbacks = props(); const ui = render(<TripHistory {...callbacks} state={state()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Share' })); const signal = mock.api.mock.calls[0][1].signal as AbortSignal;
+  mock.userId = 'other'; ui.rerender(<TripHistory {...callbacks} state={state([], 'other')} />);
+  expect(signal.aborted).toBe(true); await act(async () => resolve(full));
+  expect(mock.download).not.toHaveBeenCalled(); expect(callbacks.onView).not.toHaveBeenCalled(); expect(mock.image).not.toHaveBeenCalled();
+});
+
+it('ignores a completed private request after closing history or signing out without rerender', async () => {
+  let resolve!: (trip: Trip) => void; mock.api.mockReturnValue(new Promise<Trip>(done => { resolve = done; }));
+  const callbacks = props(); const ui = render(<TripHistory {...callbacks} state={state()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'View on map' })); mock.userId = null;
+  await act(async () => resolve(full)); expect(callbacks.onView).not.toHaveBeenCalled();
+  ui.unmount(); expect((mock.api.mock.calls[0][1].signal as AbortSignal).aborted).toBe(true);
+});
+
+it('never publishes deletion completion or reloads another account after switching users', async () => {
+  let resolve!: () => void; mock.api.mockReturnValue(new Promise<void>(done => { resolve = done; }));
+  const callbacks = props(); const ui = render(<TripHistory {...callbacks} state={state()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Delete Office journey' })); fireEvent.click(screen.getByRole('button', { name: 'Delete trip' }));
+  mock.userId = 'other'; ui.rerender(<TripHistory {...callbacks} state={state([], 'other')} />);
+  await act(async () => resolve()); expect(callbacks.reload).not.toHaveBeenCalled(); expect(callbacks.notify).not.toHaveBeenCalled();
+});
+
+it('keeps sample provenance internal while avoiding repeated demo labels or a false real-source link', () => {
+  const sample: Trip & { demoData: boolean } = { ...trip, name: 'Demo office journey', demoData: true, fuelEstimate: { costPkr: 150, litres: .5, distanceMeters: 5000, calculatedAt: at, vehicle: { kind: 'car', label: 'Demo car', fuelType: 'petrol', kmPerLitre: 10 }, rates: [{ pricePerLitre: 300, effectiveFrom: at, sourceUrl: 'https://example.invalid/demo', distanceMeters: 5000, litres: .5, costPkr: 150 }] } };
+  render(<TripHistory {...props()} state={state([sample])} />);
+  expect(screen.queryByText('Demo data')).toBeNull(); expect(screen.getByText('≈ PKR 150')).toBeTruthy();
+  expect(screen.queryByText(/Demo fuel price/)).toBeNull(); expect(screen.queryByRole('link')).toBeNull();
+  expect(screen.getByTitle('Illustrative price used for a simulated trip.')).toBeTruthy();
+  expect(screen.getByText('Saved estimate. Changes to your vehicle or fuel prices do not change this trip.')).toBeTruthy();
+});
+
+it('views simulated traces normally and marks their downloaded geometry as simulated', async () => {
+  const callbacks = props(), sample = { ...full, demoData: true };
+  mock.api.mockResolvedValue(sample); render(<TripHistory {...callbacks} state={state([{ ...trip, demoData: true }])} />);
+  fireEvent.click(screen.getByRole('button', { name: 'View on map' }));
+  await waitFor(() => expect(callbacks.onView).toHaveBeenCalledWith(sample));
+  fireEvent.click(screen.getByRole('button', { name: 'Share' }));
+  await screen.findByRole('img', { name: 'Journey map and statistics: Office journey' });
+  fireEvent.click(screen.getByText('More options')); fireEvent.click(screen.getByRole('button', { name: 'Download GeoJSON' }));
+  await waitFor(() => expect(mock.download).toHaveBeenCalledWith('manzil-trip-sample.geojson', expect.objectContaining({
+    properties: expect.objectContaining({ simulated: true, provenance: expect.stringContaining('no device GPS was captured') }),
+    geometry: { type: 'LineString', coordinates: [[73, 33.7], [73.01, 33.71]] },
+  })));
+});
+
+it('saves journey endpoints only after authorized detail and never creates it silently', async () => {
+  const callbacks = { ...props(), onSaveJourney: vi.fn() }; render(<TripHistory {...callbacks} state={state()} />);
+  expect(callbacks.onSaveJourney).not.toHaveBeenCalled(); fireEvent.click(screen.getByRole('button', { name: 'Save journey' }));
+  await waitFor(() => expect(callbacks.onSaveJourney).toHaveBeenCalledWith(full));
+  expect(mock.api).toHaveBeenCalledTimes(1); expect(mock.api.mock.calls[0][1].method).toBeUndefined();
+});
+
+it('aborts image rendering and revokes its preview on close, then can return to history', async () => {
+  render(<TripHistory {...props()} state={state()} />); fireEvent.click(screen.getByRole('button', { name: 'Share' }));
+  await screen.findByRole('img', { name: 'Journey map and statistics: Office journey' });
+  const signal = mock.image.mock.calls[0][1].signal as AbortSignal;
+  fireEvent.click(screen.getByRole('button', { name: 'Back to trip history' }));
+  expect(signal.aborted).toBe(true); expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:trip-image'); expect(screen.getByRole('button', { name: 'Share' })).toBeTruthy();
+});
+
+it('drops late image results after an account change and guards already-ready downloads', async () => {
+  let resolve!: (result: unknown) => void; mock.image.mockReturnValue(new Promise(done => { resolve = done; }));
+  const ui = render(<TripHistory {...props()} state={state()} />); fireEvent.click(screen.getByRole('button', { name: 'Share' }));
+  await screen.findByText('Creating your trip image…'); const signal = mock.image.mock.calls[0][1].signal as AbortSignal;
+  mock.userId = 'other'; ui.rerender(<TripHistory {...props()} state={state([], 'other')} />);
+  await act(async () => resolve({ blob: new Blob(['png']), basemap: 'map' }));
+  expect(signal.aborted).toBe(true); expect(URL.createObjectURL).not.toHaveBeenCalled(); expect(screen.queryByRole('img')).toBeNull();
+  mock.userId = 'traveller'; mock.image.mockResolvedValue({ blob: new Blob(['png']), basemap: 'map' }); ui.rerender(<TripHistory {...props()} state={state()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Share' })); await screen.findByRole('button', { name: 'Download PNG' });
+  mock.userId = null; fireEvent.click(screen.getByRole('button', { name: 'Download PNG' })); expect(mock.downloadImage).not.toHaveBeenCalled();
+});
+
+it('shares the local PNG only when file sharing is supported and keeps platform cancellation quiet', async () => {
+  const share = vi.fn().mockRejectedValue(new DOMException('cancel', 'AbortError'));
+  Object.defineProperty(navigator, 'share', { configurable: true, value: share }); Object.defineProperty(navigator, 'canShare', { configurable: true, value: () => true });
+  render(<TripHistory {...props()} state={state()} />); fireEvent.click(screen.getByRole('button', { name: 'Share' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Share image' }));
+  await waitFor(() => expect(share).toHaveBeenCalledWith({ title: 'Office journey · Manzil', files: [expect.any(File)] }));
+  expect(screen.queryByRole('alert')).toBeNull(); expect(mock.download).not.toHaveBeenCalled();
+});
+
+it('labels an unavailable basemap illustration and allows retry after image creation fails', async () => {
+  mock.image.mockRejectedValueOnce(new Error('No canvas')).mockResolvedValue({ blob: new Blob(['png']), basemap: 'illustration' });
+  render(<TripHistory {...props()} state={state()} />); fireEvent.click(screen.getByRole('button', { name: 'Share' }));
+  expect((await screen.findByRole('alert')).textContent).toContain('Could not create your trip image.'); fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+  expect(await screen.findByText('Map tiles unavailable. This image uses a route illustration.')).toBeTruthy();
+});

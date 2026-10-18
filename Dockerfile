@@ -15,6 +15,7 @@ COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/build ./build
 COPY --chown=node:node package.json ./package.json
 COPY --chown=node:node assets/routing ./assets/routing
+COPY --chown=node:node assets/transit ./assets/transit
 USER node
 EXPOSE 8080
 CMD ["node", "build/server/index.js"]

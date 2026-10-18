@@ -1,4 +1,4 @@
-import type { FuelPriceRecord, FuelPriceStatus, LocalProfile, TravelStatistics, Trip, TripStatistics } from '../shared/types.js';
+import type { FuelPriceRecord, FuelPriceStatus, LocalProfile, TravelStatistics, Trip, TripStatistics, TripStatisticsDay } from '../shared/types.js';
 import { sameVehicle } from '../shared/fuel.js';
 import type { Repository } from './repository.js';
 
@@ -132,11 +132,30 @@ export async function travelStatistics(store: Repository, now = Date.now()): Pro
   const week = today - ((local.getUTCDay() + 6) % 7) * DAY, month = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), 1) - PKT;
   const summarize = (period: TripStatistics['period'], from: number | null): TripStatistics => {
     const selected = trips.filter(trip => from === null || Date.parse(trip.startedAt) >= from), priced = selected.filter(trip => !!trip.fuelEstimate);
+    // The complete week/month calendar includes quiet days. Cost and litres come only
+    // from immutable saved estimates; never reprice history using today's profile/rate.
+    const daily: TripStatisticsDay[] | undefined = from === null ? undefined : [];
+    if (daily && from !== null) {
+      const buckets = new Map<string, TripStatisticsDay>();
+      for (let at = from; at <= today; at += DAY) {
+        const date = pktDay(at), bucket = { date, tripCount: 0, distanceMeters: 0, durationSeconds: 0, pricedTripCount: 0, unpricedTripCount: 0, costPkr: 0, litres: 0 };
+        buckets.set(date, bucket); daily.push(bucket);
+      }
+      for (const trip of selected) {
+        const bucket = buckets.get(pktDay(Date.parse(trip.startedAt)));
+        if (!bucket) continue;
+        bucket.tripCount++; bucket.distanceMeters += trip.distanceMeters; bucket.durationSeconds += trip.durationSeconds;
+        if (trip.fuelEstimate) {
+          bucket.pricedTripCount++; bucket.costPkr += trip.fuelEstimate.costPkr; bucket.litres += trip.fuelEstimate.litres;
+        } else bucket.unpricedTripCount++;
+      }
+    }
     return { period, from: from === null ? null : new Date(from).toISOString(), until: new Date(now).toISOString(), complete,
       tripCount: selected.length, distanceMeters: selected.reduce((sum, trip) => sum + trip.distanceMeters, 0), durationSeconds: selected.reduce((sum, trip) => sum + trip.durationSeconds, 0),
       pricedTripCount: priced.length, unpricedTripCount: selected.length - priced.length,
       unpricedDistanceMeters: selected.filter(trip => !trip.fuelEstimate).reduce((sum, trip) => sum + trip.distanceMeters, 0),
-      costPkr: priced.reduce((sum, trip) => sum + trip.fuelEstimate!.costPkr, 0), litres: priced.reduce((sum, trip) => sum + trip.fuelEstimate!.litres, 0) };
+      costPkr: priced.reduce((sum, trip) => sum + trip.fuelEstimate!.costPkr, 0), litres: priced.reduce((sum, trip) => sum + trip.fuelEstimate!.litres, 0),
+      ...(daily ? { daily } : {}) };
   };
   return { week: summarize('week', week), month: summarize('month', month), all: summarize('all', null) };
 }

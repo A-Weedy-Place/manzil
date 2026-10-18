@@ -108,6 +108,30 @@ describe('vehicle snapshot and retained-history statistics', () => {
     expect(stats.week).toMatchObject({ tripCount: 70, costPkr: 21_000, pricedTripCount: 70, unpricedTripCount: 0, complete: true, from: '2026-10-11T19:00:00.000Z' });
     expect(stats.month).toMatchObject({ tripCount: 71, unpricedTripCount: 1, unpricedDistanceMeters: 10_000 });
     expect(stats.all).toMatchObject({ tripCount: 72, unpricedTripCount: 2, costPkr: 21_000 });
+    expect(stats.week.daily).toHaveLength(6); expect(stats.month.daily).toHaveLength(17);
+    expect(stats.week.daily?.at(-1)).toMatchObject({ date: '2026-10-17', tripCount: 70, distanceMeters: 700_000, pricedTripCount: 70, costPkr: 21_000, litres: 70 });
+    expect(stats.month.daily?.[0]).toMatchObject({ date: '2026-10-01', tripCount: 1, unpricedTripCount: 1, costPkr: 0, litres: 0 });
+    expect(stats.month.daily?.[1]).toMatchObject({ date: '2026-10-02', tripCount: 0, distanceMeters: 0, costPkr: 0 });
+    expect(stats.month.daily?.reduce((total, day) => total + day.distanceMeters, 0)).toBe(stats.month.distanceMeters);
+    expect(stats.all.daily).toBeUndefined();
+  });
+  it('groups graph buckets by PKT departure across midnight and excludes incomplete or future trips', async () => {
+    const store = database();
+    store.put('trip', trip('sunday', '2026-10-11T18:59:59Z'));
+    store.put('trip', { ...trip('monday', '2026-10-11T19:00:00Z'), fuelEstimate: { ...estimateRouteFuel(10_000, checked, vehicle, [record])!, costPkr: 215, litres: .8 } });
+    store.put('trip', trip('month-start', '2026-09-30T19:00:00Z'));
+    store.put('trip', trip('prior-month', '2026-09-30T18:59:00Z'));
+    store.put('trip', { ...trip('still-running', '2026-10-17T04:59:00Z'), endedAt: '2026-10-17T05:01:00Z' });
+    store.put('trip', trip('future', '2026-10-18T00:00:00Z'));
+    const summaries = vi.spyOn(store, 'listTripSummaries'), getTrip = vi.spyOn(store, 'get');
+    const stats = await travelStatistics(store, Date.parse(checked));
+    expect(summaries).toHaveBeenCalledWith(5001); expect(getTrip).not.toHaveBeenCalled();
+    expect(stats.week.tripCount).toBe(1); expect(stats.month.tripCount).toBe(3);
+    expect(stats.week.daily?.[0]).toMatchObject({ date: '2026-10-12', tripCount: 1, distanceMeters: 10_000, costPkr: 215, litres: .8 });
+    expect(stats.month.daily?.find(day => day.date === '2026-10-11')).toMatchObject({ tripCount: 1, unpricedTripCount: 1, costPkr: 0 });
+    expect(stats.month.daily?.[0]).toMatchObject({ date: '2026-10-01', tripCount: 1 });
+    expect(stats.month.daily?.at(-1)).toMatchObject({ date: '2026-10-17', tripCount: 0 });
+    expect(stats.month.daily?.reduce((sum, day) => sum + day.costPkr, 0)).toBe(stats.month.costPkr);
   });
   it('marks totals incomplete when the 5000-summary safety bound is exceeded', async () => {
     const store = database(); vi.spyOn(store, 'listTripSummaries').mockReturnValue(Array.from({ length: 5001 }, (_, i) => trip(`many-${i}`)));

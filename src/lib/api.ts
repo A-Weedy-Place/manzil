@@ -8,8 +8,23 @@ async function checkRuntime() {
     if (value.auth !== 'firebase' || value.storage !== 'firestore' || value.projectId !== import.meta.env.VITE_FIREBASE_PROJECT_ID || value.mode !== (AUTH_MODE === 'emulator' ? 'emulator' : 'production')) throw new Error('Frontend and backend environments do not match.');
   }).catch(error => { runtime = undefined; throw error; });
 }
-const PREFERENCES = 'manzil-guest-appearance-v1';
-function guestPreferences(): Record<string, unknown> { try { return JSON.parse(localStorage.getItem(PREFERENCES) ?? '{}'); } catch { return {}; } }
+const PREFERENCES = 'manzil-guest-appearance-v2';
+let memoryPreferences: Record<string, unknown> | undefined;
+function readPreferences(key: string): Record<string, unknown> | undefined {
+  try { const value = JSON.parse(localStorage.getItem(key) ?? 'null'); return value && typeof value === 'object' && !Array.isArray(value) ? value : undefined; } catch { return undefined; }
+}
+function saveGuestPreferences(value: Record<string, unknown>) {
+  memoryPreferences = value;
+  try { localStorage.setItem(PREFERENCES, JSON.stringify(value)); } catch { /* Session-only preferences when browser storage is unavailable. */ }
+}
+function guestPreferences(): Record<string, unknown> {
+  const saved = readPreferences(PREFERENCES) ?? memoryPreferences ?? readPreferences('manzil-guest-appearance-v1');
+  // New/missing defaults only. Keep deliberate v1/v2 selections, including Night.
+  const next = { theme: saved?.theme === 'light' || saved?.theme === 'system' ? saved.theme : 'dark',
+    mapStyle: ['streets', 'outdoors', 'contrast', 'minimal', 'night'].includes(String(saved?.mapStyle)) ? saved!.mapStyle : 'outdoors',
+    ...(saved?.mapDetail === 'standard' || saved?.mapDetail === 'clean' ? { mapDetail: saved.mapDetail } : saved?.mapDetail === 'detailed' ? { mapDetail: 'standard' } : {}) };
+  saveGuestPreferences(next); return next;
+}
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const userId = getAuthSession().user?.uid;
   await checkRuntime();
@@ -18,7 +33,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     const patch = JSON.parse(String(init.body));
     if (Object.keys(patch).some(key => !['theme', 'mapStyle', 'mapDetail'].includes(key))) throw new Error('Sign in for personal settings.');
     const next = { ...guestPreferences(), ...patch };
-    localStorage.setItem(PREFERENCES, JSON.stringify(next)); return next as T;
+    saveGuestPreferences(next); return next as T;
   }
   const accountHeaders = await authorizationHeaders();
   if (userId !== getAuthSession().user?.uid) throw new Error('Account changed. Please retry.');

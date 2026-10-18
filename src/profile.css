@@ -1,0 +1,117 @@
+.profile-workspace { display: grid; gap: 14px; }
+.profile-workspace .profile-heading { margin: 0 0 2px; align-items: center; gap: 12px; }
+.profile-heading h1 { font-size: 25px; }
+.profile-edit-button { min-height: 40px; padding: 8px 12px; }
+.profile-account-card { padding: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; min-width: 0; }
+.profile-account-card .profile-identity { margin: 0; padding: 0; border: 0; background: none; }
+.profile-account-card .profile-identity > div { min-width: 0; }
+.profile-account-card .profile-identity h2 { overflow-wrap: anywhere; font-size: 18px; line-height: 1.3; }
+.profile-account-card .profile-identity p { margin: 4px 0 0; overflow-wrap: anywhere; font-size: 12px; }
+.profile-account-card .profile-avatar { flex-shrink: 0; width: 58px; height: 58px; }
+.profile-account-card > .secondary-button { margin-top: 16px; }
+.profile-session-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; }
+.profile-session-actions .text-button { min-height: 36px; }
+.profile-verification { display:inline-flex; align-items:center; gap:7px; color:var(--muted); font-size:12px; line-height:1.4; }
+.profile-verification > svg { flex-shrink:0; }
+.profile-verification.is-verified { color:var(--green); }
+.profile-workspace .profile-details-form { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
+.profile-workspace .profile-photo-actions { margin-top: 0; }
+.profile-workspace .profile-photo-actions label { cursor: pointer; }
+.profile-workspace .profile-consent { margin: 0; padding: 15px; border-radius: 16px; }
+.profile-consent h2 { font-size: 15px; }
+.profile-consent h2 svg { flex-shrink: 0; }
+.profile-consent > p { margin: 10px 0 12px; font-size: 12px; line-height: 1.6; }
+.profile-consent .full { font-size: 12px; white-space: normal; min-height: 44px; }
+.profile-data-links { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.profile-data-links .settings-link { border: 1px solid var(--border); border-radius: 12px; margin: 0; padding: 13px 10px; min-width: 0; gap: 9px; background: var(--surface); }
+.profile-data-links .settings-link > svg:first-child { flex-shrink: 0; color: var(--green); }
+.profile-data-links .settings-link > svg:last-child { width: 14px; flex-shrink: 0; }
+.profile-data-links .settings-link span { min-width: 0; font-size: 12px; line-height: 1.4; }
+.profile-data-links small { display: block; font-size: 11px; color: var(--muted); margin-top: 3px; }
+.profile-settings-group { border: 1px solid var(--border); border-radius: 14px; background: var(--surface); min-width: 0; }
+.profile-settings-group > summary { display: flex; align-items: center; gap: 11px; cursor: pointer; list-style: none; min-height: 58px; padding: 14px 15px; font-size: 14px; font-weight: 650; }
+.profile-settings-group > summary::-webkit-details-marker { display: none; }
+.profile-settings-group > summary > svg:first-child { color: var(--green); flex-shrink: 0; }
+.profile-settings-group > summary > svg:last-child { margin-inline-start: auto; color: var(--muted); transition: transform 160ms ease; }
+.profile-settings-group[open] > summary > svg:last-child { transform: rotate(180deg); }
+.profile-settings-group > summary:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; border-radius: 12px; }
+.profile-settings-content { padding: 0 15px 16px; border-top: 1px solid var(--border); }
+.profile-settings-content > .field-label:first-child { margin-top: 15px; }
+.profile-settings-content .settings-section { border: 0; padding: 0; margin: 15px 0 0; }
+.profile-settings-content .vehicle-settings > h2 { display: none; }
+.profile-settings-content .vehicle-settings > form { margin-top: 0; }
+.profile-settings-content .setting-row { gap: 10px; }
+.profile-settings-content .setting-row > svg { flex-shrink: 0; }
+.profile-settings-content .setting-row p { font-size: 11px; line-height: 1.5; }
+.profile-settings-content .setting-row strong { font-size: 13px; }
+.profile-settings-content .setting-toggle { flex-shrink: 0; }
+.profile-settings-content .map-style-choices { margin-top: 10px; }
+.profile-fuel-section .fuel-price-details { margin: 0; padding: 15px; background: var(--surface); border-radius: 14px; }
+.profile-fuel-section .fuel-price-details > summary { font-size: 14px; }
+.profile-fuel-section .fuel-price-grid { margin: 14px 0 10px; }
+.profile-fuel-section .fuel-price-grid dd { font-size: 17px; }
+.profile-fuel-section .fuel-price-details > p { font-size: 11px; }
+.profile-fuel-section .fuel-price-details > a { font-size: 12px; }
+.profile-utilities { display: grid; gap: 3px; }
+.profile-utilities .settings-link { margin: 0; padding: 9px 3px; min-height: 44px; font-size: 12px; }
+.profile-settings-menu { display: grid; gap: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); }
+.profile-settings-menu .profile-setting-link { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 68px; margin: 0; padding: 12px 14px; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: transparent; text-align: start; }
+.profile-settings-menu .profile-setting-link:last-child { border-bottom: 0; }
+.profile-setting-link .profile-setting-icon { display: grid; flex: 0 0 36px; place-items: center; width: 36px; height: 36px; border-radius: 11px; color: var(--green); background: var(--green-soft); }
+.profile-setting-link > span:nth-child(2) { flex: 1; min-width: 0; }
+.profile-setting-link > .tag { flex: 0 0 auto; }
+.profile-setting-link strong { display: block; font-size: 13px; font-weight: 650; line-height: 1.45; }
+.profile-setting-link small { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
+.profile-setting-link > svg:last-child { flex-shrink: 0; color: var(--muted); }
+.profile-setting-link > .tag { flex-shrink: 0; }
+.profile-settings-menu .profile-setting-link:hover, .profile-settings-menu .profile-setting-link.is-active { background: var(--green-soft); }
+.profile-settings-menu .profile-setting-link:focus-visible { outline: 2px solid var(--green); outline-offset: -3px; }
+.profile-demo-badge { display: flex; align-items: start; flex-wrap: wrap; gap: 6px; margin: 12px 0 0; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.profile-demo-badge .tag { flex-shrink: 0; }
+.profile-section-content { min-width: 0; }
+.profile-section-content .profile-details-form { display: grid; gap: 15px; margin: 0; padding: 0; border: 0; }
+.profile-section-content .profile-details-form .field-label { margin: 0; }
+.profile-edit-photo { display: flex; align-items: center; gap: 15px; margin-bottom: 5px; }
+.profile-edit-photo .profile-avatar { display: grid; place-items: center; flex-shrink: 0; width: 70px; height: 70px; font-size: 27px; }
+.profile-edit-photo .profile-photo-actions { display: grid; gap: 5px; margin: 0; }
+.profile-edit-photo .profile-photo-actions .text-button { justify-self: start; min-height: 36px; }
+.profile-section-content .profile-panel-actions { gap: 9px; flex-wrap: wrap; margin-top: 5px; }
+.profile-panel-actions > button { min-height: 44px; }
+.profile-section-content .settings-section { border: 0; padding: 0; margin: 0; }
+.profile-section-content .vehicle-settings > h2 { display: none; }
+.profile-section-content .vehicle-settings > form { margin-top: 0; }
+.profile-section-content .profile-consent { margin: 0; padding: 16px; border: 1px solid var(--border); border-radius: 14px; }
+.profile-section-content .profile-consent .row > svg { color: var(--green); }
+.profile-section-content .profile-consent > p { font-size: 13px; }
+.profile-section-content .profile-consent .full { font-size: 13px; }
+.profile-section-content .setting-row { gap: 11px; }
+.profile-section-content .setting-row > svg { flex-shrink: 0; color: var(--green); }
+.profile-section-content .setting-row strong { font-size: 14px; }
+.profile-section-content .setting-row p, .profile-section-content > .small { font-size: 12px; line-height: 1.6; }
+.profile-section-content .setting-toggle { flex-shrink: 0; }
+.profile-section-content .map-style-choices { margin-top: 12px; }
+.profile-section-content .profile-map-style-heading { margin-top: 24px; font-size: 15px; }
+.profile-section-fuel .fuel-price-details { margin: 0; padding: 16px; border: 1px solid var(--border); border-radius: 16px; }
+.profile-section-fuel .fuel-price-details > summary { display: none; }
+.profile-section-fuel .fuel-effective-date { margin-top: 0; }
+.profile-section-fuel .fuel-price-grid { margin: 0 0 16px; }
+.sample-data-banner { display: grid; gap: 4px; margin: 0 0 16px; padding: 12px 14px; border: 1px solid var(--border); border-inline-start: 3px solid var(--green); border-radius: 11px; background: var(--green-soft); color: var(--ink); font-size: 12px; line-height: 1.5; }
+.sample-data-banner strong { font-size: 13px; }
+.sample-data-banner p { margin: 0; color: var(--muted); }
+.monthly-statistics { min-width: 0; }
+.monthly-statistics-title { display: flex; align-items: center; gap: 9px; margin: 0 0 16px; }
+.monthly-statistics-title h2 { margin: 0; font-size: 16px; }
+.monthly-statistics-title > svg { color: var(--green); }
+.monthly-statistics-title .tag { margin-inline-start: auto; }
+.monthly-statistics .activity-stats { margin: 0 0 13px; }
+.monthly-statistics .activity-stats strong { font-size: 20px; }
+.monthly-statistics .fuel-spending-summary > div > span { display: flex; align-items: center; gap: 7px; }
+.monthly-statistics .fuel-spending-summary > div { align-items: start; }
+.monthly-statistics-empty { padding: 18px 12px; border: 1px dashed var(--border); border-radius: 12px; text-align: center; color: var(--muted); font-size: 13px; }
+.monthly-statistics .error-box p { margin-top: 0; }
+@media (max-width: 420px) {
+  .profile-data-links { grid-template-columns: 1fr; }
+  .profile-data-links .settings-link { min-height: 48px; }
+  .profile-data-links small { display: inline; margin-inline-start: 7px; }
+}
+@media (prefers-reduced-motion: reduce) { .profile-settings-group > summary > svg:last-child { transition: none; } }

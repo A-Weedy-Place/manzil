@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { Firestore, DocumentReference, CollectionReference } from 'firebase-admin/firestore';
 import type { Alert, Closure, ClosureInput, LocalProfile, SourceNotice, SourceStatus, Trip } from '../shared/types.js';
+import type { TransitDisruptionState } from '../shared/transit.js';
 import { HttpError } from './errors.js';
 import { closureSummary } from './community.js';
 import { sameVehicle } from '../shared/fuel.js';
@@ -10,7 +11,7 @@ import { defaultProfile, defaultSourceStatus, type RecordKind, type PersonalReco
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const decode = <T>(data: FirebaseFirestore.DocumentData | undefined): T | undefined => data?.json ? JSON.parse(data.json) as T : undefined;
 const pack = (value: unknown) => ({ json: JSON.stringify(value) });
-const sharedMeta = (key: string) => /^(source|fuel:|demoScenario:|streetRouteDemo:|speech:|community:member:|eventRevision$)/.test(key);
+const sharedMeta = (key: string) => /^(source|fuel:|weather:|transit:|demoScenario:|streetRouteDemo:|speech:|community:member:|eventRevision$)/.test(key);
 interface SharedCache { snapshot?: RoutingSnapshot }
 
 /** Durable repository used unchanged by emulators and Cloud Run. No local-file fallback. */
@@ -27,6 +28,10 @@ export class FirestoreStore implements Repository {
   private metaRef(key: string) { return (sharedMeta(key) ? this.root : this.user()).collection('meta').doc(hash(key)); }
   async meta<T>(key: string): Promise<T | undefined> { return decode<T>((await this.metaRef(key).get()).data()); }
   async setMeta(key: string, value: unknown) { await this.metaRef(key).set(pack(value)); }
+  async updateTransitDisruptions(update: (state: TransitDisruptionState) => TransitDisruptionState) {
+    const ref = this.metaRef('transit:disruptions');
+    return this.db.runTransaction(async tx => { const next = update(decode<TransitDisruptionState>((await tx.get(ref)).data()) ?? { revision: 0, records: [] }); tx.set(ref, pack(next)); return next; });
+  }
   async claimFuelCheck(day: string) {
     const ref = this.metaRef('fuel:checkedDay');
     return this.db.runTransaction(async tx => {
@@ -34,10 +39,14 @@ export class FirestoreStore implements Repository {
       tx.set(ref, pack(day)); return true;
     });
   }
-  async profile() { return this.uid ? { collectTravelData: false, ...await this.meta<LocalProfile>('profile') ?? await this.updateProfile({}) } : defaultProfile(); }
+  async profile() {
+    if (!this.uid) return defaultProfile();
+    const profile = await this.meta<LocalProfile>('profile') ?? await this.updateProfile({});
+    return { collectTravelData: false, travelDataChoiceMade: false, ...profile, theme: profile.theme ?? 'dark' as const, mapStyle: profile.mapStyle ?? 'outdoors' as const };
+  }
   async updateProfile(patch: Partial<Omit<LocalProfile, 'id' | 'createdAt' | 'updatedAt'>>) {
     const ref = this.metaRef('profile');
-    return this.db.runTransaction(async tx => { const old = decode<LocalProfile>((await tx.get(ref)).data()) ?? defaultProfile(); const next = { collectTravelData: false, ...old, ...patch, updatedAt: new Date().toISOString() }; if (patch.vehicle && !sameVehicle(old.vehicle, patch.vehicle)) next.vehicleUpdatedAt = next.updatedAt; if (!next.collectTravelData) next.inferFrequentRoutes = false; tx.set(ref, pack(next)); tx.set(this.user(), { active: true }, { merge: true }); return next; });
+    return this.db.runTransaction(async tx => { const old = decode<LocalProfile>((await tx.get(ref)).data()) ?? defaultProfile(); const next = { collectTravelData: false, travelDataChoiceMade: false, ...old, ...patch, theme: patch.theme ?? old.theme ?? 'dark' as const, mapStyle: patch.mapStyle ?? old.mapStyle ?? 'outdoors' as const, updatedAt: new Date().toISOString() }; if (patch.vehicle && !sameVehicle(old.vehicle, patch.vehicle)) next.vehicleUpdatedAt = next.updatedAt; if (!next.collectTravelData) next.inferFrequentRoutes = false; tx.set(ref, pack(next)); tx.set(this.user(), { active: true }, { merge: true }); return next; });
   }
   async list<T>(kind: RecordKind, limit = 500): Promise<T[]> {
     const snapshot = await this.records(kind).orderBy('updatedAt', 'desc').limit(limit).get();

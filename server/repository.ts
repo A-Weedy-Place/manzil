@@ -1,4 +1,5 @@
 import type { Alert, Closure, ClosureInput, LocalProfile, SourceNotice, SourceStatus, Trip } from '../shared/types.js';
+import type { TransitDisruptionState } from '../shared/transit.js';
 
 export type Awaitable<T> = T | Promise<T>;
 export type RecordKind = 'closure' | 'commute' | 'alert' | 'trip';
@@ -13,6 +14,7 @@ export interface Repository {
   close(): void;
   meta<T>(key: string): Awaitable<T | undefined>;
   setMeta(key: string, value: unknown): Awaitable<void>;
+  updateTransitDisruptions(update: (state: TransitDisruptionState) => TransitDisruptionState): Awaitable<TransitDisruptionState>;
   /** Durable global once-per-PKT-day claim, including failed attempts. */
   claimFuelCheck(day: string): Awaitable<boolean>;
   profile(): Awaitable<LocalProfile>;
@@ -47,8 +49,8 @@ export interface Repository {
 
 export function defaultProfile(): LocalProfile {
   const now = new Date().toISOString();
-  return { id: 'local', displayName: 'Traveller', theme: 'system', mapDetail: 'clean', mapStyle: 'streets', browserNotifications: false,
-    collectTravelData: false, inferFrequentRoutes: false, transport: 'car', createdAt: now, updatedAt: now };
+  return { id: 'local', displayName: 'Traveller', theme: 'dark', mapDetail: 'clean', mapStyle: 'outdoors', browserNotifications: false,
+    collectTravelData: false, travelDataChoiceMade: false, inferFrequentRoutes: false, transport: 'car', createdAt: now, updatedAt: now };
 }
 export function defaultSourceStatus(enabled = false): SourceStatus {
   return { enabled, intervalMinutes: 15, profileUrl: 'https://x.com/shaheryarhassan', lastAttemptAt: null, lastSuccessAt: null, nextCheckAt: null,

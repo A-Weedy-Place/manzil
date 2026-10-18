@@ -1,31 +1,34 @@
 import { t } from '../lib/language';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, CalendarDays, Clock3, Plus, RefreshCw, Repeat2, Trash2, X } from 'lucide-react';
 import type { AppState, Commute, CommuteDraft, CommuteImpact, Place } from '../../shared/types';
 import { send, api } from '../lib/api';
-import { time, dayDate } from '../lib/format';
+import { getAuthSession } from '../lib/auth';
 
-interface Props { state: AppState; origin: Place | null; destination: Place | null; waypoints: (Place | null)[]; initialOpen: boolean; reload: () => Promise<void>; notify: (message: string) => void; onPlan: (commute: Commute, impact: CommuteImpact) => void; onSelectEndpoints: () => void }
+interface Props { state: AppState; origin: Place | null; destination: Place | null; waypoints: (Place | null)[]; initialOpen: boolean; initialValues?: { name: string; departureTime: string }; reload: () => Promise<void>; notify: (message: string) => void; onPlan: (commute: Commute, impact: CommuteImpact) => void; onSelectEndpoints: () => void }
 const DAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-export default function CommutePanel({ state, origin, destination, waypoints, initialOpen, reload, notify, onPlan, onSelectEndpoints }: Props) {
-  const [open, setOpen] = useState(initialOpen); const [name, setName] = useState('My commute'); const [departure, setDeparture] = useState('17:00'); const [days, setDays] = useState([1, 2, 3, 4, 5]);
+export default function CommutePanel({ state, origin, destination, waypoints, initialOpen, initialValues, reload, notify, onPlan, onSelectEndpoints }: Props) {
+  const [open, setOpen] = useState(initialOpen); const [name, setName] = useState(initialValues?.name ?? 'My commute'); const [departure, setDeparture] = useState(initialValues?.departureTime ?? '17:00'); const [days, setDays] = useState([1, 2, 3, 4, 5]);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const currentOperation = () => { const uid = getAuthSession().user?.uid; return () => mounted.current && uid === getAuthSession().user?.uid; };
   const [busy, setBusy] = useState<string | null>(null); const [error, setError] = useState('');
   async function save(event: React.FormEvent) {
     event.preventDefault(); setError(''); if (!origin || !destination || waypoints.some(place => !place)) { setError('Choose the start, stops and destination first.'); return; }
-    setBusy('save');
-    try { await send('/commutes', { name, origin, destination, waypoints: waypoints.filter((place): place is Place => !!place), departureTime: departure, days, enabled: true } satisfies CommuteDraft); await reload(); setOpen(false); notify('Journey saved.'); }
-    catch (e) { setError(e instanceof Error ? e.message : 'Could not save commute.'); } finally { setBusy(null); }
+    const current = currentOperation(); setBusy('save');
+    try { await send('/commutes', { name, origin, destination, waypoints: waypoints.filter((place): place is Place => !!place), departureTime: departure, days, enabled: true } satisfies CommuteDraft); if (!current()) return; await reload(); if (current()) { setOpen(false); notify('Journey saved.'); } }
+    catch (e) { if (current()) setError(e instanceof Error ? e.message : 'Could not save commute.'); } finally { if (current()) setBusy(null); }
   }
   async function check(commute: Commute) {
-    setBusy(commute.id); setError('');
-    try { const impact = await send<CommuteImpact>(`/commutes/${commute.id}/check`, {}); await reload(); onPlan(commute, impact); }
-    catch (e) { setError(e instanceof Error ? e.message : 'Commute check failed.'); } finally { setBusy(null); }
+    const current = currentOperation(); setBusy(commute.id); setError('');
+    try { const impact = await send<CommuteImpact>(`/commutes/${commute.id}/check`, {}); if (!current()) return; await reload(); if (current()) onPlan(commute, impact); }
+    catch (e) { if (current()) setError(e instanceof Error ? e.message : 'Commute check failed.'); } finally { if (current()) setBusy(null); }
   }
   async function remove(commute: Commute) {
-    setBusy(commute.id);
-    try { await api(`/commutes/${commute.id}`, { method: 'DELETE' }); await reload(); notify('Commute removed.'); }
-    catch (e) { setError(e instanceof Error ? e.message : 'Could not remove commute.'); } finally { setBusy(null); }
+    const current = currentOperation(); setBusy(commute.id);
+    try { await api(`/commutes/${commute.id}`, { method: 'DELETE' }); if (!current()) return; await reload(); if (current()) notify('Commute removed.'); }
+    catch (e) { if (current()) setError(e instanceof Error ? e.message : 'Could not remove commute.'); } finally { if (current()) setBusy(null); }
   }
   return <>
     <div className="section-heading"><h1>{t("Saved journeys")}</h1><Repeat2 size={23} /></div>

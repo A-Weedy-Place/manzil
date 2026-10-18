@@ -4,8 +4,8 @@ import type { FuelPriceStatus, VehicleProfile } from '../../shared/types';
 import { t } from '../lib/language';
 import FuelPrices from './FuelPrices';
 
-interface Props { vehicle?: VehicleProfile; status?: FuelPriceStatus; busy: boolean; onSave: (vehicle: VehicleProfile) => Promise<void> }
-export default function VehicleSettings({ vehicle, status, busy, onSave }: Props) {
+interface Props { vehicle?: VehicleProfile; status?: FuelPriceStatus; busy: boolean; showFuelPrices?: boolean; onSave: (vehicle: VehicleProfile) => Promise<void> }
+export default function VehicleSettings({ vehicle, status, busy, showFuelPrices = true, onSave }: Props) {
   const [kind, setKind] = useState<VehicleProfile['kind']>(vehicle?.kind ?? 'car');
   const [label, setLabel] = useState(vehicle?.label ?? '');
   const [fuelType, setFuelType] = useState<VehicleProfile['fuelType']>(vehicle?.fuelType ?? 'petrol');
@@ -26,5 +26,5 @@ export default function VehicleSettings({ vehicle, status, busy, onSave }: Props
     <p className="small muted">{t('Add your usual fuel economy for route and recorded-trip cost estimates. Leave it empty to turn estimates off.')}</p>
     {kind === 'motorcycle' && <p className="small muted">{t('Motorcycle is used for fuel estimates. Routes and time estimates still use the current car-road network.')}</p>}
     <button type="submit" className="secondary-button" disabled={busy}><Check size={17} />{t('Save vehicle')}</button>
-  </form><div className="vehicle-fuel-caption"><Fuel size={17} /><span>{t('Estimated fuel cost')}</span></div><FuelPrices status={status} /></section>;
+  </form>{showFuelPrices && <><div className="vehicle-fuel-caption"><Fuel size={17} /><span>{t('Estimated fuel cost')}</span></div><FuelPrices status={status} /></>}</section>;
 }

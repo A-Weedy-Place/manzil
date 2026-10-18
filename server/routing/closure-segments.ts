@@ -3,6 +3,7 @@ import { lineString, polygon } from '@turf/helpers';
 import type { FeatureCollection, LineString, Polygon } from 'geojson';
 import type { Closure, Coordinate } from '../../shared/types';
 import type { RoutingGraph } from './graph';
+import { drawingSchema } from '../validation';
 
 type Fractions = Map<number, [number, number][]>;
 interface GeometryFractions { routing: Fractions; display: Fractions }
@@ -155,11 +156,28 @@ export function closureEdgeFractions(graph: RoutingGraph, geometry: Polygon, dea
   return cloneFractions(geometryFractions(graph, geometry, deadline).routing, deadline);
 }
 
-export type ClosureRoadProperties = { closureId: string; title: string };
-export function activeClosureRoads(graph: RoutingGraph, closures: Closure[], at: string): FeatureCollection<LineString, ClosureRoadProperties> {
+export type ClosureRoadProperties = { closureId: string; title: string; unverifiedDrawing?: true };
+/** Outside local coverage, retain a contained user-drawn line without claiming a matched road. */
+function outsideGraphDrawing(graph: RoutingGraph, closure: Closure): Coordinate[] | null {
+  const drawing = drawingSchema.safeParse(closure.drawing);
+  if (!drawing.success || drawing.data.kind !== 'line') return null;
+  const points = closure.geometry.coordinates.flat(), [west, south, east, north] = graph.bounds;
+  if (!points.length || points.some(point => point.length !== 2 || !point.every(Number.isFinite))) return null;
+  const outside = Math.max(...points.map(point => point[0])) < west || Math.min(...points.map(point => point[0])) > east
+    || Math.max(...points.map(point => point[1])) < south || Math.min(...points.map(point => point[1])) > north;
+  if (!outside) return null;
+  const coordinates = drawing.data.coordinates;
+  for (let index = 1; index < coordinates.length; index++) {
+    const covered = displayIntervals(coordinates[index - 1], coordinates[index], closure.geometry.coordinates).reduce((sum, [start, end]) => sum + end - start, 0);
+    if (covered < 1 - 1e-9) return null;
+  }
+  return structuredClone(coordinates);
+}
+/** Display geometry only. Including upcoming events does not activate them in routing. */
+export function activeClosureRoads(graph: RoutingGraph, closures: Closure[], at: string, includeUpcoming = false): FeatureCollection<LineString, ClosureRoadProperties> {
   const instant = Date.parse(at), features: FeatureCollection<LineString, ClosureRoadProperties>['features'] = [];
   for (const closure of closures) {
-    if (closure.status !== 'published' || Date.parse(closure.startsAt) > instant || (closure.endsAt !== null && Date.parse(closure.endsAt) <= instant)) continue;
+    if (closure.status !== 'published' || (!includeUpcoming && Date.parse(closure.startsAt) > instant) || (closure.endsAt !== null && Date.parse(closure.endsAt) <= instant)) continue;
     const seen = new Set<string>();
     for (const [index, intervals] of geometryFractions(graph, closure.geometry).display) {
       const edge = graph.edges[index], key = [edge.from, edge.to].sort((a, b) => a - b).join(':');
@@ -169,6 +187,8 @@ export function activeClosureRoads(graph: RoutingGraph, closures: Closure[], at:
       const coordinateAt = (fraction: number): Coordinate => [a[0] + (b[0] - a[0]) * fraction, a[1] + (b[1] - a[1]) * fraction];
       for (const [start, end] of intervals) features.push({ type: 'Feature', properties: { closureId: closure.id, title: closure.title }, geometry: { type: 'LineString', coordinates: [coordinateAt(start), coordinateAt(end)] } });
     }
+    const outside = !seen.size ? outsideGraphDrawing(graph, closure) : null;
+    if (outside) features.push({ type: 'Feature', properties: { closureId: closure.id, title: closure.title, unverifiedDrawing: true }, geometry: { type: 'LineString', coordinates: outside } });
   }
   return { type: 'FeatureCollection', features };
 }

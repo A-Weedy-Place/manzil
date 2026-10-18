@@ -1,5 +1,7 @@
 # Manzil: Mapping Projects, Similar Products, and Technology Comparison
 
+> **18 October Local implementation:** Manzil now has an independently sourced Islamabad–Rawalpindi transit workspace, using PakBus's permitted noncommercial download, official CDA references and an OSM Orange/airport corridor derivative. It does not copy Safar's proprietary database or private APIs. Source coverage, missing schedules/coordinates, licensing and the differences between mapped and schematic lines are recorded in [the transit source analysis](docs/TRANSIT_SOURCES.md) and [dataset guide](docs/TRANSIT_DATA.md). Timed road/service closures and reviewed partial suspensions are evaluated by Manzil's own planner; live buses and automatic news interpretation remain future integrations.
+
 > **15 October implementation update:** the owner's supplied Safar **Android** screenshot identifies MapLibre Android + OpenFreeMap + OpenMapTiles + OpenStreetMap. That is distinct from the earlier Safar **website** Leaflet/CARTO finding below. Manzil now uses MapLibre GL JS/OpenFreeMap in flat 2D with cleaner styling, route alternatives and red closures. The current implemented stack and tradeoffs are in [the redesign guide](docs/REDESIGN_2026-10-15.md); earlier technology comparisons remain research history.
 
 Research and architecture comparison for the two-person Manzil team. Updated 14 October 2026, Asia/Karachi. Prototype target: 17 October. This supplements the [implementation plan](ISLAMABAD_COMMUTE_PROJECT_PLAN.md).

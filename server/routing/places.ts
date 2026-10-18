@@ -17,6 +17,13 @@ const MAX_RESPONSE_BYTES = 1024 * 1024;
 const copyPlaces = (places: Place[]): Place[] => places.map(place => ({ ...place, coordinate: [...place.coordinate] }));
 const text = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
 
+/** Islamabad sector punctuation is optional; never guess a different place name. */
+export function normalizePlaceQuery(query: string): string {
+  const clean = query.trim().replace(/\s+/g, ' ');
+  const sector = /^([d-i])\s*[-–—]?\s*(\d{1,2})(?:\s*\/\s*([1-4]))?(\s+(?:islamabad|اسلام آباد))?$/i.exec(clean);
+  return sector ? `${sector[1].toUpperCase()}-${sector[2]}${sector[3] ? `/${sector[3]}` : ''}${sector[4] ?? ''}` : clean;
+}
+
 function unique(places: Place[]): Place[] {
   const ids = new Set<string>(), locations = new Set<string>();
   return places.filter(place => {
@@ -125,7 +132,7 @@ export function createPlaceSearch(localSearch: (query: string) => Place[], optio
   }
 
   return async query => {
-    const clean = query.trim().replace(/\s+/g, ' ');
+    const clean = normalizePlaceQuery(query);
     if (clean.length > 160) throw new HttpError(400, 'Enter a place name of at most 160 characters.');
     const local = unique(localSearch(clean)).slice(0, 12);
     if (clean.length < 2) return copyPlaces(local);

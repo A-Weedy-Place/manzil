@@ -11,8 +11,53 @@ export const FIREBASE_AUTH_ENABLED = AUTH_MODE === 'firebase' || EMULATOR_AUTH_E
 export const DEV_ACCOUNTS = DEV_AUTH_ENABLED || EMULATOR_AUTH_ENABLED ? [
   { uid: 'dev-user', displayName: 'Demo traveller', email: 'user@manzil.test', password: 'ManzilUser123!', role: 'user' as const },
   { uid: 'dev-admin', displayName: 'Demo administrator', email: 'admin@manzil.test', password: 'ManzilAdmin123!', role: 'admin' as const },
+  { uid: 'dev-user-123', displayName: 'User 123', email: 'user123@manzil.test', password: 'User 123', role: 'user' as const },
 ] : [];
 const KEY = 'manzil-dev-session';
+const TRAVEL_CHOICE_KEY = 'manzil-travel-data-choice-v1:';
+const REGISTRATION_TOUR_KEY = 'manzil-registration-tour-v1:';
+const pendingTravelChoices = new Set<string>();
+const pendingRegistrationTours = new Set<string>();
+let creatingAccounts = 0;
+/** Suppress first-use UI while the SDK may announce a UID before registration resolves. */
+export function isCreatingAccount(): boolean { return creatingAccounts > 0; }
+/** Only successful registration sets this account-bound, optional onboarding marker. */
+export function needsTravelDataChoice(uid: string): boolean {
+  if (pendingTravelChoices.has(uid)) return true;
+  try { return sessionStorage.getItem(TRAVEL_CHOICE_KEY + encodeURIComponent(uid)) === 'pending'; }
+  catch { return false; }
+}
+export function clearTravelDataChoicePrompt(uid: string): void {
+  pendingTravelChoices.delete(uid);
+  try { sessionStorage.removeItem(TRAVEL_CHOICE_KEY + encodeURIComponent(uid)); } catch { /* Memory-only acknowledgement still works. */ }
+}
+/** A successful registration, rather than a device's missing completion flag, starts the tour. */
+export function needsRegistrationTour(uid: string): boolean {
+  if (pendingRegistrationTours.has(uid)) return true;
+  try { return sessionStorage.getItem(REGISTRATION_TOUR_KEY + encodeURIComponent(uid)) === 'pending'; }
+  catch { return false; }
+}
+export function clearRegistrationTour(uid: string): void {
+  pendingRegistrationTours.delete(uid);
+  try { sessionStorage.removeItem(REGISTRATION_TOUR_KEY + encodeURIComponent(uid)); } catch { /* Tab storage is optional. */ }
+}
+function markRegistrationTour(uid: string): void {
+  pendingRegistrationTours.add(uid);
+  try { sessionStorage.setItem(REGISTRATION_TOUR_KEY + encodeURIComponent(uid), 'pending'); } catch { /* Keep the registration intent in memory. */ }
+}
+function discardRegistrationTours(): void {
+  pendingRegistrationTours.clear();
+  try {
+    for (let index = sessionStorage.length - 1; index >= 0; index--) {
+      const key = sessionStorage.key(index);
+      if (key?.startsWith(REGISTRATION_TOUR_KEY)) sessionStorage.removeItem(key);
+    }
+  } catch { /* Memory-only sign-out still works. */ }
+}
+function markTravelDataChoicePrompt(uid: string): void {
+  pendingTravelChoices.add(uid);
+  try { sessionStorage.setItem(TRAVEL_CHOICE_KEY + encodeURIComponent(uid), 'pending'); } catch { /* The choice remains available for this visit. */ }
+}
 const empty: AuthSession = { status: DEV_AUTH_ENABLED || FIREBASE_AUTH_ENABLED ? 'guest' : 'unconfigured', user: null };
 let session = empty;
 const listeners = new Set<() => void>();
@@ -34,6 +79,7 @@ export function signInDevelopment(email: string, password: string) {
   publish({ status: 'signed_in', user: identity(account) });
 }
 export function signOut() {
+  discardRegistrationTours();
   if (FIREBASE_AUTH_ENABLED) {
     generation++; publish(empty);
     void initializeFirebase().then(({ auth, sdk }) => sdk.signOut(auth)).catch(() => {});
@@ -83,9 +129,15 @@ export async function signInAccount(email: string, password: string) {
   const { auth, sdk } = await initializeFirebase();
   await sdk.signInWithEmailAndPassword(auth, email.trim(), password);
 }
-export async function createAccount(email: string, password: string) {
+export async function createAccount(email: string, password: string): Promise<string> {
   const { auth, sdk } = await initializeFirebase();
-  await sdk.createUserWithEmailAndPassword(auth, email.trim(), password);
+  creatingAccounts++;
+  try {
+    const account = await sdk.createUserWithEmailAndPassword(auth, email.trim(), password);
+    markTravelDataChoicePrompt(account.user.uid);
+    markRegistrationTour(account.user.uid);
+    return account.user.uid;
+  } finally { creatingAccounts--; }
 }
 export async function resetPassword(email: string) {
   const { auth, sdk } = await initializeFirebase();

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Place } from '../shared/types';
-import { createPlaceSearch } from '../server/routing/places';
+import { createPlaceSearch, normalizePlaceQuery } from '../server/routing/places';
 
 const local: Place = { id: 'local', name: 'Lahore Road, Islamabad', coordinate: [73.05, 33.7] };
 const feature = (name = 'Lahore', changes: Record<string, unknown> = {}, coordinate: unknown = [74.3141829, 31.5656822]) => ({
@@ -16,6 +16,21 @@ function setup(features: unknown[] = [feature()], localSearch = (_query: string)
 }
 
 describe('lightweight Pakistan place search', () => {
+  it('normalizes explicit sector punctuation while retaining real names and uncertain typos', () => {
+    for (const query of ['I8', 'i 8', 'I-8', ' I – 8 ']) expect(normalizePlaceQuery(query)).toBe('I-8');
+    expect(normalizePlaceQuery('f 8 / 2 Islamabad')).toBe('F-8/2 Islamabad');
+    expect(normalizePlaceQuery('g11/4')).toBe('G-11/4');
+    for (const query of ['IA8', 'F8 camera', 'Lahore', 'I-8/9']) expect(normalizePlaceQuery(query)).toBe(query);
+  });
+  it('uses one provider/cache lookup and canonical local road search for equivalent sector queries', async () => {
+    const localSearch = vi.fn((_query: string) => [local]);
+    const { search, fetcher } = setup([feature('I-8', { state: 'Islamabad Capital Territory' }, [73.075, 33.667])], localSearch);
+    const first = await search('I8');
+    expect(await search('I 8')).toEqual(first); expect(await search('I-8')).toEqual(first);
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(new URL(String(fetcher.mock.calls[0][0])).searchParams.get('q')).toBe('I-8');
+    expect(localSearch.mock.calls.map(call => call[0])).toEqual(['I-8', 'I-8', 'I-8']);
+  });
   it('requests country-wide results without Islamabad bounds and puts provider relevance before local road matches', async () => {
     const { search, fetcher } = setup([feature()], () => Array.from({ length: 12 }, (_, index) => ({ ...local, id: `local-${index}`, name: `Lahore Road ${index}` })));
     const places = await search('Lahore');

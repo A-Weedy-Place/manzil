@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Server } from 'node:http';
 import { Store } from '../server/store';
 import { createApp } from '../server/app';
@@ -7,7 +7,13 @@ import { FuelService, FUEL_SOURCE_URL } from '../server/fuel';
 import type { FuelPriceRecord, GraphStatus, Trip, VehicleProfile } from '../shared/types';
 
 const cleanup: (() => void | Promise<void>)[] = [];
-afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); });
+// Freeze only Date at PKT noon: relative trip/rate fixtures must not cross a
+// midnight, week or month boundary while real HTTP timers continue to run.
+beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime('2026-10-17T07:00:00.000Z'); });
+afterEach(async () => {
+  try { for (const close of cleanup.splice(0).reverse()) await close(); }
+  finally { vi.useRealTimers(); vi.restoreAllMocks(); }
+});
 const graph: GraphStatus = { ready: false, source: 'fixture', version: 'fixture', nodeCount: 0, edgeCount: 0, importedAt: null, bounds: [72,33,74,35], limitations: [] };
 const vehicle: VehicleProfile = { kind: 'motorcycle', label: 'Test motorcycle', fuelType: 'petrol', kmPerLitre: 40 };
 async function setup() {
