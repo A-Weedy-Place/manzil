@@ -8,7 +8,7 @@ Start with the [project README](../README.md), [product context](../PROJECT_CONT
 | --- | --- |
 | New developer | [Contributing](../CONTRIBUTING.md) → [local setup](engineering/LOCAL_DEVELOPMENT.md) → [architecture](../ARCHITECTURE.md) |
 | Coding agent | [Repository instructions](../AGENTS.md) → [agent guide](engineering/AGENT_GUIDE.md) → [status](IMPLEMENTATION_STATUS.md) → affected contracts |
-| Release developer | [Deployment](operations/DEPLOYMENT.md) → [configuration](operations/CONFIGURATION.md) → [password-action setup](guides/AUTH_PASSWORD_RESET.md) |
+| Release developer | [Hosted releases/licensing](operations/RELEASES.md) → [Deployment](operations/DEPLOYMENT.md) → [configuration](operations/CONFIGURATION.md) → [password-action setup](guides/AUTH_PASSWORD_RESET.md) |
 | Product reviewer | [Map/editor](guides/MAP_EDITOR.md), [closure workflow](guides/CLOSURE_WORKFLOW.md), [Local routing](reference/TRANSIT_ROUTING.md), [admin workspace](guides/ADMIN_WORKSPACE.md) |
 | Source/AI operator | [Pipeline walkthrough](guides/PIPELINES.md), [ingestion](operations/INGESTION_IMPLEMENTATION.md), [Gemini](operations/GEMINI_INTEGRATION.md), [road review](operations/AGENT_MAP_REVIEW.md), [bus-service review](operations/AGENT_TRANSIT_REVIEW.md) |
 
@@ -69,6 +69,11 @@ Public records and inferred geometry do not certify current bus operation. Raw s
 | [Source implementation](operations/INGESTION_IMPLEMENTATION.md) | Collector bounds, evidence and queue lifecycle |
 | [Gemini operations](operations/GEMINI_INTEGRATION.md) | Worker-only key, limits, retry and review policy |
 | [Road proposals](operations/AGENT_MAP_REVIEW.md) / [service proposals](operations/AGENT_TRANSIT_REVIEW.md) | Private proposals and atomic administrator decisions |
+
+## Licensing and release records
+
+- [MIT licence](../LICENSE) for original software; [third-party notices](../THIRD_PARTY_NOTICES.md) for separate data/artwork terms and unresolved permission.
+- [Hosted release evidence and publication guidance](operations/RELEASES.md), [v0.1.0 release notes](operations/RELEASE_NOTES_v0.1.0.md) and [private security reporting](../SECURITY.md).
 
 ## Research and history
 

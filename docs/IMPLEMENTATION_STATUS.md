@@ -1,6 +1,6 @@
 # Implementation status
 
-**Reviewed: 18 October 2026.** Current capabilities through application checkpoint **`94a48c7`**, plus this documentation reorganization. The [full historical implementation log](archive/releases/IMPLEMENTATION_LOG_THROUGH_2026-10-18.md) retains detailed verification and releases.
+**Reviewed: 18 October 2026.** Current capabilities through application checkpoint **`94a48c7`**, plus the documentation/licensing and hosted-release metadata updates described below. The [full historical implementation log](archive/releases/IMPLEMENTATION_LOG_THROUGH_2026-10-18.md) retains detailed verification and releases.
 
 ## Release boundary
 
@@ -8,9 +8,9 @@
 | --- | --- |
 | Feature branch | `codex/feature-development`; application checkpoint `94a48c7` |
 | Hosted site | [manzil-app-v1.web.app](https://manzil-app-v1.web.app), released independently |
-| Recorded deployed checkpoint | `1f196c3`, API `manzil-api-00012-g9q`, worker `manzil-source-worker-00009-6bf`, Hosting `fh-84ad6494196d6945`: historical 18 October evidence, not newly checked live state |
-| Later feature work | Navigation, transit alignment/focus, closure simplification/coverage, admin workspace, fares and service review need a separate integrated release |
-| Current task | Documentation only; no deployment, main merge, source/model activation, account-role change or data migration |
+| Latest recorded deployment | Application `8702fb9`, documented at `2c893e2`; API `manzil-api-00015-7cr`, worker `manzil-source-worker-00012-t2z`, Hosting `fh-208bbe9aa098303b`. Current public frontend fingerprint and health match; exact cloud settings/revisions are teammate-recorded. [Release evidence](operations/RELEASES.md) |
+| Feature/release divergence | Hosted code incorporates feature work through `aac7ef8` and independent fuel/voice/selective-publication changes. Feature-only `94a48c7` admin/fare/recovery work and current licensing/docs require review/integration; no main merge is performed here |
+| Current task | Scoped MIT licence, source notices, public-project guidance, README deployment information and a GitHub MVP prerelease at the recorded application commit; no deployment, visibility change, main merge, account-role change or data migration |
 
 Remote `main` and the public site may differ from this branch. Check exact commits and use the [release runbook](operations/DEPLOYMENT.md) when authorized.
 
@@ -41,7 +41,7 @@ Remote `main` and the public site may differ from this branch. Check exact commi
 | Champ Alerts | Bounded public X collection/deduplication/evidence/manual import; current enabled default five minutes | No complete-feed guarantee; no WhatsApp ingestion |
 | Gemini | Worker credentials, bounded claims/batches/retries/allowances and mandatory proposals | Availability/key/quota are runtime choices; local fixtures are not live reasoning |
 | PSO/Open-Meteo | Dated prices and shared weather | Freshness comes from actual state/timestamps, not a documentation claim |
-| Optional jobs | Worker supports source/agent/fuel/commutes | Weather is request/cache based. Fuel/commute schedules and Cloud TTS were inactive at the recorded deployment checkpoint |
+| Optional jobs | Worker supports source/agent/fuel/commutes | Weather is request/cache based. The latest deployment record enables daily fuel and Cloud TTS; this checkout keeps separate optional configuration. Commute scheduling was not newly verified |
 
 ## Verification evidence
 
@@ -65,3 +65,11 @@ Architecture/setup/operations were checked against code/configuration. Current p
 - [Contributing](../CONTRIBUTING.md): workflow and verification.
 - [Product context](../PROJECT_CONTEXT.md): durable requirements and deferred directions.
 - [Deployment](operations/DEPLOYMENT.md): independent release/self-hosting.
+
+## Licensing and hosted-release follow-up
+
+The owner requested MIT licensing/public-project preparation and a GitHub release for the hosted app. Original code/documentation now use [MIT](../LICENSE), with explicit [third-party exclusions/notices](../THIRD_PARTY_NOTICES.md), package metadata and [security reporting](../SECURITY.md). The user's README tagline is retained. PakBus noncommercial terms, OSM/GeoNames obligations and unresolved Survey of Pakistan outline permission remain explicit; adding MIT does not make all assets unrestricted. Repository visibility remains unchanged.
+
+Read-only GitHub/deployment evidence identifies newer hosted code `8702fb9`, recorded at `2c893e2`, whose frontend fingerprint matches the public app. The public health endpoint returned 200 with Firestore/graph ready. The release notes separate that snapshot's selective-publication/fuel/cloud-speech policy from this branch's mandatory review. No model, source job, cloud setting or public road record was changed. The tag predates licence files, so its release includes licence/notice supplements. See [release details](operations/RELEASES.md).
+
+A targeted publication audit scanned 57 reachable commits / 1,338 text blobs without matching the checked secret/private-key patterns or tracked private runtime/archive paths. That bounded scan is not proof that every possible secret was inspected. This documentation/package-metadata follow-up passes the offline checker (70 Markdown files / 772 local links and anchors), `git diff --check`, matching MIT package/lock metadata and an unchanged dependency graph. The user tagline is retained. Application test/build results above belong to the preceding checkpoint; no application code/dependency change requires a new behavior run.

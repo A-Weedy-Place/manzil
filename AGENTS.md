@@ -7,7 +7,7 @@ Read [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md), [implementation status](docs/IMPL
 ## Current working boundary
 
 - Feature work is on `codex/feature-development`; preserve teammate changes and uncommitted work. Never force-push shared history.
-- Current work is repository documentation cleanup. Application feature work is tested on localhost. Do not deploy, merge `main`, publish the private repository, activate external/model jobs or change production roles without the owner's instruction.
+- Current work is licensing, public-project documentation and a GitHub release for the verified deployed checkpoint. Application feature work is tested on localhost. Do not deploy, merge `main`, change repository visibility, activate external/model jobs or change production roles without the owner's instruction.
 - Previously deployed services and integration code exist. A feature-branch push does not establish that its features are live. The user's next Gemini reasoning work remains a separate scope; do not activate/extend the existing bounded integration by inference.
 - Archives are historical evidence, not current instructions. Older automatic-publication preferences or city-only restrictions are superseded by current guides and owner requests.
 
@@ -24,3 +24,7 @@ Read [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md), [implementation status](docs/IMPL
 Keep `docs/IMPLEMENTATION_STATUS.md` and affected API/routing/source guides current with actual tested behavior and material limitations. Run meaningful routing/API tests for behavior changes, isolated Firebase checks for identity/storage changes and production frontend/server checks before application handoff. Documentation-only changes require link/anchor validation and `git diff --check`; do not claim tests you did not run.
 
 Do not commit local databases, GPS traces, raw source archives, API keys, browser profiles, session credentials or emulator exports. Keep ignored runtime data intact during cleanup. Project-specific release YAML must not be applied to another project unchanged.
+
+## Licensing and releases
+
+Original code/docs use MIT; keep THIRD_PARTY_NOTICES.md exclusions and upstream rights intact. Do not relabel the mixed transit data or Survey of Pakistan-derived outline as MIT. The owner plans public visibility; do not change visibility or rewrite history implicitly. Release tags identify exact source commits; never tag feature HEAD as deployed without matching deployment evidence. Releases do not deploy code.

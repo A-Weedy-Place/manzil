@@ -1,6 +1,6 @@
 # Contributing to Manzil
 
-Manzil is a private, shared project. Keep changes reviewable, preserve data provenance and separate application development from live operations.
+Manzil is a shared project preparing for public source distribution. Original code/documentation use MIT; third-party material retains its own terms. Keep changes reviewable, preserve data provenance and separate application development from live operations.
 
 ## Start here
 
@@ -76,3 +76,9 @@ Before staging, review the diff and untracked files. Exclude `.env` files with v
 Read [deployment guidance](docs/operations/DEPLOYMENT.md), [source operations](docs/operations/DEPLOYMENT.md) and [Gemini operations](docs/operations/GEMINI_INTEGRATION.md) before proposing infrastructure changes. Deployment, production role changes, data migration, paid-service activation, source/model execution and schedule changes need the owner's applicable authorization. A feature request or successful local test is not an instruction to perform those operations.
 
 Agents should also follow the [agent onboarding guide](docs/engineering/AGENT_GUIDE.md).
+
+## Licensing contributions
+
+Original code/documentation contributions are submitted under the project's [MIT License](LICENSE). Preserve upstream notices and source provenance; do not introduce third-party data/artwork with assumed permissions. Read [third-party notices](THIRD_PARTY_NOTICES.md) before redistributing datasets or releasing a commercial product. Repository visibility is an owner-controlled setting; package.json's `private: true` only prevents accidental npm publication.
+
+For vulnerability reports, follow [SECURITY.md](SECURITY.md). Do not put credentials, private source evidence or GPS histories in public issues.

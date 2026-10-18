@@ -1,13 +1,31 @@
 <p align="center"><img src="public/manzil-logo.png" alt="Manzil logo" width="112" /></p>
 <h1 align="center">Manzil · منزل</h1>
-<p align="center"><strong>Plan around road closures. Find another way.</strong></p>
+<p align="center"><a href="https://github.com/A-Weedy-Place/manzil/releases/tag/v0.1.0"><img src="https://img.shields.io/badge/release-v0.1.0_MVP-blue" alt="v0.1.0 hosted MVP release" /></a> <a href="LICENSE"><img src="https://img.shields.io/badge/original_code-MIT-green" alt="Original code licensed MIT" /></a></p>
+<p align="center"><strong>Where there is a blockade, there is a way.</strong></p>
 <p align="center">
-<a href="https://manzil-app-v1.web.app">Hosted app</a> · <a href="docs/README.md">Documentation</a> · <a href="ARCHITECTURE.md">Architecture</a> · <a href="CONTRIBUTING.md">Contributing</a> · <a href="docs/IMPLEMENTATION_STATUS.md">Status</a>
+<a href="https://manzil-app-v1.web.app">Live deployment</a> · <a href="https://github.com/A-Weedy-Place/manzil/releases/tag/v0.1.0">Release v0.1.0</a> · <a href="docs/README.md">Documentation</a> · <a href="ARCHITECTURE.md">Architecture</a> · <a href="CONTRIBUTING.md">Contributing</a> · <a href="docs/IMPLEMENTATION_STATUS.md">Status</a>
 </p>
 
 Manzil helps commuters plan around current and scheduled road restrictions. It combines a clear 2D map, closure-aware driving routes, local bus journeys, community reports and administrator-reviewed interpretations of traffic notices. It began in Islamabad/Rawalpindi; road reporting now supports mapped roads beyond that initial area.
 
 > **This README describes this checkout.** The hosted app is released separately and may have an older feature set. A GitHub push does not deploy under the tracked workflow. See [status and release boundaries](docs/IMPLEMENTATION_STATUS.md).
+
+## Live deployment and release
+
+**Open Manzil:** [manzil-app-v1.web.app](https://manzil-app-v1.web.app) · **GitHub:** [v0.1.0 — Hosted MVP](https://github.com/A-Weedy-Place/manzil/releases/tag/v0.1.0)
+
+| Component | Hosted installation |
+| --- | --- |
+| Firebase project | `manzil-app-v1` |
+| Frontend | Firebase Hosting, with an SPA fallback and pinned `/api/**` Cloud Run rewrite |
+| API | Cloud Run `manzil-api` |
+| Background processing | Private Cloud Run `manzil-source-worker`, authenticated Scheduler/API dispatch |
+| Accounts and database | Firebase Authentication email/password and Firestore |
+| Images and secrets | Private Cloud Storage source evidence; Secret Manager model key on the worker |
+| Cloud Run region | `asia-southeast1` — Singapore |
+| Deployed application source | [`8702fb9`](https://github.com/A-Weedy-Place/manzil/commit/8702fb9d0b5262b5d40953d5ed0dfab464343567), recorded 18 October 2026 |
+
+The hosted frontend fingerprint matches the teammate's release record, and its public health endpoint responded successfully. The recorded release enables daily PSO checks, English/Urdu cloud speech and selective high-confidence agent publication; **this feature checkout retains mandatory agent approval and separately configured optional services**. The table does not claim those two source versions are identical. Exact revision evidence, licensing supplements and release instructions are in [Releases](docs/operations/RELEASES.md); independent deployment instructions are in the [runbook](docs/operations/DEPLOYMENT.md).
 
 ## Features
 
@@ -134,8 +152,10 @@ Use the **[deployment runbook](docs/operations/DEPLOYMENT.md)** and **[configura
 | Implemented versus future | [Status](docs/IMPLEMENTATION_STATUS.md) |
 | Original research and decisions | [Research and archive index](docs/README.md#research-and-history) |
 
-## Attribution and reuse
+## License and attribution
 
-Preserve OpenStreetMap/OpenFreeMap/OpenMapTiles and Open-Meteo attribution. Libraries, transit evidence, forecasts and brand assets have separate terms: [transit reuse](docs/data-sources/TRANSIT_SOURCES.md), [weather licence](docs/reference/WEATHER.md), [brand notes](assets/brand/README.md).
+Preserve OpenStreetMap/OpenFreeMap/OpenMapTiles and Open-Meteo attribution. Libraries, transit evidence, forecasts and source-derived assets have separate terms: [transit reuse](docs/data-sources/TRANSIT_SOURCES.md), [weather licence](docs/reference/WEATHER.md), [brand notes](assets/brand/README.md).
 
-This repository is **private**, with no repository-wide open-source licence currently granted. Public operator material and open-source dependencies do not automatically grant unrestricted redistribution of the app or datasets.
+Manzil's **original application code and documentation are MIT licensed**. You may use, modify and redistribute that code, including commercially, while retaining its copyright and licence notice. See [LICENSE](LICENSE).
+
+Bundled datasets and source-derived artwork retain separate terms. **PakBus data have noncommercial restrictions**, OSM/GeoNames require their respective attribution/licensing, and the Survey of Pakistan-derived login outline needs permission review or replacement before public redistribution. See [Third-party notices](THIRD_PARTY_NOTICES.md) for exact scope and [Security](SECURITY.md) for private reporting guidance. The MIT grant does not override those rights or grant rights to third-party services.

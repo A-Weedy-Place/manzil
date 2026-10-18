@@ -12,4 +12,6 @@ Use case: logo-brand. Asset type: primary circular logo for the Urdu-named commu
 
 ## Use
 
-Use the transparent PNG in the web header, project deck, and team branding. Preserve the aspect ratio and give the circular mark sufficient surrounding space. Keep the textual product name available to screen readers, for example alt="Manzil — منزل" when the logo is the only name label. The detailed product and routing plan remains in ISLAMABAD_COMMUTE_PROJECT_PLAN.md at the project root.
+Use the transparent PNG in the web header, project deck, and team branding. Preserve the aspect ratio and give the circular mark sufficient surrounding space. Keep the textual product name available to screen readers, for example alt="Manzil — منزل" when the logo is the only name label. The current product brief is [PROJECT_CONTEXT.md](../../PROJECT_CONTEXT.md); the original plan is retained in the [planning archive](../../docs/archive/planning/ISLAMABAD_COMMUTE_PROJECT_PLAN.md).
+
+The project logo copies are available under the [MIT licence](../../LICENSE) to the extent the contributors hold rights in them. No trademark/endorsement rights are granted; see [third-party notices](../../THIRD_PARTY_NOTICES.md).

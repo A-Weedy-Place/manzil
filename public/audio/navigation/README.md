@@ -16,6 +16,8 @@ Use an ignored development directory, not the application dependencies:
 
 - [eSpeak NG source](https://github.com/espeak-ng/espeak-ng), [Urdu language support](https://github.com/espeak-ng/espeak-ng/blob/master/docs/languages.md), [female3 variant](https://github.com/espeak-ng/espeak-ng/blob/master/espeak-ng-data/voices/!v/f3).
 - [Echogarden Emscripten package/source and GPL-3.0 license](https://github.com/echogarden-project/espeak-ng-emscripten). The unmodified generator engine and its dictionary archive are development tools only and are excluded from application source and bundles.
-- The pack contains synthesized waveform output from Manzil's own fixed phrases, not engine code. [GPLv3 section 2, as published by eSpeak](https://espeak.sourceforge.net/license.html), distinguishes running the engine and its output from conveying the engine itself. This is the basis for keeping generated audio in the private app without adding the GPL engine as an application dependency. No recorded commercial voice or neural model is used.
+- The pack contains synthesized waveform output from Manzil's own fixed phrases, not engine code. [GPLv3 section 2, as published by eSpeak](https://espeak.sourceforge.net/license.html), distinguishes running the engine and its output from conveying the engine itself. This is the basis for keeping generated audio in the application without adding the GPL engine as an application dependency. No recorded commercial voice or neural model is used.
 
 These generated audio files may be used with Manzil under the repository's terms. The generator attribution does not claim a human speaker or a quality endorsement by eSpeak/Echogarden.
+
+The project-authored phrases and generated WAV files are offered under [MIT](../../../LICENSE) to the extent the contributors hold rights in them. eSpeak NG engine/dictionary material is not bundled; preserve the provenance above and [third-party notices](../../../THIRD_PARTY_NOTICES.md).
