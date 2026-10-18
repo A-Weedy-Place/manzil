@@ -272,3 +272,12 @@ it('distinguishes automatic road publication and provides a view-only map action
   await openPost();expect(await screen.findByText('Auto-published after validation')).toBeTruthy();fireEvent.click(screen.getByRole('button',{name:'View on map'}));expect(map).toHaveBeenCalledWith('mapped-id');expect(editor).not.toHaveBeenCalled();
   expect(screen.queryByRole('button',{name:'Review on map'})).toBeNull();
 });
+it('renders the automatic decision and two-day provisional caption in Urdu', async () => {
+  setLanguage('ur');
+  const proposal={index:0,version:'published-urdu',state:'approved',decisionMode:'automatic',draft:{title:'Synthetic mapped restriction',startsAt:'2026-10-18T12:00:00Z',endsAt:'2026-10-20T12:00:00Z',description:'Provisional: two-day application expiry; source reopening time unknown.'},closureId:'mapped-id',issues:[]};
+  calls.api.mockImplementation(async path=>path==='/agent/status'?{...status,autoPublish:true}:[{...result(),state:'applied',closureIds:['mapped-id'],proposals:[proposal]}]);
+  render(<AgentPanel notices={[notice({status:'reviewed'})]} onManualClosure={vi.fn()}/>);
+  const detail=await openPost();
+  expect(detail.getByText('تصدیق کے بعد خودکار اشاعت')).toBeTruthy();
+  expect(detail.getByText(/عارضی مدت: ۲ دن/)).toBeTruthy();
+});
