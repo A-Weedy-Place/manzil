@@ -10,12 +10,17 @@ const plan = (value = extraction(), posts = notice(), incidents: Closure[] = [])
 const incident = async () => { const change = (await plan()).changes[0]; return { ...change.draft, id: change.id, revision: 1,
   createdAt: new Date(now).toISOString(), updatedAt: new Date(now).toISOString() } as Closure; };
 describe('evidence-constrained agent actions', () => {
+  it('does not use another road closure elsewhere in the post to contradict this event’s reopening evidence', async () => {
+    const value=extraction(),post=notice();value.events[0].quote='Park Road is now open.';
+    post.text='Other Road is blocked. Park Road is now open.';
+    expect((await plan(value,post)).changes).toEqual([]);
+  });
   it('publishes a precisely mapped, explicitly timed closure with source provenance', async () => {
     const result = await plan(); expect(result.issues).toEqual([]); expect(result.changes).toHaveLength(1);
     expect(result.changes[0].draft).toMatchObject({ status: 'published', moderation: 'approved', startsAt: '2026-10-17T12:00:00.000Z',
       agent: { sourceId: '123456789', sourceRevision: 1, locationKey: location().key } });
   });
-  it.each(['missing_time','unknown_publication','image','slow','metro','warning','uncertain','truncated','false_quote','invented_clock','invented_day'])(
+  it.each(['missing_time','unknown_publication','slow','warning','uncertain','truncated','false_quote','invented_clock','invented_day'])(
     'withholds uncertain or unsupported geometry/time evidence: %s', async kind => {
       const value = extraction(), post = notice(), event = value.events[0];
       if (kind === 'missing_time') event.endsAt = null;

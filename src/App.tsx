@@ -1,6 +1,6 @@
 import { t } from './lib/language';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BusFront, Moon, Palette, Sun } from 'lucide-react';
+import { BusFront, Moon, Palette, Sun, Users, Workflow } from 'lucide-react';
 import type { LocalProfile, MapStyleId, RestrictionType } from '../shared/types';
 import { Activity, ArrowDown, ArrowDownUp, ArrowRight, ArrowUp, ArrowUpRight, Bell, Bookmark, CalendarClock, Check, ChevronRight, Clock3, Download, ExternalLink, Eye, EyeOff, Flag, Inbox, Layers2, LocateFixed, MapPinned, Navigation, Pencil, Plus, RefreshCw, Repeat2, Route, Search, ShieldCheck, SlidersHorizontal, Trash2, TriangleAlert, Upload, UserRound, WifiOff, X } from 'lucide-react';
 import type { Polygon } from 'geojson';
@@ -36,13 +36,17 @@ import { useLocalMapStyle } from './lib/useLocalMapStyle';
 import AdminPanel from './components/AdminPanel';
 import ClosureList from './components/ClosureList';
 import { useTravelCapture } from './lib/useTravelCapture';
-import type { AgentProposal, AgentProposalDecision } from '../shared/agent';
+import type { AgentProposal, AgentProposalDecision, AgentResult } from '../shared/agent';
 import AgentReopeningReview from './components/AgentReopeningReview';
+import TransitProposalEditor from './components/TransitProposalEditor';
+import Modal from './components/Modal';
 import { usableTracePoints } from './lib/tripTrace';
 import TransitPanel from './components/TransitPanel';
 import { useTransit } from './lib/useTransit';
 import { transitPatternCoordinates } from './lib/transitMap';
 import { requestLocation } from './lib/location';
+import { useAgentPipeline } from './lib/useAgentPipeline';
+import { pipelineCounts } from './lib/pipeline';
 
 type View = 'journey' | 'planning' | 'local' | 'closures' | 'commutes' | 'activity' | 'sources' | 'alerts' | 'profile' | 'navigation' | 'admin';
 const NAV = [
@@ -55,6 +59,17 @@ const NAV = [
   { id: 'activity', label: 'Activity', icon: Activity },
   { id: 'profile', label: 'Profile', icon: UserRound },
 ] as const;
+
+type AdminSection = 'reports' | 'users' | 'pipeline' | 'review';
+const ADMIN_NAV: { id: string; label: string; icon: typeof ShieldCheck; view: View; section?: AdminSection }[] = [
+  { id:'users',label:'Users',icon:Users,view:'admin',section:'users' },
+  { id:'review',label:'Review queue',icon:ShieldCheck,view:'admin',section:'review' },
+  { id:'closures',label:'Closures',icon:Flag,view:'closures' },
+  { id:'pipeline',label:'Pipelines',icon:Workflow,view:'admin',section:'pipeline' },
+  { id:'journey',label:'Map',icon:MapPinned,view:'journey' },
+  { id:'local',label:'Local',icon:BusFront,view:'local' },
+  { id:'profile',label:'Account',icon:UserRound,view:'profile' },
+];
 
 export default function App() {
   const { language, setLanguage } = useLanguage();
@@ -110,6 +125,8 @@ export default function App() {
   const [editorOpen, setEditorOpen] = useState(false); const [editing, setEditing] = useState<Closure | null>(null);
   const [editorSeed, setEditorSeed] = useState<Partial<ClosureDraft> | undefined>();
   const [agentReview, setAgentReview] = useState<{ notice: SourceNotice; proposal: AgentProposal } | null>(null);
+  const [transitAgentReview,setTransitAgentReview] = useState<{notice:SourceNotice;result:AgentResult;proposal:AgentProposal} | null>(null);
+  const [transitPreview,setTransitPreview] = useState<{routeId:string;from?:string;to?:string} | null>(null);
   const [adminWorkspaceTab,setAdminWorkspaceTab] = useState<'reports' | 'users' | 'pipeline' | 'review'>('pipeline');
   const [editorKey, setEditorKey] = useState(0);
   const [drawing, setDrawing] = useState<Drawing | null>(null);
@@ -143,7 +160,10 @@ export default function App() {
   const membership = state?.membership?.uid === user?.uid ? state?.membership : null;
   const role = membership?.role ?? (user?.role === 'admin' ? 'admin' : user ? 'user' : 'guest');
   const isAdmin = role === 'admin', isReviewer = isAdmin || role === 'verified';
-  const travelChoiceOpen = !!user && !!state && stateOwner === user.uid && travelChoiceUid === user.uid && state.profile.travelDataChoiceMade !== true;
+  const adminPipeline = useAgentPipeline(state?.notices ?? [],isAdmin);
+  const adminReviewCount = (state?.closures.filter(item => item.status === 'draft' && item.moderation === 'pending').length ?? 0) + pipelineCounts(state?.notices ?? [],adminPipeline.results).review;
+  const navigationItems = isAdmin ? ADMIN_NAV : NAV.filter(item => item.id !== 'admin' && (item.id !== 'activity' || !!user)).map(item => ({...item,view:item.id as View,section:undefined}));
+  const travelChoiceOpen = !isAdmin && !!user && !!state && stateOwner === user.uid && travelChoiceUid === user.uid && state.profile.travelDataChoiceMade !== true;
   useEffect(() => {
     if (!user) { setTravelChoiceUid(null); return; }
     if (!state || stateOwner !== user.uid) return;
@@ -159,9 +179,9 @@ export default function App() {
     if (!Number.isFinite(next)) return;
     const timer = setTimeout(() => setClock(new Date().toISOString()), Math.min(next - now + 25, 60_000)); return () => clearTimeout(timer);
   }, [departureMode, state?.closures, clock]);
-  const notificationState = useMemo(() => state && !user ? { ...state, profile: { ...state.profile, browserNotifications: false } } : state, [state, user]);
+  const notificationState = useMemo(() => state && (!user || isAdmin) ? { ...state, profile: { ...state.profile, browserNotifications: false } } : state, [state, user, isAdmin]);
   useAlertNotifications(notificationState, () => setView('alerts'));
-  useEffect(() => { if (!('serviceWorker' in navigator)) return; const opened = (event: MessageEvent) => { if (event.data?.type === 'OPEN_ALERTS') setView('alerts'); }; navigator.serviceWorker.addEventListener('message', opened); return () => navigator.serviceWorker.removeEventListener('message', opened); }, []);
+  useEffect(() => { if (!('serviceWorker' in navigator)) return; const opened = (event: MessageEvent) => { if (event.data?.type === 'OPEN_ALERTS') { if(isAdmin) { setAdminWorkspaceTab('review'); setView('admin'); } else setView('alerts'); } }; navigator.serviceWorker.addEventListener('message', opened); return () => navigator.serviceWorker.removeEventListener('message', opened); }, [isAdmin]);
   const notify = useCallback((message: string) => setToast(message), []);
   const reload = useCallback(async () => {
     const sequence = ++reloadSequence.current;
@@ -169,14 +189,14 @@ export default function App() {
     try { const next = await api<AppState>('/state'); if (sequence !== reloadSequence.current || ownerUid !== (getAuthSession().user?.uid ?? null)) return; lastLoadedState.current = next; setStateOwner(ownerUid); setState(current => current && current.closures.length === next.closures.length && current.closures.every((item, index) => item.id === next.closures[index].id && item.revision === next.closures[index].revision) ? JSON.stringify(current) === JSON.stringify(next) ? current : { ...next, closures: current.closures } : next); setOnline(true); setStartupError(''); }
     catch (e) { if (sequence !== reloadSequence.current) return; setOnline(false); setStartupError(e instanceof Error ? e.message : 'The local API is unavailable. Start the server and retry.'); throw e; }
   }, []);
-  const travel = useTravelCapture({ userId: user?.uid, profile: state?.profile, tripName: origin && destination ? `${origin.name} → ${destination.name}` : undefined, onSaved: reload, onError: notify });
+  const travel = useTravelCapture({ userId: isAdmin ? undefined : user?.uid, profile: isAdmin ? undefined : state?.profile, tripName: origin && destination ? `${origin.name} → ${destination.name}` : undefined, onSaved: reload, onError: notify });
   useEffect(() => {
     if (previousAccount.current && previousAccount.current !== user?.uid) {
       planSequence.current++; setPlan(null); setPlanWanted(false); setSelectedRouteId(null);
       setOrigin(null); setDestination(null); setWaypoints([]); setNavigationPosition(null); setFocus(null); setView('journey'); setCommuteSeed(undefined);
     }
     previousAccount.current = user?.uid;
-    setAdminWorkspaceTab('pipeline'); setAgentReview(null);
+    setAdminWorkspaceTab('pipeline'); setAgentReview(null); setTransitAgentReview(null); setTransitPreview(null);
     locateSequence.current++; cancelLocation.current?.(); setLocating(false); setThemeBusy(false); setMapStyleBusy(false);
     if (user) { setEntryAccepted(true); setView(user.role === 'admin' ? 'admin' : 'journey'); }
     setState(null); setStateOwner(undefined); lastLoadedState.current = null; setHistoryTrace([]); setNavigationPosition(null); setNavigationAccuracy(null);
@@ -250,6 +270,7 @@ export default function App() {
   }
   function navigate(next: View) {
     if ((next === 'admin' || next === 'sources') && !isAdmin) return;
+    if (isAdmin && ['planning','activity','commutes','navigation'].includes(next)) return;
     if (next !== 'profile') setProfileSection(null);
     if (next === 'local' && view !== 'local') {
       const points = transit.network?.stops.map(stop => stop.coordinate) ?? [];
@@ -327,13 +348,31 @@ export default function App() {
     } catch (e) { if (sequence === planSequence.current) setPlanError(e instanceof Error ? e.message : 'Could not calculate your route.'); }
     finally { if (sequence === planSequence.current) setPlanning(false); }
   }
+  useEffect(() => {
+    if(!transitPreview || !transit.network || view !== 'local') return;
+    const {routeId,from,to} = transitPreview;
+    const pattern = transit.network.patterns.find(item => item.routeId === routeId && (!from || !to || item.stopIds.includes(from) && item.stopIds.indexOf(to) > item.stopIds.indexOf(from)));
+    if(pattern) transit.selectPattern(pattern.id);
+    setTransitPreview(null);
+  },[transitPreview,transit.network,view]);
   function beginClosure(seed?: Partial<ClosureDraft>) {
     if (!user) { setAccountOpen(true); return; }
     setView('closures'); setEditing(null); setEditorSeed(seed); setSelectedClosure(null); setAgentReview(null); setEditorRoadReplaced(false); setRestrictionType(seed?.restrictionType ?? 'road_closure');
     setSelectedRoadName(''); setDrawing({ kind: 'line', coordinates: [], widthMeters: 14 }); setMode('road'); setEditorOpen(true); setEditorKey(key => key + 1);
   }
   function startRoadSelection(kind = restrictionType) { roadSelection.reset(); setRestrictionType(kind); setEditorRoadReplaced(true); setSelectedRoadName(''); setDrawing({ kind: 'line', coordinates: [], widthMeters: kind === 'blockade' ? 4 : 14 }); setMode('road'); setPanelExpanded(false); }
+  async function transitDecision(decision: AgentProposalDecision) {
+    adminPipeline.update(decision.result); setTransitAgentReview(null); setTransitPreview(null);
+    setAdminWorkspaceTab('review'); setView('admin'); transit.retry();
+    await reload().catch(() => {});
+    notify(decision.proposal.state === 'rejected' ? 'Bus service proposal rejected.' : 'Bus service notice approved.');
+  }
   function reviewAgentOnMap(notice: SourceNotice, proposal?: AgentProposal) {
+    if(proposal?.kind === 'transit') {
+      const result = adminPipeline.results.find(item => item.noticeId === notice.id && item.noticeRevision === notice.revision);
+      if(!result) { notify('Refresh the saved analysis before reviewing this service notice.'); return; }
+      setTransitAgentReview({notice,result,proposal}); return;
+    }
     beginClosure(proposal?.draft ?? { description: notice.text, sourceUrl: notice.url || undefined });
     if (!proposal) return;
     setAgentReview({ notice, proposal });
@@ -368,7 +407,7 @@ export default function App() {
     cancelEditor(); setSelectedClosure(result.id); if (result.moderation === 'pending') setClosureFilter('pending'); await reload(); focusPoints(result.geometry.coordinates[0] as Coordinate[]); notify(result.moderation === 'pending' ? 'Report submitted for review.' : editing ? 'Closure updated.' : 'Closure added.');
   }
   function selectClosure(closure: Closure) { setSelectedClosure(closure.id); focusPoints(closure.geometry.coordinates[0] as Coordinate[]); }
-  function canEditClosure(closure: Closure) { return isAdmin || !!user && closure.author?.uid === user.uid && (isReviewer || closure.moderation === 'pending'); }
+  function canEditClosure(closure: Closure) { return isAdmin || isReviewer && (closure.status === 'published' && (!closure.moderation || closure.moderation === 'approved') || closure.status === 'draft' && closure.moderation === 'pending') || !!user && closure.author?.uid === user.uid && (isReviewer || closure.moderation === 'pending'); }
   async function reviewClosure(closure: Closure, decision: 'approve' | 'reject') {
     try { await send(`/closures/${encodeURIComponent(closure.id)}/review`, { revision: closure.revision, decision }); notify(decision === 'approve' ? 'Report approved.' : 'Report rejected.'); }
     finally { await reload(); }
@@ -515,19 +554,22 @@ export default function App() {
       <div className="header-actions">
         <button type="button" className="icon-button header-theme" aria-label={t(theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode')} title={t(theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode')} disabled={themeBusy || !state} aria-busy={themeBusy} onClick={toggleTheme}>{theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}</button>
         <HeaderLanguage value={language} onChange={setLanguage} />
-        <button className={`icon-button notification-button ${view === 'alerts' ? 'selected' : ''}`} aria-label={`Alerts${unread ? `, ${unread} unread` : ''}`} onClick={() => navigate('alerts')}><Bell size={22} />{unread > 0 && <span className="notification-count">{unread}</span>}</button>
+        <button className={`icon-button notification-button ${view === 'alerts' || isAdmin && view === 'admin' && adminWorkspaceTab === 'review' ? 'selected' : ''}`} aria-label={isAdmin ? `${t('Review queue')}, ${adminReviewCount}` : `Alerts${unread ? `, ${unread} unread` : ''}`} onClick={() => { if(isAdmin) { setAdminWorkspaceTab('review'); navigate('admin'); } else navigate('alerts'); }}><Bell size={22} />{(isAdmin ? adminReviewCount : unread) > 0 && <span className="notification-count">{isAdmin ? adminReviewCount : unread}</span>}</button>
         <button className="workspace-avatar" aria-label={t('Open profile')} onClick={() => navigate('profile')}>{user && state?.profile.photoDataUrl ? <img src={state.profile.photoDataUrl} alt={t('Your profile photo')} /> : (user ? profileName : 'M').slice(0, 1).toUpperCase()}</button>
       </div>
     </header>
     {mapStylesOpen && state && <MapStylePicker value={mapStyle} disabled={mapStyleBusy} onChange={changeMapStyle} onClose={() => setMapStylesOpen(false)} />}
     <div className="workspace">
-      <nav className="nav-rail" aria-label={t("Main navigation")}>{NAV.filter(item => item.id === 'admin' ? isAdmin : item.id === 'activity' ? !!user && !isAdmin : item.id === 'commutes' ? !isAdmin : true).map(({ id, icon: Icon, label }) => <button className={`nav-item ${view === id || id === 'journey' && view === 'navigation' || id === 'profile' && view === 'sources' ? 'active' : ''}`} key={id} data-tour={id === 'planning' ? 'plan-ahead' : id === 'closures' ? 'nav-closures' : id === 'commutes' ? 'nav-saved' : id === 'profile' ? 'nav-profile' : undefined} aria-current={view === id ? 'page' : undefined} onClick={() => navigate(id)}><Icon size={23} strokeWidth={1.9} aria-hidden="true" /><span>{t(label)}</span></button>)}</nav>
+      <nav className={`nav-rail ${isAdmin ? 'admin-nav-rail' : ''}`} aria-label={t("Main navigation")}>{navigationItems.map(({ id, view: target, section, icon: Icon, label }) => {
+        const active = view === target && (!section || adminWorkspaceTab === section) || id === 'journey' && view === 'navigation';
+        return <button className={`nav-item ${active ? 'active' : ''}`} key={id} data-tour={id === 'planning' ? 'plan-ahead' : id === 'closures' ? 'nav-closures' : id === 'commutes' ? 'nav-saved' : id === 'profile' ? 'nav-profile' : undefined} aria-current={active ? 'page' : undefined} onClick={() => { if(section) setAdminWorkspaceTab(section); navigate(target); }}><Icon size={23} strokeWidth={1.9} aria-hidden="true" /><span>{t(label)}</span>{isAdmin && id === 'review' && adminReviewCount > 0 && <b className="nav-count">{adminReviewCount}</b>}</button>;
+      })}</nav>
       <aside ref={panelRef} className={`side-panel ${panelExpanded ? 'is-expanded' : ''}`} id="workspace-panel" aria-label={`${view} controls`}>
         <button className="sheet-size-toggle" aria-label={panelExpanded ? 'Show more of the map' : 'Expand controls'} aria-expanded={panelExpanded} onClick={() => setPanelExpanded(!panelExpanded)}><span /></button>
         {!state ? <div className="panel-content"><span className="eyebrow">{t("MANZIL LOCAL")}</span><h1>{t("Getting the road ready.")}</h1><p className="muted">{t("Connecting to your local workspace…")}</p>{startupError && <><div className="error-box">{t(startupError)}</div><button className="secondary-button" onClick={() => reload().catch(() => {})}><RefreshCw size={16} />{t("Retry connection")}</button><p className="small muted">{t("Run ")}<code>{t("npm run dev")}</code> {t("from the project folder.")}</p></>}</div> : <>
           {state.closures.some(closure => closure.demoData && closureState(closure,mapDepartureAt) === 'active') && <div className="demo-data-banner" role="status">{t('Demo restrictions are active and affect shared routes. These are synthetic, not live traffic reports.')}</div>}
           {!online && <div className="offline-banner"><WifiOff size={16} />{t("Connection lost. Showing the last loaded data.")}</div>}
-          {view === 'admin' && isAdmin && <div className="panel-content"><AdminPanel state={state} at={mapDepartureAt} selectedId={selectedClosure} reload={reload} notify={notify} onSelect={selectClosure} onEdit={editClosure} onCancel={cancelClosure} onReview={reviewClosure} onManualClosure={reviewAgentOnMap} initialTab={adminWorkspaceTab} onTabChange={setAdminWorkspaceTab} /></div>}
+          {view === 'admin' && isAdmin && <div className="panel-content"><AdminPanel key={user?.uid} pipeline={adminPipeline} state={state} at={mapDepartureAt} selectedId={selectedClosure} reload={reload} notify={notify} onSelect={selectClosure} onEdit={editClosure} onCancel={cancelClosure} onReview={reviewClosure} onManualClosure={reviewAgentOnMap} initialTab={adminWorkspaceTab} onTabChange={setAdminWorkspaceTab} /></div>}
           {view === 'local' && <div className="panel-content"><TransitPanel transit={transit} mode={mode} setMode={setMode} onFocus={focusPoints} canReview={isReviewer} at={mapDepartureAt} planned={!!localDeparture} onDepartureChange={setLocalDeparture} /></div>}
           <div className="panel-content" hidden={view !== 'journey' && view !== 'planning'}>
             <div className="section-heading journey-heading"><h1>{view === 'planning' ? t('Plan ahead') : plan ? t("Your routes") : t("Where to?")}</h1><button className="text-button" data-tour="help" onClick={() => setHelpOpen(!helpOpen)} aria-expanded={helpOpen}>{t("Help & demos")}</button></div>
@@ -543,7 +585,7 @@ export default function App() {
             {planError && <div className="error-box" role="alert">{t(planError)}</div>}
             {!state.graph.ready && <div className="error-box">{t("Local road data is unavailable. Online routing is available for Pakistan journeys.")}</div>}
             {stale && !passiveRefresh && <div className="notice-box warning"><RefreshCw size={17} /><div><strong>{t("Restrictions changed")}</strong><p>{t("Replan this journey to use the latest map and schedule.")}</p></div></div>}
-            {plan && <RouteResults vehicle={user ? state.profile.vehicle : undefined} fuel={state.fuel} navigationDisabled={stale} updating={stale && !passiveRefresh} navigationLabel={view === 'planning' ? 'View live route' : 'Navigate'} plan={plan} selectedId={selectedRouteId} onSelect={selectRoute} onNavigate={() => { setNavigationPosition(null); navigate('navigation'); }} onSaveCommute={() => { setCommuteSeed(undefined); setCommuteOpen(n => n + 1); navigate('commutes'); }} onDemo={addDemo} demoBusy={demoBusy} showDemo={isAdmin} baselineSelected={baselineSelected} onBaselineSelect={() => setBaselineSelected(value => !value)} />}
+            {plan && <RouteResults inspectionOnly={isAdmin} vehicle={user && !isAdmin ? state.profile.vehicle : undefined} fuel={state.fuel} navigationDisabled={stale} updating={stale && !passiveRefresh} navigationLabel={view === 'planning' ? 'View live route' : 'Navigate'} plan={plan} selectedId={selectedRouteId} onSelect={selectRoute} onNavigate={() => { setNavigationPosition(null); navigate('navigation'); }} onSaveCommute={() => { setCommuteSeed(undefined); setCommuteOpen(n => n + 1); navigate('commutes'); }} onDemo={addDemo} demoBusy={demoBusy} showDemo={isAdmin} baselineSelected={baselineSelected} onBaselineSelect={() => setBaselineSelected(value => !value)} />}
             {(view === 'journey' || view === 'planning') && isAdmin && <DemoClosures at={departureISO} revision={state.eventRevision} reload={reload} notify={notify} onFocus={focusPoints} onTryJourney={tryDemoJourney} />}
             {(view === 'journey' || view === 'planning') && helpOpen && <div className="help-panel"><button className="text-button" onClick={startTour}>{t('Replay tour')}</button><button className="text-button" onClick={() => navigate('closures')}>{t('Road closures')}</button>{isAdmin && <button className="text-button" onClick={() => navigate('sources')}>{t('Source updates')}</button>}</div>}
           </div>
@@ -556,10 +598,10 @@ export default function App() {
               {view === 'closures' && isAdmin && <DemoClosures at={departureISO} revision={state.eventRevision} reload={reload} notify={notify} onFocus={focusPoints} onTryJourney={tryDemoJourney} />}
             </>}
           </div>
-          <div className="panel-content" hidden={view !== 'commutes'}>{!user ? <PersonalFeatureGate onSignIn={() => setAccountOpen(true)} /> : <CommutePanel key={`commutes-${commuteOpen}`} state={state} origin={origin} destination={destination} waypoints={waypoints} initialOpen={commuteOpen > 0} initialValues={commuteSeed} reload={reload} notify={notify} onPlan={selectCommute} onSelectEndpoints={() => navigate('journey')} />}</div>
-          <div className="panel-content" hidden={view !== 'activity'}>{!user ? <PersonalFeatureGate onSignIn={() => setAccountOpen(true)} /> : <ActivityPanel key={user.uid} onSaveJourney={saveHistoryJourney} active={view === 'activity'} state={state} reload={reload} notify={notify} onView={trip => { setHistoryTrace(trip.points); setHistoryName(trip.name); focusPoints(usableTracePoints(trip.points).map(p => p.coordinate)); }} />}</div>
+          <div className="panel-content" hidden={view !== 'commutes'}>{!isAdmin && (!user ? <PersonalFeatureGate onSignIn={() => setAccountOpen(true)} /> : <CommutePanel key={`commutes-${commuteOpen}`} state={state} origin={origin} destination={destination} waypoints={waypoints} initialOpen={commuteOpen > 0} initialValues={commuteSeed} reload={reload} notify={notify} onPlan={selectCommute} onSelectEndpoints={() => navigate('journey')} />)}</div>
+          <div className="panel-content" hidden={view !== 'activity'}>{!isAdmin && (!user ? <PersonalFeatureGate onSignIn={() => setAccountOpen(true)} /> : <ActivityPanel key={user.uid} onSaveJourney={saveHistoryJourney} active={view === 'activity'} state={state} reload={reload} notify={notify} onView={trip => { setHistoryTrace(trip.points); setHistoryName(trip.name); focusPoints(usableTracePoints(trip.points).map(p => p.coordinate)); }} />)}</div>
           <div className="panel-content" hidden={view !== 'sources'}>{isAdmin && view === 'sources' && <SourcePanel state={state} reload={reload} notify={notify} onManualClosure={reviewAgentOnMap} />}</div>
-          <div className="panel-content" hidden={view !== 'profile'}>{state.profile && <ProfilePanel account={user} onSignOut={leaveAccount} personalFeaturesAvailable={!!user} onSignIn={() => setAccountOpen(true)} onTour={startTour} state={state} reload={reload} notify={notify} onSources={() => navigate('sources')} onActivity={() => setProfileSection('history')} onStatistics={() => setProfileSection('statistics')} section={view === 'profile' && stateOwner === (user?.uid ?? null) ? profileSection : null} onSectionChange={setProfileSection} onSaveProposal={saveProposal} />}</div>
+          <div className="panel-content" hidden={view !== 'profile'}>{state.profile && <ProfilePanel administrative={isAdmin} account={user} onSignOut={leaveAccount} personalFeaturesAvailable={!!user} onSignIn={() => setAccountOpen(true)} onTour={startTour} state={state} reload={reload} notify={notify} onSources={() => { setAdminWorkspaceTab('pipeline'); navigate('admin'); }} onActivity={() => setProfileSection('history')} onStatistics={() => setProfileSection('statistics')} section={view === 'profile' && stateOwner === (user?.uid ?? null) ? profileSection : null} onSectionChange={setProfileSection} onSaveProposal={saveProposal} />}</div>
           {view === 'navigation' && <div className="panel-content">{routeForGuidance && destination ? <NavigationPanel key={user?.uid ?? 'guest'} onSample={travel.capture} savesTravelData={!!user && state.profile.collectTravelData === true} onVisitedStops={count => { visitedStops.current = count; }} stops={waypoints.filter((place): place is Place => !!place).map(place => place.coordinate)} route={routeForGuidance} destination={destination.name} stale={stale} onBack={() => navigate('journey')} onPosition={showLocation} onReplan={replanFromGPS} onFocus={focusPoints} /> : <><h1>{t("Choose a route first")}</h1><button className="primary-button" onClick={() => navigate('journey')}>{t("Open the planner")}</button></>}</div>}
           <div className="panel-content" hidden={view !== 'alerts'}>{!user ? <PersonalFeatureGate onSignIn={() => setAccountOpen(true)} /> : <>
             <div className="section-heading"><h1>{t("Journey alerts")}</h1><Bell size={24} /></div>
@@ -579,11 +621,12 @@ export default function App() {
         <div className="map-bottom-info"><div className="map-legend"><span><i className="legend-line" />{t(localMap ? "Bus route" : "Route")}</span><span><i className="legend-block" />{t("Closed")}</span><span><i className="legend-upcoming" />{t("Upcoming")}</span>{localMap && <span><i className="legend-transit-uncertain" />{t("Uncertain / suspended")}</span>}{!localMap && !!plan?.conflicts.length && <span><i className="legend-blocked-route" />{t("Blocked route")}</span>}</div>{!localMap && !!historyTrace.length && <div className="map-context"><Activity size={14} />{historyName}<button className="icon-button small" aria-label={t("Hide recorded trip")} onClick={() => setHistoryTrace([])}><X size={13} /></button></div>}</div>
       </Suspense></main>
     </div>
+    {isAdmin && transitAgentReview && <Modal titleId="transit-agent-review-title" onClose={() => { setTransitAgentReview(null); setTransitPreview(null); }} dismissOnOutsideClick className="profile-settings-dialog profile-statistics-dialog admin-detail-dialog"><h1 id="transit-agent-review-title" className="sr-only">{t('Review bus service')}</h1><div className="profile-section-content"><TransitProposalEditor key={transitAgentReview.proposal.version} {...transitAgentReview} onClose={() => { setTransitAgentReview(null); setTransitPreview(null); }} onDecision={transitDecision} onPreview={(routeId,from,to) => { setTransitPreview({routeId,from,to}); navigate('local'); }} /></div></Modal>}
     {accountOpen && <AccountPanel onClose={() => setAccountOpen(false)} onAuthenticated={() => setAccountOpen(false)} onAccountCreated={accountCreated} />}
     {travelChoiceOpen && user && <TravelDataChoice key={user.uid} uid={user.uid} onComplete={profile => { if (profile) setState(current => current ? { ...current, profile } : current); setTravelChoiceUid(null); }} />}
-    {profileSection === 'statistics' && view === 'profile' && user && state && stateOwner === user.uid && <ProfileSettingsDialog section="statistics" closeLabel="Close statistics" onClose={() => setProfileSection(null)}><MonthlyStatistics key={user.uid} state={state} /></ProfileSettingsDialog>}
-    {profileSection === 'history' && view === 'profile' && user && state && stateOwner === user.uid && <ProfileSettingsDialog section="history" closeLabel="Close trip history" onClose={() => setProfileSection(null)}><TripHistory key={user.uid} onSaveJourney={saveHistoryJourney} state={state} showHeading={false} reload={reload} notify={notify} onView={trip => { setProfileSection(null); setHistoryTrace(trip.points); setHistoryName(trip.name); focusPoints(usableTracePoints(trip.points).map(point => point.coordinate)); }} /></ProfileSettingsDialog>}
-    {tourOpen && state && stateOwner === (user?.uid ?? null) && !accountOpen && !travelChoiceOpen && !profileSection && !isCreatingAccount() && !(user && state.profile.travelDataChoiceMade !== true && needsTravelDataChoice(user.uid)) && <WelcomeTour onClose={closeTour} onViewChange={previewTourView} />}
+    {!isAdmin && profileSection === 'statistics' && view === 'profile' && user && state && stateOwner === user.uid && <ProfileSettingsDialog section="statistics" closeLabel="Close statistics" onClose={() => setProfileSection(null)}><MonthlyStatistics key={user.uid} state={state} /></ProfileSettingsDialog>}
+    {!isAdmin && profileSection === 'history' && view === 'profile' && user && state && stateOwner === user.uid && <ProfileSettingsDialog section="history" closeLabel="Close trip history" onClose={() => setProfileSection(null)}><TripHistory key={user.uid} onSaveJourney={saveHistoryJourney} state={state} showHeading={false} reload={reload} notify={notify} onView={trip => { setProfileSection(null); setHistoryTrace(trip.points); setHistoryName(trip.name); focusPoints(usableTracePoints(trip.points).map(point => point.coordinate)); }} /></ProfileSettingsDialog>}
+    {!isAdmin && tourOpen && state && stateOwner === (user?.uid ?? null) && !accountOpen && !travelChoiceOpen && !profileSection && !isCreatingAccount() && !(user && state.profile.travelDataChoiceMade !== true && needsTravelDataChoice(user.uid)) && <WelcomeTour onClose={closeTour} onViewChange={previewTourView} />}
     {toast && <div className="toast" role="status"><Check size={17} /><span>{t(toast)}</span><button className="icon-button small" aria-label={t("Dismiss message")} onClick={() => setToast('')}><X size={15} /></button></div>}
   </div>;
 }

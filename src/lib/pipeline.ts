@@ -6,10 +6,11 @@ export interface AgentStatus {
   execution?: 'private_worker' | 'scheduled_only' | 'local';
   runtime: { state?: string; stage?: string; progressAt?: string; lastFinishedAt?: string; lastTickAt?: string; lastNoticeId?: string; errorCode?: string } | null;
 }
-export type PipelineStage = 'waiting' | 'processing' | 'failed' | 'review' | 'applied' | 'dismissed' | 'handled' | 'rejected';
+export type PipelineStage = 'expired' | 'waiting' | 'processing' | 'failed' | 'review' | 'applied' | 'dismissed' | 'handled' | 'rejected';
 export function pipelineStage(notice: SourceNotice, result?: AgentResult): PipelineStage {
   if (notice.status === 'dismissed') return 'dismissed';
   if (result?.noticeRevision === notice.revision) {
+    if (result.proposals?.length && result.proposals.some(proposal=>proposal.state==='expired') && result.proposals.every(proposal=>proposal.state==='expired'||proposal.state==='rejected')) return 'expired';
     if (result.proposals?.some(proposal => proposal.state === 'pending')) return 'review';
     if (result.proposals?.length && result.proposals.every(proposal => proposal.state === 'rejected')) return 'rejected';
     if (!(notice.status === 'reviewed' && ['failed','processing'].includes(result.state))) return result.state;
@@ -26,5 +27,5 @@ export function pipelineCounts(notices: SourceNotice[], results: AgentResult[]) 
     processing: rows.filter(row => row.state === 'processing').length, review: rows.filter(row => row.state === 'review').reduce((count,row)=>count+(row.result?.proposals?.length ? row.result.proposals.filter(proposal=>proposal.state==='pending').length : 1),0),
     failed: rows.filter(row => row.state === 'failed').length, drafts: proposals.length,
     mapped: proposals.filter(proposal => proposal.mapping !== 'unresolved').length,
-    changed: current.filter(row => !!(row.result!.closureIds?.length || row.result!.transitIds?.length)).length };
+    changed: current.filter(row => !!(row.result!.closureIds?.length || row.result!.transitIds?.length || row.result!.transitDisruptionIds?.length)).length };
 }

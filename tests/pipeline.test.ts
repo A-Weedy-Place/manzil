@@ -20,3 +20,8 @@ it('shows rejected, failed and applied outcomes without counting them as pending
   expect(pipelineCounts([notice()],[result({ state: 'failed', proposals: undefined })])).toMatchObject({ review: 0, failed: 1 });
   expect(pipelineCounts([notice()],[result({ state: 'applied', closureIds: ['target0'], proposals: [{ ...proposal(),state: 'approved' }] })])).toMatchObject({ review: 0, changed: 1 });
 });
+it('labels expired notices without adding them to awaiting review, including mixed expired and rejected decisions', () => {
+  const value=result({proposals:[{...proposal(),state:'expired'},{...proposal(1),state:'rejected'}]});
+  expect(pipelineStage(notice(),value)).toBe('expired');
+  expect(pipelineCounts([notice()],[value])).toMatchObject({review:0,drafts:0,changed:0});
+});

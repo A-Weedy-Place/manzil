@@ -189,6 +189,70 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
     expect((await services.auth.getUser('bob')).customClaims?.admin).toBe(false);
     expect((await request('/admin/users/administrator', admin, { verified: false }, 'PATCH')).status).toBe(409);
   });
+  it('lets currently verified reviewers correct and cancel another author’s reports without bypassing pending approval or revision checks', async () => {
+    const photo = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/cB8AAAAASUVORK5CYII=';
+    const created: string[] = [];
+    try {
+      const response = await request('/closures', alice, { ...draft, title: 'Reviewer edit fixture', photos: [photo] });
+      expect(response.status).toBe(201); const original = await response.json() as Closure; created.push(original.id);
+      expect((await request(`/closures/${original.id}`, bob, { ...draft, revision: 1 }, 'PUT')).status).toBe(403);
+      expect((await request('/admin/users/bob', admin, { verified: true }, 'PATCH')).status).toBe(200);
+      const corrected = await request(`/closures/${original.id}`, bob, { ...draft, title: 'Reviewed correction', revision: 1, moderation: 'approved', author: { uid: 'bob' } }, 'PUT');
+      expect(corrected.status).toBe(200); expect(await corrected.json()).toMatchObject({ status: 'draft', moderation: 'pending', revision: 2, author: original.author, photos: [photo] });
+      expect((await new FirestoreStore(services.db).routingSnapshot()).closures.some(item => item.id === original.id)).toBe(false);
+      const adminCorrection = await request(`/closures/${original.id}`, admin, { ...draft, title: 'Admin corrected pending report', revision: 2 }, 'PUT');
+      expect(adminCorrection.status).toBe(200); expect(await adminCorrection.json()).toMatchObject({ status: 'draft', moderation: 'pending', revision: 3, author: original.author });
+      expect((await request(`/closures/${original.id}/review`, bob, { revision: 2, decision: 'approve' })).status).toBe(409);
+      expect((await request(`/closures/${original.id}/review`, bob, { revision: 3, decision: 'approve' })).status).toBe(200);
+      const geometry = { type: 'Polygon', coordinates: [[[73.083,33.7],[73.084,33.7],[73.084,33.701],[73.083,33.7]]] };
+      const moved = await request(`/closures/${original.id}`, bob, { ...draft, title: 'Moved approved report', geometry, revision: 4 }, 'PUT');
+      expect(moved.status).toBe(200); expect(await moved.json()).toMatchObject({ status: 'published', moderation: 'approved', revision: 5, author: original.author, geometry, photos: [photo] });
+      expect((await new FirestoreStore(services.db).routingSnapshot()).closures.find(item => item.id === original.id)).toMatchObject({ revision: 5, geometry });
+      expect((await request(`/closures/${original.id}`, bob, { ...draft, revision: 4 }, 'PUT')).status).toBe(409);
+      expect((await request('/admin/users/bob', admin, { verified: false }, 'PATCH')).status).toBe(200);
+      // The same existing token immediately loses reviewer authority after revocation.
+      expect((await request(`/closures/${original.id}`, bob, { ...draft, revision: 5 }, 'PUT')).status).toBe(403);
+      expect((await request(`/closures/${original.id}`, bob, undefined, 'DELETE')).status).toBe(403);
+      expect((await request('/admin/users/bob', admin, { verified: true }, 'PATCH')).status).toBe(200);
+      const cancelled = await request(`/closures/${original.id}`, bob, undefined, 'DELETE');
+      expect(cancelled.status).toBe(200); expect(await cancelled.json()).toMatchObject({ status: 'cancelled', revision: 6, author: original.author });
+      const pending = await (await request('/closures', alice, { ...draft, title: 'Pending cancellation fixture' })).json() as Closure; created.push(pending.id);
+      const removed = await request(`/closures/${pending.id}`, bob, undefined, 'DELETE');
+      expect(removed.status).toBe(200); expect(await removed.json()).toMatchObject({ status: 'cancelled', moderation: 'pending', revision: 2, author: pending.author });
+      expect((await request(`/closures/${pending.id}/review`, admin, { revision: 2, decision: 'approve' })).status).toBe(409);
+    } finally {
+      await request('/admin/users/bob', admin, { verified: false }, 'PATCH');
+      for (const id of created) { const item = await store.get<Closure>('closure', id); if (item && item.status !== 'cancelled') await store.saveClosure({ ...item, status: 'cancelled' }, id, item.revision); }
+    }
+  });
+  it('projects only profile name, city and sharing consent into the admin directory without creating missing profiles or exposing personal records', async () => {
+    const suffix = crypto.randomUUID(), namedUid = `directory-named-${suffix}`, missingUid = `directory-missing-${suffix}`;
+    await services.auth.createUser({ uid: namedUid, email: `${namedUid}@manzil.test`, displayName: 'Auth name' });
+    await services.auth.createUser({ uid: missingUid, email: `${missingUid}@manzil.test`, displayName: 'Auth fallback' });
+    const personal = store.forUser(namedUid), missing = store.forUser(missingUid);
+    try {
+      const photo = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/cB8AAAAASUVORK5CYII=';
+      await personal.updateProfile({ displayName: 'Profile directory name', city: 'Lahore', location: 'Private neighbourhood', photoDataUrl: photo, collectTravelData: true,
+        vehicle: { kind: 'car', fuelType: 'petrol', label: 'Private vehicle label', kmPerLitre: 12 } });
+      const before = await personal.meta('profile'); expect(await missing.meta('profile')).toBeUndefined();
+      expect((await request('/admin/users')).status).toBe(401); expect((await request('/admin/users', alice)).status).toBe(403);
+      const directory = await request('/admin/users', admin); expect(directory.status).toBe(200);
+      const entries = (await directory.json()).users as Record<string, unknown>[];
+      const named = entries.find(item => item.uid === namedUid), absent = entries.find(item => item.uid === missingUid);
+      expect(named).toMatchObject({ displayName: 'Profile directory name', city: 'Lahore', travelDataSharing: true });
+      expect(absent).toMatchObject({ displayName: 'Auth fallback', travelDataSharing: false });
+      expect(await missing.meta('profile')).toBeUndefined(); expect(await personal.meta('profile')).toEqual(before);
+      for (const entry of [named, absent]) {
+        expect(entry).toBeDefined();
+        for (const key of Object.keys(entry!)) expect(['uid','role','verified','email','displayName','city','travelDataSharing','disabled','photoURL','createdAt','lastSignInAt']).toContain(key);
+        expect(JSON.stringify(entry)).not.toMatch(/Private neighbourhood|Private vehicle label|photoDataUrl|kmPerLitre|points|collectTravelData|inferFrequentRoutes/);
+      }
+      await personal.updateProfile({ collectTravelData: false });
+      const refreshed = (await (await request('/admin/users', admin)).json()).users as Record<string, unknown>[];
+      expect(refreshed.find(item => item.uid === namedUid)).toMatchObject({ travelDataSharing: false });
+      expect(await missing.meta('profile')).toBeUndefined();
+    } finally { await services.auth.deleteUser(namedUid); await services.auth.deleteUser(missingUid); }
+  });
   it('grants and revokes administrator access immediately for an existing token without deleting unrelated claims', async () => {
     const original = (await services.auth.getUser('bob')).customClaims ?? {};
     try {
@@ -568,6 +632,39 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
     expect((await request(`/agent/notices/${two.post.id}/review`, admin, two.body)).status).toBe(409);
     expect((await store.routingSnapshot()).revision).toBe(before);
   });
+  it('atomically reviews a bus suspension across Firestore instances without creating a car-road closure', async () => {
+    const instant = Date.now(), value = agentExtraction();
+    const text = 'Green Line bus service in Islamabad is suspended. Confirm the affected service window.';
+    value.events[0] = { ...value.events[0], action: 'disruption', impact: 'unknown', title: 'Synthetic Green Line suspension', quote: text,
+      location: { city: 'Islamabad', road: null, from: null, to: null, point: null },
+      service: { route: 'Green Line', from: null, to: null, scope: 'route' },
+      startsAt: new Date(instant).toISOString(), endsAt: new Date(instant + 3600000).toISOString(), timeBasis: 'explicit' };
+    const { id: _id, revision: _revision, receivedAt: _received, status: _status, ...input } = agentNotice({
+      sourceId: 'agent-transit-concurrent-fixture', text, contentHash: 'synthetic-transit-source', publishedAt: new Date(instant).toISOString() });
+    const post = (await store.upsertNotice(input)).notice, claim = (await store.claimAgentWork(claimInput(post)))!;
+    await store.completeAgentWork({ noticeId: post.id, revision: post.revision, claimId: claim.claimId, result: { ...finished(claim), extraction: value }, changes: [] });
+    const proposals = await prepareAgentProposals(post, value, []);
+    await store.saveAgentProposals(post.id, post.revision, claim.claimId, proposals);
+    const proposal = proposals[0], before = (await store.meta<TransitDisruptionState>('transit:disruptions'))?.revision ?? 0;
+    const roadRevision = (await store.routingSnapshot()).revision;
+    const path = `/agent/notices/${post.id}/review`, body = { noticeRevision: post.revision, index: 0, version: proposal.version,
+      decision: 'approve', confirmTransitScope: true,
+      transitDraft: { ...proposal.transitDraft, routeId: 'px6f2', startsAt: value.events[0].startsAt, endsAt: value.events[0].endsAt, status: 'published' } };
+    expect(proposal.kind).toBe('transit');
+    expect((await request(path, bob, body)).status).toBe(403);
+    try {
+      const attempts = await Promise.all([request(path, admin, body), request(path, admin, body)]);
+      expect(attempts.map(response => response.status).sort()).toEqual([200, 409]);
+      const other = new FirestoreStore(services.db), state = await other.meta<TransitDisruptionState>('transit:disruptions');
+      expect(state?.revision).toBe(before + 1);
+      expect(state?.records.find(record => record.id === proposal.targetId)).toMatchObject({ revision: 1, routeId: 'px6f2', agent: { noticeId: post.id }, reviewedBy: { role: 'admin' } });
+      expect(await other.get('closure', proposal.targetId)).toBeUndefined();
+      expect((await other.routingSnapshot()).revision).toBe(roadRevision);
+      expect(await other.meta<AgentResult>(agentResultKey(post.id))).toMatchObject({ transitDisruptionIds: [proposal.targetId], proposals: [{ state: 'approved' }] });
+    } finally {
+      await store.updateTransitDisruptions(state => ({ revision: state.revision + 1, records: state.records.filter(record => record.id !== proposal.targetId) }));
+    }
+  });
   it('rejects a Firestore refinement racing an administrator decision and preserves its history', async () => {
     const one = await proposalFixture('agent-refinement-race-fixture');
     const result = (await store.meta<AgentResult>(agentResultKey(one.post.id)))!;
@@ -612,13 +709,33 @@ describe.runIf(enabled)('real Auth/Firestore emulator integration', () => {
     const transitDraft={routeId:'ammha',title:'Synthetic reviewed Blue Line',description:'Emulator test only.',startsAt:stamp,endsAt:new Date(Date.now()+3600_000).toISOString(),status:'published' as const};
     const proposal={index:0,version,kind:'transit' as const,state:'pending' as const,action:'closure' as const,impact:'closed' as const,draft:{title:transitDraft.title},transitDraft,mapping:'existing' as const,locationKey:'transit:ammha:*:*:*',targetId,targetRevision:null,issues:['Confirm expiry.']};
     await store.completeAgentWork({noticeId:post.id,revision:post.revision,claimId:claim.claimId,changes:[],result:{...finished(claim),extraction:agentExtraction(),proposals:[proposal]}});
-    const body={noticeRevision:post.revision,index:0,version,decision:'approve',transitDraft};
+    const body={noticeRevision:post.revision,index:0,version,decision:'approve',confirmTransitScope:true,transitDraft};
     try{
       expect((await request(`/agent/notices/${post.id}/review`,bob,body)).status).toBe(403);
       const response=await request(`/agent/notices/${post.id}/review`,admin,body);expect(response.status).toBe(200);
-      const decision=await response.json();expect(decision.result).toMatchObject({state:'applied',transitIds:[targetId]});expect(decision.transit.agent.overridden).toBe(true);
+      const decision=await response.json();expect(decision.result).toMatchObject({state:'applied',transitIds:[targetId]});expect(decision.transit.reviewedBy.role).toBe('admin');
       expect((await request(`/agent/notices/${post.id}/review`,admin,body)).status).toBe(409);
     }finally{await store.setMeta('transit:disruptions',prior);}
+  });
+  it('reassesses saved agent work atomically across Firestore instances without consuming another model claim', async () => {
+    const stamp=new Date().toISOString(),post=(await store.upsertNotice({source:'manual',sourceId:'saved-agent-reassessment',url:'',text:'Synthetic transaction test only.',contentHash:'saved-v1',publishedAt:stamp,mediaUrls:[]})).notice;
+    const claim=(await store.claimAgentWork(claimInput(post)))!,id='reassessed-emulator-road',mapped=agentLocation();
+    const draft={title:'Synthetic reassessment road',description:'Emulator only',reason:'other' as const,status:'published' as const,startsAt:stamp,endsAt:new Date(Date.now()+48*3600_000).toISOString(),restrictionType:'road_closure' as const,drawing:mapped.drawing,geometry:mapped.geometry};
+    const proposal={index:0,version:crypto.randomUUID(),state:'pending' as const,action:'closure' as const,impact:'closed' as const,mapping:'road' as const,locationKey:mapped.key,targetId:id,targetRevision:null,draft,issues:[]};
+    const saved={...finished(claim),extraction:agentExtraction(),proposals:[proposal]};
+    await store.completeAgentWork({noticeId:post.id,revision:1,claimId:claim.claimId,changes:[],result:saved});
+    const before=(await store.routingSnapshot(true)).revision,usage=await store.meta(agentUsageKey(Date.now()));
+    const completion={noticeId:post.id,revision:1,claimId:claim.claimId,reassessmentFingerprint:proposalFingerprint(saved.proposals),expectedEventRevision:before,changes:[{id,expectedRevision:null,proposalIndex:0,draft:{...draft,moderation:'approved' as const,agent:{noticeId:post.id,sourceId:post.sourceId,sourceRevision:1,evidenceAt:stamp,locationKey:mapped.key,expiryBasis:'provisional' as const}}}],result:{...saved,state:'applied' as const,closureIds:[id],policyVersion:2,proposals:[{...proposal,state:'approved' as const,decisionMode:'automatic' as const,closureId:id}]}};
+    const another=new FirestoreStore(services.db),outcomes=await Promise.all([store.completeAgentWork(completion),another.completeAgentWork(completion)]);
+    expect(outcomes.filter(Boolean)).toHaveLength(1);expect(await store.meta(agentUsageKey(Date.now()))).toEqual(usage);
+    expect((await another.routingSnapshot(true)).closures.filter(item=>item.id===id)).toHaveLength(1);
+    expect((await another.routingSnapshot(true)).revision).toBe(before+1);
+    const second=(await store.upsertNotice({source:'manual',sourceId:'saved-agent-admin-race',url:'',text:'Synthetic pending decision only.',contentHash:'race-v1',publishedAt:stamp,mediaUrls:[]})).notice;
+    const secondClaim=(await store.claimAgentWork(claimInput(second)))!,secondResult={...finished(secondClaim),extraction:agentExtraction(),proposals:[{...proposal,targetId:'never-published-race'}]};
+    await store.completeAgentWork({noticeId:second.id,revision:1,claimId:secondClaim.claimId,changes:[],result:secondResult});
+    await another.reviewAgentProposal({noticeId:second.id,noticeRevision:1,index:0,version:proposal.version,decision:'reject',reviewer:{uid:'emulator-admin',displayName:'Synthetic admin',role:'admin'}});
+    expect(await store.completeAgentWork({...completion,noticeId:second.id,claimId:secondClaim.claimId,reassessmentFingerprint:proposalFingerprint(secondResult.proposals)})).toBe(false);
+    expect((await store.meta<AgentResult>(agentResultKey(second.id)))?.proposals?.[0].state).toBe('rejected');
   });
   it('denies direct browser Firestore access and boots the compiled API/worker with the real bundled graph', async () => {
     const direct = await fetch(`http://${process.env.FIRESTORE_EMULATOR_HOST}/v1/projects/${projectId}/databases/(default)/documents/users/alice`, { headers: { Authorization: `Bearer ${alice}` } });

@@ -16,6 +16,7 @@ export interface ClosureModeration {
 export interface Membership { uid: string; role: CommunityRole; verified: boolean }
 export interface CommunityUser extends Membership {
   email?: string; displayName?: string; photoURL?: string; disabled: boolean;
+  city?: string; travelDataSharing?: boolean | null;
   createdAt?: string; lastSignInAt?: string;
 }
 export interface ClosureDraft {
@@ -25,7 +26,7 @@ export interface ClosureDraft {
   startsAt: string; endsAt: string | null;
   status: 'published' | 'draft' | 'cancelled';
   geometry: Polygon; drawing?: Drawing; sourceUrl?: string; photos?: string[];
-  agent?: { noticeId: string; sourceId: string; sourceRevision: number; evidenceAt: string; evidenceBasis?: 'source' | 'admin_review'; locationKey: string; overridden?: boolean };
+  agent?: { noticeId: string; sourceId: string; sourceRevision: number; evidenceAt: string; evidenceBasis?: 'source' | 'admin_review'; expiryBasis?: 'source' | 'provisional'; locationKey: string; overridden?: boolean };
 }
 export interface Closure extends ClosureDraft, ClosureModeration { demoData?: boolean; id: string; revision: number; createdAt: string; updatedAt: string }
 export type ClosureInput = ClosureDraft & ClosureModeration;

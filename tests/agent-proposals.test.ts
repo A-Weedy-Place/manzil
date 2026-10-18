@@ -123,7 +123,7 @@ it('prepares and cancels an existing incident only after approved reopening, nev
   expect(decision.closure).toMatchObject({ id: previous.id, status: 'cancelled', revision: 2 });
   expect(initial.store.routingSnapshot().closures).toEqual([]);
 });
-it('retains expired evidence in review even when selective automatic publication is enabled', async () => {
+it('labels expired evidence without asking for a current publication decision', async () => {
   vi.spyOn(console, 'log').mockImplementation(() => {});
   const store = new Store(':memory:'); stores.push(store);
   const { id, revision, status, receivedAt, ...input } = notice(); store.upsertNotice(input);
@@ -131,7 +131,7 @@ it('retains expired evidence in review even when selective automatic publication
   const model = vi.fn(async () => ({ extraction: extraction(), usage: { inputTokens: 100, outputTokens: 20 } }));
   const service = new AgentService(store, { ...agentConfig({}), enabled: true, autoPublish: true, apiKey: 'offline-fixture' }, model, undefined, prepare);
   await service.run(); expect(model).toHaveBeenCalledOnce(); expect(store.routingSnapshot().closures).toEqual([]);
-  expect((await service.results())[0].proposals![0].state).toBe('pending'); expect((await service.status()).autoPublish).toBe(true);
+  expect((await service.results())[0].proposals![0].state).toBe('expired'); expect((await service.status()).autoPublish).toBe(true);
   expect(() => currentProposalResult(undefined, undefined, 1)).toThrow(/not found/);
 });
 

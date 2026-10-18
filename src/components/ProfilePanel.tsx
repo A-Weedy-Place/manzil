@@ -16,12 +16,12 @@ import PakistanCitySelect from './PakistanCitySelect';
 import LegalPolicy from './LegalPolicy';
 export type { ProfileSection } from './ProfileSettingsDialog';
 
-interface Props { account?: AccountUser | null; onSignOut?: () => void; personalFeaturesAvailable?: boolean; onSignIn?: () => void; onTour?: () => void; state: AppState; reload: () => Promise<void>; notify: (text: string) => void; onSources: () => void; onActivity: () => void; onStatistics?: () => void; section?: ProfileSection | null; onSectionChange?: (section: ProfileSection | null) => void; onSaveProposal: (proposal: FrequentRouteProposal) => Promise<void> }
+interface Props { administrative?: boolean; account?: AccountUser | null; onSignOut?: () => void; personalFeaturesAvailable?: boolean; onSignIn?: () => void; onTour?: () => void; state: AppState; reload: () => Promise<void>; notify: (text: string) => void; onSources: () => void; onActivity: () => void; onStatistics?: () => void; section?: ProfileSection | null; onSectionChange?: (section: ProfileSection | null) => void; onSaveProposal: (proposal: FrequentRouteProposal) => Promise<void> }
 type ProfilePatch = Partial<Omit<LocalProfile, 'id' | 'createdAt' | 'updatedAt'>>;
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const notificationPermission = () => 'Notification' in window ? window.Notification.permission : 'unsupported' as const;
 function near(a: number[], b: number[]) { return Math.hypot((a[0] - b[0]) * Math.cos((a[1] + b[1]) * Math.PI / 360), a[1] - b[1]) * 111195 <= 250; }
-export default function ProfilePanel({ account, onSignOut, personalFeaturesAvailable = false, onSignIn, onTour, state, reload, notify, onSources, onActivity, onStatistics, section, onSectionChange, onSaveProposal }: Props) {
+export default function ProfilePanel({ administrative = false, account, onSignOut, personalFeaturesAvailable = false, onSignIn, onTour, state, reload, notify, onSources, onActivity, onStatistics, section, onSectionChange, onSaveProposal }: Props) {
   const { language, setLanguage } = useLanguage(), profile = state.profile;
   const role = account && state.membership?.uid === account.uid ? state.membership.role : account?.role;
   const displayName = profile.displayName !== 'Traveller' ? profile.displayName : account?.displayName ?? profile.displayName;
@@ -47,12 +47,12 @@ export default function ProfilePanel({ account, onSignOut, personalFeaturesAvail
   useEffect(() => { const refresh = () => setPermission(notificationPermission()); window.addEventListener('focus', refresh); return () => window.removeEventListener('focus', refresh); }, []);
   useEffect(() => {
     let current = true;
-    if (!profile.collectTravelData || !profile.inferFrequentRoutes || !personalFeaturesAvailable) { setProposals([]); setProposalLoading(false); setProposalError(''); return; }
+    if (!profile.collectTravelData || !profile.inferFrequentRoutes || !personalFeaturesAvailable || administrative) { setProposals([]); setProposalLoading(false); setProposalError(''); return; }
     const controller = new AbortController(), timeout = window.setTimeout(() => controller.abort(), 30000);
     setProposalLoading(true); setProposalError('');
     api<FrequentRouteProposal[]>('/frequent-routes', { signal: controller.signal }).then(items => { if (current) setProposals(items); }).catch(() => { if (current) { setProposals([]); setProposalError('Could not refresh learned journeys. Your recorded trips are retained.'); } }).finally(() => { window.clearTimeout(timeout); if (current) setProposalLoading(false); });
     return () => { current = false; window.clearTimeout(timeout); controller.abort(); };
-  }, [personalFeaturesAvailable, profile.collectTravelData, profile.inferFrequentRoutes, tripRevision, proposalAttempt, accountId]);
+  }, [administrative, personalFeaturesAvailable, profile.collectTravelData, profile.inferFrequentRoutes, tripRevision, proposalAttempt, accountId]);
   async function update(patch: ProfilePatch): Promise<boolean> {
     if (busy) return false;
     const owner = getAuthSession().user?.uid, generation = panelGeneration.current; setError(''); setBusy(true);
@@ -91,7 +91,7 @@ export default function ProfilePanel({ account, onSignOut, personalFeaturesAvail
     catch (e) { if (owner === getAuthSession().user?.uid && generation === panelGeneration.current) setError(e instanceof Error ? e.message : 'Could not enable notifications.'); }
     finally { if (owner === getAuthSession().user?.uid) { setPermission(notificationPermission()); setBusy(false); } }
   }
-  const ownDialog = activeSection && activeSection !== 'statistics' && activeSection !== 'history' && (personalFeaturesAvailable || ['appearance', 'fuel', 'terms', 'privacy'].includes(activeSection)) ? activeSection : null;
+  const ownDialog = activeSection && (!administrative || ['identity','appearance','terms','privacy'].includes(activeSection)) && activeSection !== 'statistics' && activeSection !== 'history' && (personalFeaturesAvailable || ['appearance', 'fuel', 'terms', 'privacy'].includes(activeSection)) ? activeSection : null;
   const pending = busy || preparingPhoto;
   const mapName = t(profile.mapStyle === 'minimal' ? 'Minimal' : profile.mapStyle === 'night' ? 'Night' : 'Classic');
   function settingsRow(key: ProfileSection, Icon: LucideIcon, summary: string, badge?: string) {
@@ -100,28 +100,28 @@ export default function ProfilePanel({ account, onSignOut, personalFeaturesAvail
     </button>;
   }
   return <div className="profile-workspace">
-    <div className="section-heading profile-heading"><h1>{t('User profile')}</h1>{personalFeaturesAvailable && <button className="secondary-button profile-edit-button" aria-haspopup="dialog" aria-expanded={editing} onClick={() => openSection('identity')}><Pencil size={15} />{t('Edit')}</button>}</div>
+    <div className="section-heading profile-heading"><h1>{t(administrative ? 'Account' : 'User profile')}</h1>{personalFeaturesAvailable && <button className="secondary-button profile-edit-button" aria-haspopup="dialog" aria-expanded={editing} onClick={() => openSection('identity')}><Pencil size={15} />{t('Edit')}</button>}</div>
     <section className="profile-account-card">
       <div className="profile-identity"><span className="profile-avatar">{personalFeaturesAvailable && profile.photoDataUrl ? <img src={profile.photoDataUrl} alt={t('Your profile photo')} /> : displayName.trim().slice(0, 1).toUpperCase()}</span><div><h2>{personalFeaturesAvailable ? displayName : t('Guest')}</h2><p>{personalFeaturesAvailable ? account?.email ?? t('Personal profile') : t('Guest preferences')}</p>{personalFeaturesAvailable && (profile.city || profile.location) && <p>{[profile.location, profile.city].filter(Boolean).join(', ')}</p>}</div></div>
       {account && <div className="profile-session-actions"><span className={`profile-verification ${role === 'admin' || role === 'verified' ? 'is-verified' : ''}`}>{role === 'admin' || role === 'verified' ? <BadgeCheck size={17} aria-hidden="true" /> : <BadgeMinus size={17} aria-hidden="true" />}{t(role === 'admin' ? 'Admin' : role === 'verified' ? 'Verified' : 'Not verified')}</span><button className="text-button" onClick={onSignOut}>{t('Sign out')}</button></div>}
       {!personalFeaturesAvailable && <button className="secondary-button full" onClick={onSignIn}>{t('Sign in for personal features')}</button>}
     </section>
     <nav className="profile-settings-menu" aria-label={t('Profile settings')}>
-      {personalFeaturesAvailable && <>
+      {personalFeaturesAvailable && !administrative && <>
         {settingsRow('data', ShieldCheck, t('History & data preferences'), t(profile.collectTravelData ? 'On' : 'Off'))}
         {settingsRow('statistics', BarChart3, t('Weekly & monthly'))}
         {settingsRow('history', History, t('Recorded journeys'))}
         {settingsRow('vehicle', Car, profile.vehicle ? [profile.vehicle.label || t(profile.vehicle.kind === 'motorcycle' ? 'Motorcycle' : 'Car'), profile.vehicle.kmPerLitre ? `${profile.vehicle.kmPerLitre} ${t('km/litre')}` : t('Mileage not set')].join(' · ') : t('Add a car or motorcycle'))}
       </>}
-      {settingsRow('fuel', Fuel, t(state.fuel?.records.length ? 'Dated PSO reference prices' : 'Unavailable'))}
+      {!administrative && settingsRow('fuel', Fuel, t(state.fuel?.records.length ? 'Dated PSO reference prices' : 'Unavailable'))}
       {settingsRow('appearance', Sun, `${t(profile.theme === 'light' ? 'Light' : !profile.theme || profile.theme === 'dark' ? 'Dark' : 'System')} · ${mapName} · ${language === 'ur' ? 'اردو' : 'English'}`)}
-      {personalFeaturesAvailable && settingsRow('alerts', Bell, t(profile.browserNotifications ? 'Browser notifications on' : 'Browser notifications off'))}
+      {personalFeaturesAvailable && !administrative && settingsRow('alerts', Bell, t(profile.browserNotifications ? 'Browser notifications on' : 'Browser notifications off'))}
     </nav>
     <nav className="profile-settings-menu profile-legal-menu" aria-label={t('Policies')}>
       {settingsRow('terms', FileText, t('Using Manzil'))}
       {settingsRow('privacy', LockKeyhole, t('Your data & controls'))}
     </nav>
-    <section className="profile-utilities"><button className="settings-link" onClick={onTour}><UserRound size={19} /><span>{t('Replay tour')}</span><ChevronRight size={18} /></button>{role === 'admin' && <button className="settings-link" onClick={onSources}><Inbox size={20} /><span>{t('Source updates & collector')}</span><ChevronRight size={18} /></button>}{AUTH_MODE === 'development' && <p className="small muted">{t('Development accounts share this local workspace.')}</p>}</section>
+    <section className="profile-utilities">{!administrative && <button className="settings-link" onClick={onTour}><UserRound size={19} /><span>{t('Replay tour')}</span><ChevronRight size={18} /></button>}{role === 'admin' && <button className="settings-link" onClick={onSources}><Inbox size={20} /><span>{t('Source updates & collector')}</span><ChevronRight size={18} /></button>}{AUTH_MODE === 'development' && <p className="small muted">{t('Development accounts share this local workspace.')}</p>}</section>
     {ownDialog && <ProfileSettingsDialog section={ownDialog} onClose={closeSection}>
       {(ownDialog === 'terms' || ownDialog === 'privacy') && <LegalPolicy kind={ownDialog} onPolicyChange={openSection} />}
       {busy && <p className="small muted" role="status">{t('Saving changes…')}</p>}{preparingPhoto && <p className="small muted" role="status">{t('Preparing photo…')}</p>}{error && <div className="error-box" role="alert">{t(error)}</div>}

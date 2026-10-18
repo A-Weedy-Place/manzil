@@ -1,7 +1,7 @@
 """Extract a bounded public OSM road graph from a pinned Geofabrik PBF.
 
 Development only: install pyosmium into an ignored directory, never the app.
-See docs/TRANSIT_ROAD_ALIGNMENT.md for acquisition, hashes and reproduction.
+See docs/data-sources/TRANSIT_ROAD_ALIGNMENT.md for acquisition, hashes and reproduction.
 """
 import argparse
 import gzip

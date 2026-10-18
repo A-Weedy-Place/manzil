@@ -14,6 +14,14 @@ const place = (name: string, coordinate: Coordinate, city = 'Lahore'): Place => 
 function event() { const value = extraction().events[0]; value.location.city = 'Lahore'; return value; }
 
 describe('agent mapping beyond the bundled road area', () => {
+  it('projects a precise blockade onto the middle of a long one-way edge instead of requiring a nearby OSM node', async () => {
+    const graph=buildGraph({elements:[{type:'node',id:1,lon:73,lat:33.7},{type:'node',id:2,lon:73.01,lat:33.7},
+      {type:'way',id:10,nodes:[1,2],tags:{highway:'primary',name:'Park Road',oneway:'yes'}}]},[72.99,33.69,73.02,33.71]);
+    const value=extraction().events[0];value.restrictionType='blockade';value.location={city:'Islamabad',road:'Park Road',point:'Town Hall',from:null,to:null};
+    const result=await resolveAgentLocation(value,graph,async()=>[place('Town Hall',[73.005,33.7],'Islamabad')]);
+    expect(result).toMatchObject({restrictionType:'blockade',drawing:{kind:'line',widthMeters:4}});
+    expect(result.drawing.coordinates[0][0]).toBeCloseTo(73.005,5);
+  });
   it('uses source city names to geocode road endpoints before requesting their real road graph', async () => {
     const lookup = vi.fn(async (query: string) => [query.startsWith('First Road') ? place('First Road', [74.301,31.5]) : place('Second Road', [74.302,31.5])]);
     const graphFor = vi.fn(async () => cityGraph());

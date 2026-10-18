@@ -1,0 +1,80 @@
+# Local transit dataset and refresh
+
+**18 October local road-alignment follow-up:** the final `-roads-8d109199` snapshot replaces stop-order chords with **49 precomputed bus-aware OSM road estimates**, including five sparse/chord-like supplied shapes. **954 of 974 consecutive stop pairs** have inferred road paths; **20 pairs remain explicit gaps** (one original source gap and 19 unresolved road connections). Thirty-seven estimated directions are continuous, and 18 original directions remain unchanged. Source stop coordinates, sequences, timetables and official-reference evidence remain intact. The map uses solid bus strokes and leaves unresolved sections absent. Exact source pins, reproduction, coverage and verification are in [road alignment](TRANSIT_ROAD_ALIGNMENT.md) and [implementation status](../IMPLEMENTATION_STATUS.md). Runtime reads the **451,858-byte compressed normalized asset**, without the development road extract or external routing calls.
+
+**Merged release deployed, 18 October:** application commit `1f196c3` combines GitHub feature merge `49762d0` with the deployed Gemini checkpoint `9b16416`. Live API `manzil-api-00012-g9q`, private worker `manzil-source-worker-00009-6bf`, Hosting pin `fh-84ad6494196d6945`. New UI/profile/transit/weather features and mandatory Gemini admin review are retained. **809 standard + 24 Auth/Firestore emulator tests (833 total)**, production build, three local browser flows, two hosted entry checks and **34 live checks per origin** pass. Weather is fresh; the live bundled transit network has 37 routes/1,210 stops and returned three journey options. Model limits/schedules and worker-only secret remain unchanged. GitHub main contains both histories; original checkout is synchronized and prior local edits are retained in a named backup stash. Earlier localhost-only, uncommitted and deployment-pending entries below are historical.
+
+Manzil **Local** uses a compact, source-attributed Islamabad–Rawalpindi snapshot rather than inventing buses, stop locations or timetables. Read [source research and licensing](TRANSIT_SOURCES.md) and [planner/API behavior](../reference/TRANSIT_ROUTING.md) alongside this guide. This road-alignment follow-up is localhost feature work; it does not deploy the app or change the existing production source collector.
+
+## Original imported source inventory
+
+The geometry inventory here describes the incoming source **before** the current road-alignment derivative. Source route/stop/timetable counts remain intact; the current displayed geometry composition follows below.
+
+- **PakBus 17 October 2026:** 32 published twin-city route records, 63 directional patterns, 1,193 usable route/platform stop IDs and 2,064 timetable trips. The source files label the twin-city network `Rawalpindi`; filtering only for a city named Islamabad would wrongly omit it. The feed's service calendars run **17 October–16 November 2026**. These are community-published operator-derived data, not a government/live vehicle feed.
+- **Original geometry:** 19 PakBus directions supplied shapes whose coordinates and monotonic stop projections were validated. The other 44 directions originally supplied only stop-order connections and were historically displayed as dashed schematics. Those dashed bus connections are no longer rendered: the current derivative estimates bus-access road paths and keeps unresolved sections as gaps. These estimates do not establish the operator's actual streets or a bus diversion around a closure.
+- **Orange corridor:** an independent OSM derivative adds Orange BRT and airport corridors, four independently solved directions and 17 mapped platform records. These use actual connected relation highway ways and one-way constraints, with explicitly inferred stop order and unknown timetable. Its source is the mapped infrastructure, not proof of current operation or operator stop nomenclature.
+- **FR-12:** CDA's older public reference is catalogued, but its 25 named stops lack trustworthy supplied coordinates. It is not silently geocoded, drawn or used in the planner. Missing EV-3/6/7/8 and informal van networks are not invented from numbering gaps.
+
+The reviewed combined snapshot has **37 route references, 67 mapped patterns and 1,210 mapped stop records**. FR-05 and ST-01 join FR-12 as **unmapped historical references**, not new routable buses. Route-specific identifiers include physically co-located platforms/stops; **1,210 is not a count of distinct bus stations**. The planner can connect distinct co-located stop IDs with a transfer allowance.
+
+The current geometry consists of **49 road-aligned estimates, 14 unchanged supplied shapes and four unchanged mapped Orange directions**. Five of the original 19 supplied shapes were refined separately, preserving their original evidence. Of the 67 directions, **55 have continuous geometry**; the remaining 12 retain explicit missing sections. These are geometry counts, not claims of current operation or eligibility: existing access restrictions and source conflicts still apply. [Exact unresolved stop pairs and proof](TRANSIT_ROAD_ALIGNMENT.md#reviewed-coverage-and-remaining-gaps--18-october).
+
+## Official authority comparison — 18 October
+
+The verified PMA domain is **pma.punjab.gov.pk**; its official eTransit public planner exposes the same seven Rawalpindi EV entries and three full/partial PMBS entries as the current snapshot. **20 directional lists / 313 published coordinate occurrences** agree with the source catalogue. This is source agreement, not field measurement: its Rahimabad return location is still near Lahore, and two partial-Metro lists contradict the full-corridor order. The invalid location remains a gap; **RLRT03 patterns `vtvpb` / `me5tv` are visible grey but excluded from recommendations**, while full RLRT01 remains available subject to ordinary closures/access.
+
+All **42 CDA directional PDFs** from its 22-entry portal were parsed and checked. Their creation dates are **16 July 2025**, and many named sequences differ from the newer community snapshot. FR-05's actual NUST–D-12 sequence even disagrees with its Golara–Taxila title. CDA's October 2026 announcement reports 21 operating routes without enumerating them. Neither the aggregate count nor the old PDFs proves all listed services are currently operating. No coordinates or current validity calendar are supplied by these PDFs.
+
+Every route has a scoped, dated **Official references** disclosure: ten comparisons agree on the explicitly stated stop fields, nineteen record differences, four are reference-only and four lack route-level confirmation. Blue/FR-08C textual agreement normalizes only punctuation and generic `station`/`stop` suffixes; it does not guess different places. Existing named geometry and calendars are not silently overwritten by older documents. Source disagreements appear in journey information. [CDA evidence](CDA_TRANSIT_VERIFICATION.md), [PMA evidence and acquisition](PMA_TRANSIT_VERIFICATION.md).
+
+Committed factual comparison derivatives are `cda-verification.json`, `pma-verification.json` and `official-review.json`; raw source pages/PDFs/API responses remain ignored. The review manifest is bound to the unreviewed dataset version and exact normalized-byte SHA, and its own SHA is incorporated into the final dataset version/provenance. Importing a comparison against another base version fails. Authority hyperlinks require exact reviewed HTTPS domains; no credentials, lookalike hosts or automatic background data fetch are accepted by the review disclosure.
+
+## Source defects and safeguards
+
+The source's EV-2 return stop **Rahimabad** has an unusable coordinate near Lahore. It is retained as an unmapped name and excluded from plotted stops. Two source-adjacent blocked segments become a single explicit break between the remaining known stops. The route's display has separate segments, and journeys cannot cross that gap. No stop is moved to a guessed position. FR-04B diplomatic shuttle access is restricted and excluded from ordinary journeys.
+
+All 2,064 GTFS trips have first-stop timepoints; **43,101 intermediate stop-time records are source estimates**, not independently published exact arrivals or live predictions. The importer retains timepoint, pickup/dropoff restrictions, service calendars and service-day times above 24:00. Ordinary travel allows only pickup/dropoff type `0` from this feed. Times requiring arrangements are excluded. Unknown schedules remain untimed; an expired known schedule is not transformed into a supposedly live route.
+
+## Reproducing and refreshing
+
+The importer uses Python's standard library. Raw downloads belong in ignored **`.local-tools/transit/`**; do not commit the GTFS ZIP, CDA PDFs, raw OSM XML or source-page captures.
+
+```powershell
+python scripts/import-transit.py --download --supplement assets/transit/supplement.json --official-review assets/transit/official-review.json --road-alignment assets/transit/road-alignment.json.gz
+```
+
+This fetches only the publisher's fixed `https://pakbus.app/gtfs/{feeds.json,catalogue.json,pakbus.zip}` URLs, applies download/archive bounds, and validates both catalogue and ZIP against the published SHA-256 values. It filters the twin-city subset, preserves source order and unusable links, validates timetable identity/monotonicity and rejects inconsistent shapes. The road derivative must match the exact reviewed base version and normalized checksum; changed source data require deliberate review and regeneration using the [road-alignment workflow](TRANSIT_ROAD_ALIGNMENT.md#sources-and-reproduction), not reuse of an old alignment. The final import writes **`assets/transit/islamabad.json.gz`** and **`assets/transit/provenance.json`**, with a gzip timestamp of zero. `--source-dir`, `--retrieved-at` and `--output` support reproducible offline review. Source retrieval time otherwise comes from the feed-listing file's timestamp, so unchanged offline runs reproduce the same output.
+
+Use the pinned Orange generator separately before merging reviewed source changes:
+
+```powershell
+python scripts/build-orange-transit.py --help
+python scripts/import-transit.py --supplement assets/transit/supplement.json --official-review assets/transit/official-review.json --road-alignment assets/transit/road-alignment.json.gz
+```
+
+For a new authority audit, first build an **unreviewed base into ignored storage**, then run the bounded source collectors against that base and inspect their differences. The PMA collector pins the reviewed responses and intentionally fails when a source changes; deliberate review is required before updating pins. `verify-cda-transit.py` uses `pdfplumber` from the documented bundled runtime, while the other scripts use Python's standard library. Existing reviewed evidence can be reimported without downloading/processing 1,244 PDF pages at runtime.
+
+```powershell
+python scripts/import-transit.py --supplement assets/transit/supplement.json --output .local-tools/transit-official/base/islamabad.json.gz
+python scripts/verify-cda-transit.py --dataset .local-tools/transit-official/base/islamabad.json.gz --checked-at 2026-10-17T22:41:29.300Z
+python scripts/verify-pma-transit.py --dataset .local-tools/transit-official/base/islamabad.json.gz --checked-at 2026-10-17T22:40:41.847612+00:00
+python scripts/build-transit-official-review.py --dataset .local-tools/transit-official/base/islamabad.json.gz
+# Regenerate/review the road derivative first if the reviewed base changed.
+python scripts/import-transit.py --supplement assets/transit/supplement.json --official-review assets/transit/official-review.json --road-alignment assets/transit/road-alignment.json.gz
+```
+
+Those checked instants reproduce this review; a new actual source review must use its own date. Collector `--help` explains explicit `--fetch` (CDA) / `--download` (PMA), raw directories and output paths. Compare source hashes/ordered stops/date validity before replacing the committed evidence. References have no guessed shapes/trips. Only the **approximately 452 KB compressed normalized network asset** is read by the runtime; these collectors and the road extractor are development tools, not client requests or production cron jobs.
+
+The Orange generator validates the pinned OSM XML checksum, derives directed paths only from relation-member highway edges and verifies each resulting edge and platform order. The normalized supplement is committed for review; raw XML remains ignored. A changed upstream OSM relation needs deliberate source/algorithm review rather than bypassing the pinned checksum. [Exact source URLs and generator evidence](TRANSIT_SOURCES.md).
+
+After refreshing, review provenance/coverage/calendar changes, rerun transit data/planner/API/UI tests, and restart the API process so its immutable in-memory dataset is replaced. The local user service notices remain in repository metadata and are not overwritten by importing a dataset. Removing a referenced route requires notice migration or cancellation review. The runtime never automatically scrapes provider websites, calls paid APIs or reloads missing data as fictional fixtures.
+
+The compiled backend loads the compressed asset at runtime. Docker packaging includes only the normalized transit assets; changing these packaging files does **not** build, publish or deploy a cloud service. No new key, dependency, Firestore rule/index or private data migration is needed. Multi-user service-notice updates use atomic repository writes and revisions.
+
+## Colour, closure and privacy boundaries
+
+The importer assigns non-red colours and the frontend also guards externally supplied red/orange-red colours. The published **Red Line** retains its proper service name but is drawn with a non-red bus colour. Red remains reserved for roads that are closed. Grey denotes suspension or conservative road-closure uncertainty, not an invented alternative road for the same bus.
+
+Road events use published/approved closure visibility and exact time intervals; bus suspension notices have their own route/direction/optional-stop-section schedules. An intersecting road event is **uncertainty**, not independent confirmation that the operator suspended service. Missing road alignments remain explicit gaps; estimated paths do not independently certify actual operator streets or road clearance. Champ Alerts/Gemini service-suspension interpretation is not connected by this feature: verified contributors/admins can review and publish a sourced bus notice manually.
+
+Local planning does not start car guidance, record a trip or request GPS until a person explicitly uses a location control. It accepts typed/searched places or selected map/stops. Walking connectors are bounded straight-line estimates, not turn-by-turn pedestrian directions. Existing car-routing, account, consent and retention boundaries remain unchanged.

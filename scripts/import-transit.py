@@ -1,6 +1,6 @@
 """Import the licensed public PakBus twin-city subset; raw downloads stay ignored.
 
-Python standard library only. See docs/TRANSIT_DATA.md for provenance and limits.
+Python standard library only. See docs/data-sources/TRANSIT_DATA.md for provenance and limits.
 """
 import argparse
 import csv

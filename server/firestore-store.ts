@@ -236,7 +236,7 @@ export class FirestoreStore implements Repository {
     });
   }
   async reviewAgentProposal(input: AgentProposalReview) {
-    const ref = this.metaRef(agentResultKey(input.noticeId)), revisionRef = this.metaRef('eventRevision');
+    const ref = this.metaRef(agentResultKey(input.noticeId)), revisionRef = this.metaRef('eventRevision'), transitRef = this.metaRef('transit:disruptions');
     const decision = await this.db.runTransaction(async tx => {
       const transitRef = this.metaRef('transit:disruptions');
       const [notice, result, revision, transit] = await tx.getAll(this.noticeRef(input.noticeId), ref, revisionRef, transitRef);

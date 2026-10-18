@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Flag, RefreshCw, ShieldCheck, Users, Workflow } from 'lucide-react';
+import { CloudSun, RefreshCw, ShieldCheck } from 'lucide-react';
 import type { AppState, Closure, SourceNotice } from '../../shared/types';
 import { api, send } from '../lib/api';
-import { closureState, relative } from '../lib/format';
+import { dateTime, relative } from '../lib/format';
 import { t } from '../lib/language';
 import ClosureList from './ClosureList';
 import SourcePanel from './SourcePanel';
@@ -10,39 +10,43 @@ import FuelPrices from './FuelPrices';
 import type { AgentProposal } from '../../shared/agent';
 import AgentPanel from './AgentPanel';
 import { useAgentPipeline } from '../lib/useAgentPipeline';
-import { pipelineCounts } from '../lib/pipeline';
+import type { AgentPipelineState } from '../lib/useAgentPipeline';
+import type { WeatherResponse } from '../../shared/weather';
 
-interface Member { uid: string; email?: string; displayName?: string; disabled: boolean; role: 'user' | 'verified' | 'admin'; verified: boolean; createdAt?: string; lastSignInAt?: string }
+interface Member { uid: string; email?: string; displayName?: string; disabled: boolean; role: 'user' | 'verified' | 'admin'; verified: boolean; createdAt?: string; lastSignInAt?: string; city?: string; travelDataSharing?: boolean | null }
 interface Directory { users: Member[]; nextPageToken?: string }
 interface Props {
   state: AppState; at: string; selectedId: string | null; reload: () => Promise<void>; notify: (message: string) => void;
   onSelect: (closure: Closure) => void; onEdit: (closure: Closure) => void; onCancel: (closure: Closure) => void;
   onReview: (closure: Closure, decision: 'approve' | 'reject') => Promise<void>; onManualClosure: (notice: SourceNotice, proposal?: AgentProposal) => void;
-  initialTab?: 'reports' | 'users' | 'pipeline' | 'review'; onTabChange?: (tab: 'reports' | 'users' | 'pipeline' | 'review') => void;
+  pipeline?: AgentPipelineState; initialTab?: 'reports' | 'users' | 'pipeline' | 'review'; onTabChange?: (tab: 'reports' | 'users' | 'pipeline' | 'review') => void;
 }
 export default function AdminPanel(props: Props) {
-  const [tab, updateTab] = useState<'reports' | 'users' | 'pipeline' | 'review'>(props.initialTab ?? 'pipeline');
-  const setTab = (value: typeof tab) => { updateTab(value); props.onTabChange?.(value); };
-  const pipeline = useAgentPipeline(props.state.notices);
-  const viewClosure = (id: string) => { const closure = props.state.closures.find(item=>item.id===id); if(closure)props.onSelect(closure); };
-  const counts = pipelineCounts(props.state.notices,pipeline.results);
-  const [filter, setFilter] = useState<'pending' | 'all'>('pending');
+  const tab = props.initialTab ?? 'pipeline';
+  const own = useAgentPipeline(props.state.notices,!props.pipeline), pipeline = props.pipeline ?? own;
   const pending = props.state.closures.filter(item => item.status === 'draft' && item.moderation === 'pending');
-  const reviewCount = pipeline.loading ? '…' : pipeline.error ? '?' : pending.length + counts.review;
+  const titles = { users: 'Users', review: 'Review queue', reports: 'Road closures', pipeline: 'Pipelines' };
   return <>
-    <div className="section-heading"><div><span className="eyebrow">{t('ADMIN WORKSPACE')}</span><h1>{t('Control centre')}</h1></div><ShieldCheck size={25} /></div>
-    <div className="admin-stats pipeline-admin-stats"><button onClick={() => setTab('review')}><strong>{reviewCount}</strong><span>{t('Awaiting review')}</span></button><button onClick={() => setTab('pipeline')}><strong>{counts.waiting + counts.processing}</strong><span>{t('Waiting / analysing')}</span></button><button onClick={() => setTab('reports')}><strong>{props.state.closures.filter(item => closureState(item, props.at) === 'active').length}</strong><span>{t('Active closures')}</span></button></div>
-    <div className="admin-tabs" role="tablist" aria-label={t('Admin sections')}>{([['pipeline', Workflow, 'Pipeline'], ['review', ShieldCheck, 'Review queue'], ['reports', Flag, 'Blockades'], ['users', Users, 'Users']] as const).map(([key, Icon, label]) => <button role="tab" aria-selected={tab === key} aria-label={key === 'review' ? `${t(label)} ${reviewCount}` : undefined} key={key} onClick={() => setTab(key)}><Icon size={16} aria-hidden="true" />{t(label)}{key === 'review' && <span className="tab-count">{reviewCount}</span>}</button>)}</div>
-    {tab === 'review' && <section role="tabpanel" aria-label={t('Review queue')} className="source-pipeline"><h2>{t('Awaiting your decision')}</h2><p className="small muted">{t('This queue combines uncertain road / Metro proposals and community reports. Validated automatic updates appear in Pipeline.')}</p>
-      <AgentPanel onViewClosure={viewClosure} notices={props.state.notices} pipeline={pipeline} reviewOnly onManualClosure={props.onManualClosure} onRefresh={props.reload}
+    <div className="section-heading"><h1>{t(titles[tab])}</h1><ShieldCheck size={24} /></div>
+    {tab === 'review' && <section role="tabpanel" aria-label={t('Review queue')} className="source-pipeline">
+      <AgentPanel onViewClosure={id => { const closure=props.state.closures.find(item=>item.id===id); if(closure)props.onSelect(closure); }} notices={props.state.notices} pipeline={pipeline} reviewOnly onManualClosure={props.onManualClosure} onRefresh={props.reload}
         onMark={async (notice,status) => { await send('/notices/' + encodeURIComponent(notice.id),{status},'PATCH'); await props.reload(); await pipeline.refresh(); }} />
       <h2>{t('Community reports')} ({pending.length})</h2><ClosureList closures={pending} at={props.at} selectedId={props.selectedId} reviewer canEdit={() => true} onSelect={props.onSelect} onEdit={props.onEdit} onCancel={props.onCancel} onReview={props.onReview} />
     </section>}
-    {tab === 'reports' && <section role="tabpanel" aria-label={t('Blockades')}><div className="filter-row"><select aria-label={t('Report filter')} value={filter} onChange={event => setFilter(event.target.value as typeof filter)}><option value="pending">{t('Awaiting review')}</option><option value="all">{t('All blockades')}</option></select><button className="icon-button" aria-label={t('Refresh reports')} onClick={() => props.reload().catch(reason => props.notify(String(reason)))}><RefreshCw size={17} /></button></div><ClosureList closures={filter === 'pending' ? pending : props.state.closures} at={props.at} selectedId={props.selectedId} reviewer canEdit={() => true} onSelect={props.onSelect} onEdit={props.onEdit} onCancel={props.onCancel} onReview={props.onReview} /></section>}
+    {tab === 'reports' && <section role="tabpanel" aria-label={t('Blockades')}><div className="filter-row"><button className="icon-button" aria-label={t('Refresh reports')} onClick={() => props.reload().catch(reason => props.notify(String(reason)))}><RefreshCw size={17} /></button></div><ClosureList closures={props.state.closures} at={props.at} selectedId={props.selectedId} reviewer canEdit={() => true} onSelect={props.onSelect} onEdit={props.onEdit} onCancel={props.onCancel} onReview={props.onReview} /></section>}
     {tab === 'users' && <section role="tabpanel" aria-label={t('Users')}><UserDirectory currentUid={props.state.membership?.uid} /></section>}
-    {tab === 'pipeline' && <section role="tabpanel" aria-label={t('Pipeline')}><SourcePanel onViewClosure={viewClosure} state={props.state} reload={props.reload} notify={props.notify} onManualClosure={props.onManualClosure} pipeline={pipeline} onOpenReview={() => setTab('review')} /><details className="pipeline-help"><summary>{t('Daily fuel prices')}</summary><FuelPipeline state={props.state} reload={props.reload} /></details></section>}
+    {tab === 'pipeline' && <section role="tabpanel" aria-label={t('Pipeline')}><SourcePanel onViewClosure={id => { const closure=props.state.closures.find(item=>item.id===id); if(closure)props.onSelect(closure); }} state={props.state} reload={props.reload} notify={props.notify} onManualClosure={props.onManualClosure} pipeline={pipeline} onOpenReview={() => props.onTabChange?.('review')} services={<><WeatherPipeline /><details className="pipeline-service"><summary><span><strong>{t('Daily fuel prices')}</strong><small>{t(props.state.fuel?.lastCheckedAt ? relative(props.state.fuel.lastCheckedAt) : 'Not checked')}</small></span><span className="tag neutral">{t(props.state.fuel?.records.length ? 'Reference prices' : 'Unavailable')}</span></summary><div className="pipeline-service-body"><FuelPipeline state={props.state} reload={props.reload} /></div></details></>} /></section>}
   </>;
 }
+function WeatherPipeline() {
+  const [weather,setWeather] = useState<WeatherResponse | null>(null), [error,setError] = useState(false);
+  useEffect(() => { const controller = new AbortController(); let live = true;
+    api<WeatherResponse>('/weather', { signal: controller.signal }).then(value => { if(live) setWeather(value); }).catch(() => { if(live) setError(true); });
+    return () => { live = false; controller.abort(); };
+  },[]);
+  return <details className="pipeline-service"><summary><span><strong>{t('Weather')} · {t('Islamabad')}</strong><small>{t('Hourly')} · Open-Meteo</small></span><span className="tag neutral">{t(error ? 'Unavailable' : !weather ? 'Loading…' : weather.state === 'fresh' ? 'Fresh' : weather.state === 'stale' ? 'Cached' : 'Unavailable')}</span></summary><div className="pipeline-service-body"><CloudSun size={24} /><dl className="pipeline-status-list"><div><dt>{t('Last successful check')}</dt><dd>{weather?.fetchedAt ? relative(weather.fetchedAt) : t('Not checked')}</dd></div><div><dt>{t('Next check')}</dt><dd>{weather?.nextRefreshAt ? dateTime(weather.nextRefreshAt) : t('Unknown')}</dd></div></dl><a className="text-button" href="https://open-meteo.com/" target="_blank" rel="noreferrer">Open-Meteo</a></div></details>;
+}
+
 function FuelPipeline({ state, reload }: Pick<Props, 'state' | 'reload'>) {
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   async function check() {
@@ -80,7 +84,7 @@ function UserDirectory({ currentUid }: { currentUid?: string }) {
     <div role="status" aria-live="polite">{busy ? <p className="small muted">{t(directory.users.length ? 'Updating users…' : 'Loading users…')}</p> : message && <p className="small success">{t(message)}</p>}</div>
     <div aria-busy={busy}>{matching.map(member => <article className="admin-member" key={member.uid} aria-label={member.displayName ?? member.email ?? member.uid}>
       <span className="member-avatar" aria-hidden="true">{(member.displayName ?? member.email ?? 'U').slice(0, 1).toUpperCase()}</span>
-      <div><strong>{member.displayName ?? member.email ?? member.uid}</strong>{member.email && <small>{member.email}</small>}<span className={`tag ${member.verified ? 'green' : 'neutral'}`}>{t(member.role === 'admin' ? 'Admin' : member.verified ? 'Verified contributor' : 'Not verified')}</span>{member.disabled && <small>{t('Account disabled')}</small>}{member.lastSignInAt && <small>{t('Last active')} · {relative(member.lastSignInAt)}</small>}</div>
+      <div><strong>{member.displayName ?? member.email ?? member.uid}</strong>{member.email && <small>{member.email}</small>}{member.city && <small>{member.city}</small>}<small>{t('Trip data sharing')}: {t(member.travelDataSharing === true ? 'Allowed' : member.travelDataSharing === false ? 'Off' : 'Unknown')}</small><span className={`tag ${member.verified ? 'green' : 'neutral'}`}>{t(member.role === 'admin' ? 'Admin' : member.verified ? 'Verified contributor' : 'Not verified')}</span>{member.disabled && <small>{t('Account disabled')}</small>}{member.lastSignInAt && <small>{t('Last active')} · {relative(member.lastSignInAt)}</small>}</div>
       <div className="admin-member-actions">
         {member.role !== 'admin' && <button className="secondary-button" disabled={busy || member.disabled} onClick={() => void update(member, { verified: !member.verified })}>{t(member.verified ? 'Remove verification' : 'Verify')}</button>}
         {member.uid !== currentUid && <button className="secondary-button" disabled={busy || member.disabled} onClick={() => setRoleChange(current => current?.uid === member.uid ? null : { uid: member.uid, admin: member.role !== 'admin' })}>{t(member.role === 'admin' ? 'Remove admin' : 'Make admin')}</button>}
