@@ -1,6 +1,6 @@
 # Selective road and Metro publication
 
-Owner-approved release scope, 18 October 2026. This supersedes older mandatory-review notes. See IMPLEMENTATION_STATUS.md for actual deployment/test evidence.
+Owner-approved release scope, 18 October 2026. This supersedes older mandatory-review notes. Deployed as API `00015-7cr`, worker `00012-t2z`, Hosting `fh-208bbe9aa098303b`. See IMPLEMENTATION_STATUS.md for deployment/test evidence.
 
 ## What happens to a post
 
@@ -24,7 +24,7 @@ An explicit newer restoration may cancel only a uniquely matched unchanged agent
 Open **Admin → Pipeline**. Compare Original post, Gemini analysis, per-event work log, policy issues and actual outcome. `Auto-published after validation` means committed publication. `Needs review` counts individual pending decisions, including Metro notices and community reports. One post can appear in both Needs attention and Map changes.
 
 - Road proposals: **Review on map**, complete/check the extent and PKT times, then approve/reject.
-- Service proposals: **Review service notice**, select a known service, optional direction/ordered stops and both PKT times, then approve/reject. Service publication updates Local availability; it does not close private-car roads.
+- Service proposals: **Review service notice**, select a known service, optional direction/ordered stops and both PKT times, then approve/reject. Restoration review requires the actual reopening time inside the unchanged target window; unknown stays blank and future/mismatched restoration is rejected. Service publication updates Local availability; it does not close private-car roads.
 - Published road proposals have **View on map**. Service outcomes are shown in Pipeline and Local journeys.
 - Saved older interpretations are retained. They are not silently reclassified/reanalysed or retroactively published on deployment. A generic historical road-disruption interpretation is not evidence of a specific Metro suspension.
 - Fetch collects, Run Gemini analyses at most two queued posts, Refresh reads saved records only.
