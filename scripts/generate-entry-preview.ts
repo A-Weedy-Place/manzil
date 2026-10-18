@@ -16,7 +16,18 @@ if (!graph) throw new Error('Import the bundled Islamabad road graph before gene
 const source = JSON.parse(gunzipSync(await readFile(new URL('../assets/routing/osm-islamabad.json.gz', import.meta.url))).toString()) as OsmDocument;
 const at = '2026-10-18T08:00:00.000Z';
 const demo = streetRouteDemo(graph, at);
-const drawing = { ...demo.closure.drawing!, widthMeters: 120 };
+// A point on Park Road farther inside the bypassed section leaves visual room
+// at the turning junction. This changes only the fixed illustrative incident.
+const closureCenter: Coordinate = [73.0360954, 33.7127012];
+const onParkRoad = graph.edges.some(edge => {
+  if (edge.name !== 'Park Road') return false;
+  const a = graph.nodes[edge.from].coordinate, b = graph.nodes[edge.to].coordinate;
+  const dx = b[0] - a[0], dy = b[1] - a[1], length = dx * dx + dy * dy;
+  const t = length ? ((closureCenter[0] - a[0]) * dx + (closureCenter[1] - a[1]) * dy) / length : -1;
+  return t >= 0 && t <= 1 && Math.hypot(closureCenter[0] - a[0] - t * dx, closureCenter[1] - a[1] - t * dy) < 1e-10;
+});
+if (!onParkRoad) throw new Error('Keep the illustrative closure marker on an actual Park Road segment.');
+const drawing = { ...demo.closure.drawing!, coordinates: [closureCenter], widthMeters: 100 };
 const closure: Closure = { ...demo.closure, drawing, geometry: drawingToPolygon(drawing), id: 'entry-preview-simulated-park-road', revision: 1, createdAt: at, updatedAt: at };
 const plan = new LocalRouter(graph).plan({ origin: demo.destination, destination: demo.origin, departureAt: at, compareDepartures: false }, [closure], 1);
 const route = plan.options[0];
@@ -92,6 +103,18 @@ const closedRoads = activeClosureRoads(graph, [closure], at).features;
 if (!closedRoads.length) throw new Error('The preview closure did not resolve to actual road sections.');
 const closedPaths = closedRoads.map(feature => path(feature.geometry.coordinates));
 const [closureX, closureY] = project(drawing.coordinates[0]);
+const routeWidth = 11, routeCasingWidth = 18, closureWidth = 11, closureCasingWidth = 17, closurePinRadius = 18;
+const routeSegments = routePoints.slice(1).map((point, index) => [routePoints[index], point] as const);
+const closedSegments = closedRoads.flatMap(feature => {
+  const points = feature.geometry.coordinates.map(project);
+  return points.slice(1).map((point, index) => [points[index], point] as const);
+});
+// Geographic clearance alone is insufficient: thick strokes and round caps can
+// still touch in the picture. Measure their actual projected edges as well.
+const centerlineGap = Math.min(...closedSegments.flatMap(([a, b]) => routeSegments.map(([c, d]) => Math.min(pointToSegment(a, c, d), pointToSegment(b, c, d), pointToSegment(c, a, b), pointToSegment(d, a, b)))));
+const strokeGap = centerlineGap - (routeCasingWidth + closureCasingWidth) / 2;
+const markerGap = Math.min(...routeSegments.map(([a, b]) => pointToSegment([closureX, closureY], a, b))) - closurePinRadius - routeCasingWidth / 2;
+if (strokeGap < 10 || markerGap < 10) throw new Error('Keep at least 10 SVG pixels between the route casing and both the closure casing and marker.');
 const marker = (coordinate: number[], letter: string, color: string) => {
   const [x, y] = project(coordinate);
   if (!inFrame([x, y], 80)) throw new Error('Keep route endpoints inset for responsive image cropping.');
@@ -99,21 +122,21 @@ const marker = (coordinate: number[], letter: string, color: string) => {
 };
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" fill="none">
   <title>Islamabad Park Road: an actual road-aligned route preview</title>
-  <desc>Real OpenStreetMap streets from the bundled 14 October 2026 Islamabad snapshot. Blue follows the local router's connected public-road detour through Street 21, Street 25 and Street 20. Red is an invented 120-metre-wide Park Road test closure, not a current traffic advisory. All roads, route, closure clips and endpoints use one shared geographic projection.</desc>
+  <desc>Real OpenStreetMap streets from the bundled 14 October 2026 Islamabad snapshot. Blue follows the local router's connected public-road detour through Street 21, Street 25 and Street 20. Red is an invented 100-metre-wide Park Road test closure, not a current traffic advisory. All roads, route, closure clips and endpoints use one shared geographic projection, with clear space between the route and closure strokes.</desc>
   <metadata>${escape(JSON.stringify({ source: 'OpenStreetMap via bundled Overpass snapshot', sourceTimestamp: graph.sourceTimestamp, attribution: graph.attribution, projection: 'Local equirectangular metres; -28 degree display rotation; uniform scale', graphVersion: graph.version, closure: 'Synthetic illustration only; not a live road closure', route: { origin: route.snappedOrigin, destination: route.snappedDestination, distanceMeters: route.distanceMeters, roads: route.steps.map(step => step.roadName) }, generatedBy: 'scripts/generate-entry-preview.ts', license: 'OSM-derived produced work; underlying data ODbL 1.0' }))}</metadata>
   <defs><filter id="pin-shadow" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#183c45" flood-opacity=".18"/></filter></defs>
   <path fill="#f4f4e7" d="M0 0H${width}V${height}H0z"/>
   <g stroke-linecap="round" stroke-linejoin="round">${renderRoads(localRoads, true)}\n${renderRoads(localRoads, false)}\n${renderRoads(mainRoads, true)}\n${renderRoads(mainRoads, false)}</g>
   <g fill="#65736e" font-family="Arial,sans-serif" font-size="12" text-anchor="middle" paint-order="stroke" stroke="#f4f4e7" stroke-width="3" stroke-linejoin="round">${labels}</g>
   <g stroke-linecap="round" stroke-linejoin="round">
-    ${closedPaths.map(d => `<path d="${d}" stroke="#fff" stroke-width="17"/>`).join('')}
-    ${closedPaths.map(d => `<path d="${d}" stroke="#ff244b" stroke-width="11"/>`).join('')}
-    <path d="${path(route.geometry.coordinates)}" stroke="#fff" stroke-width="18"/>
-    <path d="${path(route.geometry.coordinates)}" stroke="#2467ed" stroke-width="11"/>
+    ${closedPaths.map(d => `<path d="${d}" stroke="#fff" stroke-width="${closureCasingWidth}"/>`).join('')}
+    ${closedPaths.map(d => `<path d="${d}" stroke="#ff244b" stroke-width="${closureWidth}"/>`).join('')}
+    <path d="${path(route.geometry.coordinates)}" stroke="#fff" stroke-width="${routeCasingWidth}"/>
+    <path d="${path(route.geometry.coordinates)}" stroke="#2467ed" stroke-width="${routeWidth}"/>
   </g>
-  <g transform="translate(${format(closureX)} ${format(closureY)})" filter="url(#pin-shadow)"><circle r="18" fill="#fff"/><circle r="14" fill="#ff244b"/><path d="M-6 0H6" stroke="#fff" stroke-width="3.5" stroke-linecap="round"/></g>
+  <g transform="translate(${format(closureX)} ${format(closureY)})" filter="url(#pin-shadow)"><circle r="${closurePinRadius}" fill="#fff"/><circle r="14" fill="#ff244b"/><path d="M-6 0H6" stroke="#fff" stroke-width="3.5" stroke-linecap="round"/></g>
   ${marker(route.snappedOrigin, 'A', '#2467ed')}
   ${marker(route.snappedDestination, 'B', '#08775e')}
 </svg>\n`;
 await writeFile(new URL('../public/manzil-route-preview.svg', import.meta.url), svg);
-console.log(JSON.stringify({ output: 'public/manzil-route-preview.svg', roadWays: roads.length, routeSegments: route.geometry.coordinates.length - 1, closedSections: closedRoads.length, routeMeters: Math.round(route.distanceMeters), roads: route.steps.map(step => step.roadName), sourceTimestamp: graph.sourceTimestamp }, null, 2));
+console.log(JSON.stringify({ output: 'public/manzil-route-preview.svg', roadWays: roads.length, routeSegments: route.geometry.coordinates.length - 1, closedSections: closedRoads.length, routeMeters: Math.round(route.distanceMeters), strokeGapPixels: Number(format(strokeGap)), markerGapPixels: Number(format(markerGap)), roads: route.steps.map(step => step.roadName), sourceTimestamp: graph.sourceTimestamp }, null, 2));

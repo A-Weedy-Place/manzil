@@ -78,7 +78,7 @@ export default function AccountPanel({ onClose, entry = false, onAuthenticated, 
         </div>
       </section>
       {entry && <aside className="account-map-preview" aria-label={t('Route preview')}>
-        <img src="/manzil-route-preview.svg?v=osm-20261018" alt="" className="account-map-art" />
+        <img src="/manzil-route-preview.svg?v=osm-20261018-clearance" alt="" className="account-map-art" />
         <div className="account-preview-city"><MapPin size={18} aria-hidden="true" />{t('Islamabad')}</div>
         <button type="button" className="entry-motion-control" aria-label={t(backgroundPaused ? 'Play background animation' : 'Pause background animation')} title={t(backgroundPaused ? 'Play background animation' : 'Pause background animation')} aria-pressed={backgroundPaused} onClick={() => setBackgroundPaused(value => !value)}>{backgroundPaused ? <Play size={17} aria-hidden="true" /> : <Pause size={17} aria-hidden="true" />}</button>
         <div className="account-preview-legend" aria-hidden="true"><span><i className="preview-route-key" />{t('Example route')}</span><span><i className="preview-closed-key" />{t('Illustrative closure')}</span></div>
